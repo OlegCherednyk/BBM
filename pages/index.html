@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mozok.tilo.ruh — свідомий рух</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Montserrat:wght@200;300;400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+  </head>
+  <body>
+
+    <!-- ── NAV ── -->
+    <nav class="nav nav--hero" id="nav">
+      <a class="nav__logo" href="#">mozok.tilo.ruh</a>
+      <a
+        class="nav__ig"
+        href="https://www.instagram.com/mozok.tilo.ruh/"
+        target="_blank"
+        rel="noopener"
+        aria-label="Instagram"
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+          <circle cx="12" cy="12" r="4"/>
+          <circle cx="17.5" cy="6.5" r=".7" fill="currentColor" stroke="none"/>
+        </svg>
+      </a>
+    </nav>
+
+    <!-- ── HERO ── -->
+    <section class="hero" id="hero">
+      <div class="hero__bg" aria-hidden="true"></div>
+      <div class="hero__vignette" aria-hidden="true"></div>
+      <div class="hero__inner">
+        <p class="hero__eyebrow">мозок · тіло · рух · Київ</p>
+        <h1 class="hero__title">
+          це не просто танець —<br />
+          це <span class="hero__rotating-wrap">
+            <span class="hero__rotating" id="rotatingWord">подорож</span>
+          </span>
+        </h1>
+
+        <div class="hero__actions">
+          <button class="btn btn--primary" id="openModal">Записатись на заняття</button>
+          <a class="btn btn--ghost" href="#classes-spotlight">Практики</a>
+          <a class="btn btn--ghost" href="#schedule">Розклад</a>
+          <a class="btn btn--ghost" href="#pricing">Ціни</a>
+        </div>
+      </div>
+      <div class="hero__grain" aria-hidden="true"></div>
+    </section>
+
+    <!-- ── CLASSES (IG-style spotlight) ── -->
+    <section class="section spotlight" id="classes-spotlight" aria-labelledby="spotlight-heading">
+      <div class="section__inner spotlight__inner">
+        <p class="spotlight__label section__label">Заняття</p>
+        <h2 class="spotlight__heading" id="spotlight-heading">Формати практик</h2>
+
+        <div class="spotlight__grid">
+          <article class="spotlight-card spotlight-card--trenazh reveal">
+            <h3 class="spotlight-card__title">Тренаж</h3>
+            <p class="spotlight-card__duration">Тривалість практики 1 година</p>
+            <ul class="ig-list">
+              <li>
+                <span class="ig-list__rule" aria-hidden="true"></span>
+                <span class="ig-list__text">Повернення уваги в тіло через роботу з диханням і напругою.</span>
+              </li>
+              <li>
+                <span class="ig-list__rule" aria-hidden="true"></span>
+                <span class="ig-list__text">Комбінації вправ з хореографічного тренажу, йоги, реабілітаційних технік і пілатесу.</span>
+              </li>
+              <li>
+                <span class="ig-list__rule" aria-hidden="true"></span>
+                <span class="ig-list__text">Розвиток сили, гнучкості й витривалості.</span>
+              </li>
+            </ul>
+          </article>
+
+          <article class="spotlight-card spotlight-card--dance reveal reveal--delay-1">
+            <h3 class="spotlight-card__title">Сучасний танець</h3>
+            <p class="spotlight-card__duration">Тривалість практики 1,5 години</p>
+            <ul class="ig-list">
+              <li>
+                <span class="ig-list__rule" aria-hidden="true"></span>
+                <span class="ig-list__text">Опанування різних технік і способів руху, дослідження тілесних відчуттів у них.</span>
+              </li>
+              <li>
+                <span class="ig-list__rule" aria-hidden="true"></span>
+                <span class="ig-list__text">Розвиток реакції й координації.</span>
+              </li>
+              <li>
+                <span class="ig-list__rule" aria-hidden="true"></span>
+                <span class="ig-list__text">Вивчення окремих рухів і їхніх комбінацій.</span>
+              </li>
+              <li>
+                <span class="ig-list__rule" aria-hidden="true"></span>
+                <span class="ig-list__text">Імпровізаційні вправи й цікаві задачі на самопрацювання з матеріалом.</span>
+              </li>
+            </ul>
+          </article>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── SCHEDULE CALENDAR ── -->
+    <section class="section schedule-calendar-section" id="schedule" aria-labelledby="schedule-heading">
+      <div class="section__inner schedule-calendar-section__inner">
+        <p class="section__label">Розклад</p>
+        <h2 class="section__title reveal" id="schedule-heading">Календар занять</h2>
+
+        <div class="schedule-calendar-section__filters reveal reveal--delay-1">
+          <div class="schedule-calendar-section__filter">
+            <label class="schedule-calendar-section__filter-label" for="bankSelect">Берег</label>
+            <select class="schedule-calendar-section__select" id="bankSelect" name="river_bank" aria-label="Фільтр за берегом Дніпра">
+              <option value="all">Усі береги</option>
+              <option value="right">Правий берег</option>
+              <option value="left">Лівий берег</option>
+            </select>
+          </div>
+          <div class="schedule-calendar-section__filter">
+            <label class="schedule-calendar-section__filter-label" for="typeSelect">Тип заняття</label>
+            <select class="schedule-calendar-section__select" id="typeSelect" name="lesson_type" aria-label="Фільтр за типом заняття">
+              <option value="all">Усі типи</option>
+              <option value="Тренаж">Тренаж</option>
+              <option value="Сучасний танець">Сучасний танець</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="hero-cal hero-cal--embedded reveal reveal--delay-2" id="heroCal" aria-label="Календар занять">
+          <div class="hero-cal__toolbar">
+            <button type="button" class="hero-cal__nav" id="calPrev" aria-label="Попередній місяць">‹</button>
+            <h3 class="hero-cal__month" id="calMonthLabel"></h3>
+            <button type="button" class="hero-cal__nav" id="calNext" aria-label="Наступний місяць">›</button>
+          </div>
+          <div class="hero-cal__weekdays">
+            <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Нд</span>
+          </div>
+          <div class="hero-cal__grid" id="calGrid" role="grid" aria-labelledby="calMonthLabel"></div>
+          <div class="hero-cal__detail" id="calDetail">
+            <p class="hero-cal__detail-date" id="calDetailDate"></p>
+            <ul class="hero-cal__sessions" id="calSessions"></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── VALUES ACCORDION ── -->
+    <section class="section values" id="values">
+      <div class="section__inner section__inner--split">
+        <div class="values__left reveal">
+          <p class="section__label">Наші цінності</p>
+          <h2 class="section__title">Чому ми не схожі на звичайну студію</h2>
+        </div>
+        <div class="values__right">
+          <div class="accordion" id="accordion">
+
+            <details class="accordion__item reveal reveal--delay-1" open>
+              <summary class="accordion__q">
+                Ми — спільнота, а не студія
+                <span class="accordion__icon" aria-hidden="true"></span>
+              </summary>
+              <p class="accordion__a">
+                Незалежне об'єднання педагогів зі спільною метою і цінностями.
+                Кожна викладачка отримує гідну оплату — нам вигідно давати
+                максимум знань і користі.
+              </p>
+            </details>
+
+            <details class="accordion__item reveal reveal--delay-2">
+              <summary class="accordion__q">
+                Танець — це навичка, не талант
+                <span class="accordion__icon" aria-hidden="true"></span>
+              </summary>
+              <p class="accordion__a">
+                Ми вивчаємо рух поетапно — так само, як малювання, гру на
+                інструменті чи програмування. Без «природженого хисту»,
+                без вікових обмежень.
+              </p>
+            </details>
+
+            <details class="accordion__item reveal reveal--delay-3">
+              <summary class="accordion__q">
+                Рух — поза стилями
+                <span class="accordion__icon" aria-hidden="true"></span>
+              </summary>
+              <p class="accordion__a">
+                Ми не навчаємо «hip-hop» або «contemporary». Ми вивчаємо типи
+                і якість руху, які лежать в основі будь-якого танцю.
+              </p>
+            </details>
+
+            <details class="accordion__item reveal reveal--delay-4">
+              <summary class="accordion__q">
+                Різні педагоги — максимальний прогрес
+                <span class="accordion__icon" aria-hidden="true"></span>
+              </summary>
+              <p class="accordion__a">
+                Заняття у різних викладачів дає різні підходи, техніки і мову
+                тіла. Це найважливіший інструмент для всебічного розвитку.
+              </p>
+            </details>
+
+            <details class="accordion__item reveal reveal--delay-5">
+              <summary class="accordion__q">
+                Тебе не зламають — ні фізично, ні морально
+                <span class="accordion__icon" aria-hidden="true"></span>
+              </summary>
+              <p class="accordion__a">
+                Усі педагоги вивчали анатомію й біомеханіку. Ми просимо
+                досліджувати, що може тіло — не тиснути, не рвати, а слухати.
+              </p>
+            </details>
+
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── QUOTES SLIDER ── -->
+    <section class="section quotes" id="quotes">
+      <div class="section__inner">
+        <div class="quotes__slider" id="quotesSlider">
+          <blockquote class="quote quote--active">
+            <p>«Наші заняття — це не просто зазубрювання рухів, це подорож крізь тіло у глибини своєї особистості.»</p>
+          </blockquote>
+          <blockquote class="quote">
+            <p>«Свідомий рух — це навичка, доступна лише тим, хто не чекає швидких результатів. Ти маєш бути готова до руху у власному темпі.»</p>
+          </blockquote>
+          <blockquote class="quote">
+            <p>«Ми віримо в поетапне оволодіння технікою, щоб ти змогла відкрити нові можливості власного тіла і вільно почуватись у русі.»</p>
+          </blockquote>
+        </div>
+        <div class="quotes__dots" id="quotesDots">
+          <button class="dot dot--active" aria-label="Цитата 1"></button>
+          <button class="dot" aria-label="Цитата 2"></button>
+          <button class="dot" aria-label="Цитата 3"></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── PRICING ── -->
+    <section class="section pricing" id="pricing" aria-labelledby="pricing-heading">
+      <div class="section__inner">
+        <p class="section__label">Вартість</p>
+        <h2 class="section__title reveal" id="pricing-heading">Ціни та абонементи</h2>
+
+        <div class="pricing__grid">
+
+          <article class="pricing-card reveal reveal--delay-1">
+            <div class="pricing-card__header">
+              <h3 class="pricing-card__title">Тренаж</h3>
+              <p class="pricing-card__duration">1 година</p>
+            </div>
+            <ul class="pricing-card__tiers">
+              <li class="pricing-tier">
+                <span class="pricing-tier__label">Разове заняття</span>
+                <span class="pricing-tier__price">500 <span class="pricing-tier__currency">грн</span></span>
+              </li>
+              <li class="pricing-tier pricing-tier--highlight">
+                <div class="pricing-tier__main">
+                  <span class="pricing-tier__label">8 занять</span>
+                  <span class="pricing-tier__badge">вигідно</span>
+                </div>
+                <span class="pricing-tier__price">2 600 <span class="pricing-tier__currency">грн</span></span>
+              </li>
+            </ul>
+            <button class="btn btn--primary btn--full pricing-card__cta" id="openModal3">Записатись</button>
+          </article>
+
+          <article class="pricing-card reveal reveal--delay-2">
+            <div class="pricing-card__header">
+              <h3 class="pricing-card__title">Сучасний танець</h3>
+              <p class="pricing-card__duration">1,5 години</p>
+            </div>
+            <ul class="pricing-card__tiers">
+              <li class="pricing-tier">
+                <span class="pricing-tier__label">Разове заняття</span>
+                <span class="pricing-tier__price">600 <span class="pricing-tier__currency">грн</span></span>
+              </li>
+              <li class="pricing-tier pricing-tier--highlight">
+                <div class="pricing-tier__main">
+                  <span class="pricing-tier__label">8 занять</span>
+                  <span class="pricing-tier__badge">вигідно</span>
+                </div>
+                <span class="pricing-tier__price">3 200 <span class="pricing-tier__currency">грн</span></span>
+              </li>
+            </ul>
+            <button class="btn btn--primary btn--full pricing-card__cta" id="openModal4">Записатись</button>
+          </article>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ── SIGN-UP MODAL ── -->
+    <dialog class="modal" id="signupModal">
+      <button class="modal__close" id="closeModal" aria-label="Закрити">✕</button>
+      <p class="modal__eyebrow">мозок.тіло.рух</p>
+      <h2 class="modal__title">Почнемо разом</h2>
+      <p class="modal__sub">Залиш своє ім'я та контакт (Instagram або Telegram) — ми напишемо тобі першою.</p>
+      <form class="modal__form" id="signupForm" novalidate>
+        <div class="form-group">
+          <label for="name">Ім'я</label>
+          <input id="name" name="name" type="text" placeholder="Наприклад, Настя" autocomplete="given-name" required />
+          <span class="form-error" id="nameError"></span>
+        </div>
+        <div class="form-group">
+          <label for="contact">Instagram або Telegram</label>
+          <input id="contact" name="contact" type="text" placeholder="@instagram або @telegram" required />
+          <span class="form-error" id="contactError"></span>
+        </div>
+        <button class="btn btn--primary btn--full" type="submit">Відправити</button>
+      </form>
+
+      <div class="modal__success" id="formSuccess" hidden>
+        <span class="modal__checkmark modal__checkmark--always" aria-hidden="true">✓</span>
+        <p>Дякуємо! Ми напишемо тобі найближчим часом.</p>
+      </div>
+    </dialog>
+    <div class="modal__backdrop" id="modalBackdrop"></div>
+
+    <!-- ── FOOTER ── -->
+    <footer class="footer">
+      <span>mozok.tilo.ruh © 2026</span>
+      <a href="https://www.instagram.com/mozok.tilo.ruh/" target="_blank" rel="noopener">Instagram</a>
+    </footer>
+
+    <script src="../assets/js/custom-select.js"></script>
+    <script src="../assets/js/script.js"></script>
+  </body>
+</html>

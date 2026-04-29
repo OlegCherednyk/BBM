@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Адмін — типи занять</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../../assets/css/styles.css" />
+    <link rel="stylesheet" href="../../assets/css/admin.css" />
+  </head>
+  <body data-admin-page="lesson-types">
+    <nav class="nav nav--admin scrolled" aria-label="Адмін">
+      <div class="admin-nav__inner">
+        <div class="admin-nav__brand">
+          <a class="nav__logo" href="../index.html">mozok.tilo.ruh</a>
+          <span class="admin-nav__sep" aria-hidden="true">·</span>
+          <a class="admin-nav__site" href="../index.html">На сайт</a>
+        </div>
+        <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі за порядком">
+          <li><a href="lesson-types.html" aria-current="page">Типи занять</a></li>
+          <li><a href="prices.html">Ціни</a></li>
+          <li><a href="places.html">Місця</a></li>
+        </ol>
+        <div id="adminNavMeta" class="admin-nav__meta admin-hide">
+          <p class="admin-user admin-nav__user" id="userLine"></p>
+          <button type="button" class="btn btn--ghost btn--sm" id="signOutDash">Вийти</button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="admin-page">
+      <div id="authSection" class="admin-hide"></div>
+      <div id="blockedSection" class="admin-hide">
+        <div class="admin-top">
+          <h1 style="margin: 0">Немає прав</h1>
+          <button type="button" class="btn btn--ghost btn--sm" id="signOutBlocked">Вийти</button>
+        </div>
+        <p class="admin-muted">
+          Обліковий запис не у списку адміністраторів. Виконай у Supabase → SQL Editor (ідентифікатор користувача підставлено):
+        </p>
+        <pre
+          style="
+            font-size: 0.82rem;
+            background: var(--cream-soft);
+            border: 1px solid var(--cream-mid);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            overflow: auto;
+            line-height: 1.45;
+          "
+          id="allowlistSnippet"
+        ></pre>
+      </div>
+
+      <div id="dashSection" class="admin-hide">
+        <div class="admin-top admin-top--title-only">
+          <h1>Типи занять</h1>
+        </div>
+        <div id="dashError" class="admin-alert admin-alert--error admin-hide" role="status"></div>
+        <div id="dashOk" class="admin-alert admin-alert--ok admin-hide" role="status"></div>
+
+        <div class="admin-panel" id="section-lesson-types">
+          <h2>Типи занять</h2>
+          <p class="admin-muted">Два напрями (назва й тривалість для сайту).</p>
+          <div id="lessonTypesList" class="admin-muted">Завантаження…</div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span>mozok.tilo.ruh — адмін</span>
+      <a href="../index.html">Сайт</a>
+    </footer>
+
+    <script src="../../assets/js/custom-select.js"></script>
+    <script type="module" src="../../assets/js/admin.js"></script>
+  </body>
+</html>

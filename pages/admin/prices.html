@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Адмін — ціни</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../../assets/css/styles.css" />
+    <link rel="stylesheet" href="../../assets/css/admin.css" />
+  </head>
+  <body data-admin-page="prices">
+    <nav class="nav nav--admin scrolled" aria-label="Адмін">
+      <div class="admin-nav__inner">
+        <div class="admin-nav__brand">
+          <a class="nav__logo" href="../index.html">mozok.tilo.ruh</a>
+          <span class="admin-nav__sep" aria-hidden="true">·</span>
+          <a class="admin-nav__site" href="../index.html">На сайт</a>
+        </div>
+        <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі за порядком">
+          <li><a href="lesson-types.html">Типи занять</a></li>
+          <li><a href="prices.html" aria-current="page">Ціни</a></li>
+          <li><a href="places.html">Місця</a></li>
+        </ol>
+        <div id="adminNavMeta" class="admin-nav__meta admin-hide">
+          <p class="admin-user admin-nav__user" id="userLine"></p>
+          <button type="button" class="btn btn--ghost btn--sm" id="signOutDash">Вийти</button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="admin-page">
+      <div id="authSection" class="admin-hide"></div>
+      <div id="blockedSection" class="admin-hide">
+        <div class="admin-top">
+          <h1 style="margin: 0">Немає прав</h1>
+          <button type="button" class="btn btn--ghost btn--sm" id="signOutBlocked">Вийти</button>
+        </div>
+        <p class="admin-muted">
+          Обліковий запис не у списку адміністраторів. Виконай у Supabase → SQL Editor (ідентифікатор користувача підставлено):
+        </p>
+        <pre
+          style="
+            font-size: 0.82rem;
+            background: var(--cream-soft);
+            border: 1px solid var(--cream-mid);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            overflow: auto;
+            line-height: 1.45;
+          "
+          id="allowlistSnippet"
+        ></pre>
+      </div>
+
+      <div id="dashSection" class="admin-hide">
+        <div class="admin-top admin-top--title-only">
+          <h1>Ціни</h1>
+        </div>
+        <div id="dashError" class="admin-alert admin-alert--error admin-hide" role="status"></div>
+        <div id="dashOk" class="admin-alert admin-alert--ok admin-hide" role="status"></div>
+
+        <div class="admin-panel" id="section-prices">
+          <div class="admin-price-create__head">
+            <h2>Ціни (грн)</h2>
+            <button id="priceFormToggle" class="btn btn--primary btn--sm btn--price-add" type="button">+ Нова ціна</button>
+          </div>
+          <form id="priceForm" class="admin-grid admin-grid--2 admin-hide">
+            <input type="hidden" id="priceEditingId" value="" />
+            <div class="admin-field admin-grid-span-2">
+              <label for="priceLessonType">Напрям</label>
+              <select id="priceLessonType" required></select>
+            </div>
+            <div class="admin-field admin-grid-span-2">
+              <span class="admin-field__label-row">Тип ціни</span>
+              <label class="admin-radio"
+                ><input type="radio" name="priceKind" id="priceKindSingle" value="single" checked /> Разове</label
+              >
+              <label class="admin-radio"
+                ><input type="radio" name="priceKind" id="priceKindAbon" value="abon" /> Абонемент</label
+              >
+            </div>
+            <div class="admin-field" id="visitsFieldWrap">
+              <label for="priceVisits">Кількість занять у пакеті</label>
+              <input id="priceVisits" type="number" min="2" step="1" value="8" />
+            </div>
+            <div class="admin-field admin-field--price-amount">
+              <label for="priceAmount">Сума (₴)</label>
+              <input id="priceAmount" type="number" min="0" step="1" required />
+            </div>
+            <div class="admin-actions admin-grid-span-2">
+              <button type="submit" class="btn btn--primary btn--sm" id="priceSubmitBtn">Додати ціну</button>
+              <button type="button" class="btn btn--ghost btn--sm" id="priceFormCancel">Скасувати</button>
+              <button type="button" class="btn btn--ghost btn--sm admin-hide" id="priceCancelEdit">Скасувати редагування</button>
+            </div>
+          </form>
+          <div class="admin-sub" style="margin-top: 20px">Поточні ціни</div>
+          <div id="pricesList"><p class="admin-muted">Завантаження…</p></div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span>mozok.tilo.ruh — адмін</span>
+      <a href="../index.html">Сайт</a>
+    </footer>
+
+    <script src="../../assets/js/custom-select.js"></script>
+    <script type="module" src="../../assets/js/admin.js"></script>
+  </body>
+</html>

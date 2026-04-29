@@ -1,0 +1,98 @@
+<h2>Як показати ціни?</h2>
+<p class="subtitle">Три варіанти верстки секції «Ціни» — з реальними даними</p>
+
+<div class="cards">
+
+  <!-- Option A: Two cards -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a1a;padding:20px;font-family:sans-serif">
+      <div style="color:#8a7c5e;font-size:10px;letter-spacing:2px;margin-bottom:8px">ВАРТІСТЬ</div>
+      <div style="display:flex;gap:12px">
+        <div style="flex:1;background:#242424;border-radius:10px;padding:14px">
+          <div style="color:#c8b89a;font-size:11px;font-weight:600;margin-bottom:6px">Тренаж</div>
+          <div style="color:#fff;font-size:18px;font-weight:700">500 <span style="font-size:11px;color:#8a7c5e">грн</span></div>
+          <div style="color:#8a7c5e;font-size:10px;margin-bottom:8px">разове</div>
+          <div style="border-top:1px solid #333;padding-top:8px;color:#fff;font-size:14px;font-weight:600">2 600 <span style="font-size:10px;color:#8a7c5e">грн</span></div>
+          <div style="color:#8a7c5e;font-size:10px">8 занять</div>
+        </div>
+        <div style="flex:1;background:#242424;border-radius:10px;padding:14px">
+          <div style="color:#c8b89a;font-size:11px;font-weight:600;margin-bottom:6px">Сучасний танець</div>
+          <div style="color:#fff;font-size:18px;font-weight:700">600 <span style="font-size:11px;color:#8a7c5e">грн</span></div>
+          <div style="color:#8a7c5e;font-size:10px;margin-bottom:8px">разове</div>
+          <div style="border-top:1px solid #333;padding-top:8px;color:#fff;font-size:14px;font-weight:600">3 200 <span style="font-size:10px;color:#8a7c5e">грн</span></div>
+          <div style="color:#8a7c5e;font-size:10px">8 занять</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Дві картки</h3>
+      <p>Окрема картка на кожний тип заняття. Чисто, легко порівняти.</p>
+    </div>
+  </div>
+
+  <!-- Option B: Tier rows -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a1a;padding:20px;font-family:sans-serif">
+      <div style="color:#8a7c5e;font-size:10px;letter-spacing:2px;margin-bottom:12px">ВАРТІСТЬ</div>
+      <!-- Row 1: Разове -->
+      <div style="background:#242424;border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="color:#e8dcc8;font-size:12px;font-weight:600">Разове заняття</div>
+          <div style="color:#8a7c5e;font-size:10px">Прийди та спробуй</div>
+        </div>
+        <div style="text-align:right">
+          <div style="color:#c8b89a;font-size:11px">Тренаж <span style="color:#fff;font-weight:700">500 грн</span></div>
+          <div style="color:#c8b89a;font-size:11px">Танець <span style="color:#fff;font-weight:700">600 грн</span></div>
+        </div>
+      </div>
+      <!-- Row 2: 8 занять -->
+      <div style="background:#2d2a24;border:1px solid #6b7c3a;border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="color:#e8dcc8;font-size:12px;font-weight:600">8 занять</div>
+          <div style="color:#8a7c5e;font-size:10px">Найкраща ціна</div>
+          <div style="background:#6b7c3a;color:#fff;font-size:9px;padding:2px 6px;border-radius:10px;display:inline-block;margin-top:3px">рекомендуємо</div>
+        </div>
+        <div style="text-align:right">
+          <div style="color:#c8b89a;font-size:11px">Тренаж <span style="color:#fff;font-weight:700">2 600 грн</span></div>
+          <div style="color:#c8b89a;font-size:11px">Танець <span style="color:#fff;font-weight:700">3 200 грн</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Рядки по тарифу</h3>
+      <p>Рядки «разове» vs «8 занять», обидва типи в одному рядку. Виділено рекомендований тариф.</p>
+    </div>
+  </div>
+
+  <!-- Option C: Minimal list -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a1a;padding:20px;font-family:sans-serif">
+      <div style="color:#8a7c5e;font-size:10px;letter-spacing:2px;margin-bottom:14px">ВАРТІСТЬ</div>
+      <div style="margin-bottom:12px">
+        <div style="color:#e8dcc8;font-size:12px;font-weight:600;margin-bottom:6px">Тренаж · 1 год</div>
+        <div style="display:flex;justify-content:space-between;color:#aaa;font-size:11px;padding:4px 0;border-bottom:1px solid #2a2a2a">
+          <span>Разове</span><span style="color:#fff">500 грн</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;color:#aaa;font-size:11px;padding:4px 0">
+          <span>8 занять</span><span style="color:#c8b89a;font-weight:600">2 600 грн</span>
+        </div>
+      </div>
+      <div style="border-top:1px solid #2a2a2a;padding-top:12px">
+        <div style="color:#e8dcc8;font-size:12px;font-weight:600;margin-bottom:6px">Сучасний танець · 1,5 год</div>
+        <div style="display:flex;justify-content:space-between;color:#aaa;font-size:11px;padding:4px 0;border-bottom:1px solid #2a2a2a">
+          <span>Разове</span><span style="color:#fff">600 грн</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;color:#aaa;font-size:11px;padding:4px 0">
+          <span>8 занять</span><span style="color:#c8b89a;font-weight:600">3 200 грн</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Мінімалістичний список</h3>
+      <p>Просто і лаконічно. Тип → ціна. Підходить до editorial-стилю сайту.</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:20px">Клікни на варіант або напиши в чаті</p>

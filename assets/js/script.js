@@ -1,8 +1,12 @@
 /* ── NAV SCROLL ── */
 const nav = document.getElementById("nav");
-window.addEventListener("scroll", () => {
-  nav.classList.toggle("scrolled", window.scrollY > 50);
-}, { passive: true });
+function syncNavTheme() {
+  const y = window.scrollY;
+  nav.classList.toggle("scrolled", y > 50);
+  nav.classList.toggle("nav--hero", y <= 50);
+}
+syncNavTheme();
+window.addEventListener("scroll", syncNavTheme, { passive: true });
 
 /* ── ROTATING HERO WORDS ── */
 const words = ["подорож", "відчуття", "свідомість", "вільний рух", "відкриття"];
@@ -17,6 +21,179 @@ function nextWord() {
   rotating.textContent = words[wordIdx];
 }
 setInterval(nextWord, 2600);
+
+/* ── SCHEDULE CALENDAR (тижневий розклад = seed_kyiv_schedule) ── */
+const UK_DOW = ["неділя", "понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота"];
+const scheduleSlots = [
+  { dow: 2, time: "19:00", bank: "left", type: "Сучасний танець", duration: "1,5 год", venue: "Лівий берег · Мішуги", address: "вул. Мішуги, 10" },
+  { dow: 3, time: "17:30", bank: "right", type: "Тренаж", duration: "1 год", venue: "Правий берег · Кирилівська", address: "вул. Кирилівська, 41" },
+  { dow: 3, time: "18:30", bank: "right", type: "Сучасний танець", duration: "1,5 год", venue: "Правий берег · Кирилівська", address: "вул. Кирилівська, 41" },
+  { dow: 3, time: "20:00", bank: "left", type: "Тренаж", duration: "1 год", venue: "Лівий берег · Мішуги", address: "вул. Мішуги, 10" },
+  { dow: 4, time: "19:00", bank: "left", type: "Сучасний танець", duration: "1,5 год", venue: "Лівий берег · Мішуги", address: "вул. Мішуги, 10" },
+  { dow: 6, time: "10:00", bank: "right", type: "Тренаж", duration: "1 год", venue: "Правий берег · Кирилівська", address: "вул. Кирилівська, 41" },
+  { dow: 6, time: "11:00", bank: "right", type: "Сучасний танець", duration: "1,5 год", venue: "Правий берег · Кирилівська", address: "вул. Кирилівська, 41" },
+  { dow: 6, time: "12:30", bank: "left", type: "Тренаж", duration: "1 год", venue: "Лівий берег · Мішуги", address: "вул. Мішуги, 10" },
+];
+
+let selectedBank = "all";
+let selectedType = "all";
+
+function sessionsForDay(d) {
+  const dow = d.getDay();
+  let list = scheduleSlots.filter((s) => s.dow === dow);
+  if (selectedBank !== "all") {
+    list = list.filter((s) => s.bank === selectedBank);
+  }
+  if (selectedType !== "all") {
+    list = list.filter((s) => s.type === selectedType);
+  }
+  return list.sort((a, b) => a.time.localeCompare(b.time));
+}
+
+function sameCalendarDate(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function startOfToday() {
+  const t = new Date();
+  return new Date(t.getFullYear(), t.getMonth(), t.getDate());
+}
+
+const calGrid = document.getElementById("calGrid");
+const calMonthLabel = document.getElementById("calMonthLabel");
+const calDetailDate = document.getElementById("calDetailDate");
+const calSessions = document.getElementById("calSessions");
+const calPrev = document.getElementById("calPrev");
+const calNext = document.getElementById("calNext");
+
+let calView = new Date();
+let selectedCalDay = startOfToday();
+
+calView = new Date(selectedCalDay.getFullYear(), selectedCalDay.getMonth(), 1);
+
+function renderDetail() {
+  const y = selectedCalDay.getFullYear();
+  const m = selectedCalDay.getMonth();
+  const day = selectedCalDay.getDate();
+  const long = selectedCalDay.toLocaleDateString("uk-UA", { day: "numeric", month: "long", year: "numeric" });
+  const dowName = UK_DOW[selectedCalDay.getDay()];
+  calDetailDate.textContent = `${long} — ${dowName}`;
+
+  const sessions = sessionsForDay(selectedCalDay);
+  calSessions.innerHTML = "";
+  if (!sessions.length) {
+    const p = document.createElement("p");
+    p.className = "hero-cal__empty";
+    const hasCustomFilter = selectedBank !== "all" || selectedType !== "all";
+    p.textContent = hasCustomFilter
+      ? "За обраними фільтрами в цей день занять немає."
+      : "У цей день занять немає — обери іншу дату.";
+    calSessions.appendChild(p);
+    return;
+  }
+  for (const s of sessions) {
+    const li = document.createElement("li");
+    li.className = "hero-cal__session";
+    li.innerHTML = `
+      <time datetime="${s.time}">${s.time}</time>
+      <p class="hero-cal__session-type">${s.type} · ${s.duration}</p>
+      <p class="hero-cal__session-meta">${s.venue}<br />${s.address}</p>
+    `;
+    calSessions.appendChild(li);
+  }
+}
+
+function renderCalGrid() {
+  const y = calView.getFullYear();
+  const m = calView.getMonth();
+  calMonthLabel.textContent = new Date(y, m, 15).toLocaleDateString("uk-UA", { month: "long", year: "numeric" });
+
+  const first = new Date(y, m, 1);
+  const pad = (first.getDay() + 6) % 7;
+  const dim = new Date(y, m + 1, 0).getDate();
+  const prevDim = new Date(y, m, 0).getDate();
+  const totalSlots = Math.ceil((pad + dim) / 7) * 7;
+
+  const today = startOfToday();
+  calGrid.innerHTML = "";
+
+  for (let i = 0; i < totalSlots; i++) {
+    const dayNum = i - pad + 1;
+    let cellDate;
+    let muted = false;
+    if (dayNum < 1) {
+      cellDate = new Date(y, m - 1, prevDim + dayNum);
+      muted = true;
+    } else if (dayNum > dim) {
+      cellDate = new Date(y, m + 1, dayNum - dim);
+      muted = true;
+    } else {
+      cellDate = new Date(y, m, dayNum);
+    }
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "hero-cal__day";
+    btn.textContent = String(cellDate.getDate());
+    btn.setAttribute("role", "gridcell");
+    if (muted) btn.classList.add("hero-cal__day--muted");
+    if (sameCalendarDate(cellDate, today)) btn.classList.add("hero-cal__day--today");
+    if (sameCalendarDate(cellDate, selectedCalDay)) {
+      btn.classList.add("hero-cal__day--selected");
+      btn.setAttribute("aria-selected", "true");
+    } else {
+      btn.setAttribute("aria-selected", "false");
+    }
+    if (sessionsForDay(cellDate).length) btn.classList.add("hero-cal__day--has");
+
+    btn.addEventListener("click", () => {
+      selectedCalDay = new Date(cellDate.getFullYear(), cellDate.getMonth(), cellDate.getDate());
+      if (
+        selectedCalDay.getMonth() !== calView.getMonth() ||
+        selectedCalDay.getFullYear() !== calView.getFullYear()
+      ) {
+        calView = new Date(selectedCalDay.getFullYear(), selectedCalDay.getMonth(), 1);
+      }
+      renderCalGrid();
+      renderDetail();
+    });
+
+    calGrid.appendChild(btn);
+  }
+}
+
+calPrev.addEventListener("click", () => {
+  calView = new Date(calView.getFullYear(), calView.getMonth() - 1, 1);
+  renderCalGrid();
+  renderDetail();
+});
+
+calNext.addEventListener("click", () => {
+  calView = new Date(calView.getFullYear(), calView.getMonth() + 1, 1);
+  renderCalGrid();
+  renderDetail();
+});
+
+const bankSelect = document.getElementById("bankSelect");
+if (bankSelect) {
+  bankSelect.addEventListener("change", () => {
+    selectedBank = bankSelect.value;
+    renderCalGrid();
+    renderDetail();
+  });
+}
+
+const typeSelect = document.getElementById("typeSelect");
+if (typeSelect) {
+  typeSelect.addEventListener("change", () => {
+    selectedType = typeSelect.value;
+    renderCalGrid();
+    renderDetail();
+  });
+}
+
+renderCalGrid();
+renderDetail();
 
 /* ── SCROLL REVEAL ── */
 const revealEls = document.querySelectorAll(".reveal");
@@ -53,9 +230,9 @@ setInterval(() => goToQuote((activeQuote + 1) % quotes.length), 4500);
 const cardCtaBtns = document.querySelectorAll(".card__cta");
 const directionDetails = {
   "Турбота про тіло":
-    "Заняття поєднують вправи на гнучкість, силу і самомасаж. Підходить абсолютно будь-кому. Ти дізнаєшся, як тіло реагує на рух — і це змінює все.",
+    "Практика близька до тренажу: дихання й напруга, поєднання хореографічного тренажу з йогою, реабілітаційними техніками й пілатесом. Фокус на силі, гнучкості й витривалості та на поверненні уваги в тіло.",
   "Сучасний танець":
-    "Контемп, вільна пластика, контактна імпровізація. Ми вивчаємо типи руху, а не стилі. З кожним заняттям відкриваєш у тілі щось нове.",
+    "Півторні заняття: опанування технік і способів руху, координація, комбінації та імпровізація. Ідеально, якщо хочеш відчувати тіло вільніше з кожним разом.",
   Хорео:
     "Щоразу різний педагог, різна хореографія, різна якість руху. Для тих, хто вже рухається і хоче йти далі меж стилю.",
 };
@@ -88,12 +265,15 @@ const backdrop   = document.getElementById("modalBackdrop");
 const closeBtnEl = document.getElementById("closeModal");
 const openBtns   = [
   document.getElementById("openModal"),
-  document.getElementById("openModal2"),
+  document.getElementById("openModal3"),
+  document.getElementById("openModal4"),
 ];
 const form        = document.getElementById("signupForm");
 const formSuccess = document.getElementById("formSuccess");
 
 function openModal() {
+  form.hidden = false;
+  formSuccess.hidden = true;
   modal.showModal ? modal.showModal() : (modal.open = true);
   backdrop.classList.add("active");
   document.body.style.overflow = "hidden";
@@ -141,13 +321,12 @@ form.addEventListener("submit", (e) => {
     valid = false;
   }
   if (!contact) {
-    showError("contact", "contactError", "Вкажи Instagram або телефон");
+    showError("contact", "contactError", "Вкажи Instagram або Telegram");
     valid = false;
   }
 
   if (!valid) return;
 
-  // Simulate successful submission
   form.hidden = true;
   formSuccess.hidden = false;
   setTimeout(closeModal, 2800);

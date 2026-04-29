@@ -1,3 +1,6 @@
+# Supabase publishable anon key for local admin (copy from supabase-config.example.js)
+assets/js/supabase-config.js
+
 # Environment (keep secrets out of git)
 .env
 .env.local
