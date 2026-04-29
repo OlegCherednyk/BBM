@@ -1,0 +1,30 @@
+# Environment (keep secrets out of git)
+.env
+.env.local
+.env.*.local
+
+# Dependencies (if you add Node later)
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output (if you add a bundler later)
+dist/
+build/
+.cache/
+.parcel-cache/
