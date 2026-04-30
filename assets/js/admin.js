@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabase-config.js";
+import { getSupabaseConfig } from "./runtime-supabase-config.js";
 
 /** 0 = Sunday … 6 = Saturday (Date.getDay) */
 const DAYS_UK = ["Неділя", "Понеділок", "Вівторок", "Середа", "Четвер", "Пʼятниця", "Субота"];
@@ -26,7 +26,8 @@ function fmtTime(timeStr) {
   return part;
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const { url: supabaseUrl, anonKey: supabaseAnonKey } = await getSupabaseConfig();
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const authSection = maybeEl("authSection");
 const blockedSection = maybeEl("blockedSection");

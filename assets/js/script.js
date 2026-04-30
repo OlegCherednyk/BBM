@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabase-config.js";
+import { getSupabaseConfig } from "./runtime-supabase-config.js";
 
 /* ── NAV SCROLL ── */
 const nav = document.getElementById("nav");
@@ -94,7 +94,8 @@ let scheduleSlots = [
   { dow: 6, time: "12:30", bank: "left", type: "Тренаж", duration: "1 год", venue: "Лівий берег · Мішуги", address: "вул. Мішуги, 10" },
 ];
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const { url: supabaseUrl, anonKey: supabaseAnonKey } = await getSupabaseConfig();
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 function normalizeBank(riverBank) {
   const v = String(riverBank || "").toLowerCase();

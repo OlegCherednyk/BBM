@@ -11,14 +11,24 @@ dotenv.config({
 });
 
 const app = express();
-const port = Number(process.env.PORT || 8080);
+const parsedPort = Number.parseInt(process.env.PORT ?? "", 10);
+const port = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 8080;
 const botToken = process.env.TELEGRAM_BOT_TOKEN || "";
 const telegramChatId = process.env.TELEGRAM_CHAT_ID || "";
+const publicSupabaseUrl = process.env.PUBLIC_SUPABASE_URL || "";
+const publicSupabaseAnonKey = process.env.PUBLIC_SUPABASE_ANON_KEY || "";
 
 const bot = botToken ? new Telegraf(botToken) : null;
 
 app.use(express.json());
 app.use(express.static("."));
+
+app.get("/api/public-config", (_req, res) => {
+  const body = {};
+  if (publicSupabaseUrl) body.supabaseUrl = publicSupabaseUrl;
+  if (publicSupabaseAnonKey) body.supabaseAnonKey = publicSupabaseAnonKey;
+  return res.status(200).json(body);
+});
 
 app.get("/api/signup", (_req, res) => {
   return res.status(200).json({
