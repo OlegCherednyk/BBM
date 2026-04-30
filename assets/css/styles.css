@@ -16,7 +16,7 @@
 
   --ff-display: "Space Grotesk", sans-serif;
   --ff-airy:    "Montserrat", sans-serif;
-  --ff-body:    "Manrope", sans-serif;
+  --ff-body:    "Montserrat", sans-serif;
 
   /* Hero photo from local assets */
   --hero-photo: url("../images/hero-background.png");
@@ -33,6 +33,8 @@
 html { scroll-behavior: smooth; }
 body {
   font-family: var(--ff-body);
+  font-weight: 300;
+  letter-spacing: 0.02em;
   background: var(--cream);
   color: var(--brown-dark);
   overflow-x: hidden;
@@ -190,26 +192,96 @@ img, svg { display: block; }
   font-family: var(--ff-airy);
   font-size: clamp(2.1rem, 5.5vw, 3.55rem);
   font-weight: 200;
-  line-height: 1.18;
-  letter-spacing: 0.04em;
+  line-height: 1.24;
+  letter-spacing: 0.022em;
   text-transform: lowercase;
   color: #fff;
   margin-bottom: 24px;
-  text-shadow: 0 2px 40px rgba(0, 0, 0, 0.35);
+  text-wrap: balance;
+  text-shadow: 0 2px 36px rgba(0, 0, 0, 0.32);
+  opacity: 0;
+  transform: translateY(22px) scale(0.985);
+  filter: blur(4px);
+  animation: heroTitleReveal 1.35s cubic-bezier(0.2, 0.7, 0.25, 1) 0.2s forwards;
+  will-change: opacity, transform, filter;
 }
 .hero__rotating-wrap {
-  display: inline-block; overflow: hidden;
-  vertical-align: bottom;
+  display: inline-grid;
+  grid-template-columns: 1fr;
+  align-items: baseline;
+  min-width: var(--rotating-slot-width, 11ch);
+  min-height: 1.36em;
+  overflow: visible;
+  vertical-align: baseline;
+  text-align: left;
+  margin-left: 0.12em;
+  padding-right: 0.06em;
+  white-space: nowrap;
 }
 .hero__rotating {
   display: inline-block;
+  line-height: 1.22;
   font-weight: 300;
   color: rgba(220, 225, 185, 0.98);
-  animation: wordSlide .5s ease both;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+  will-change: opacity, transform, filter;
+  transition:
+    opacity 0.44s cubic-bezier(0.2, 0.7, 0.25, 1),
+    transform 0.44s cubic-bezier(0.2, 0.7, 0.25, 1),
+    filter 0.44s cubic-bezier(0.2, 0.7, 0.25, 1);
+  white-space: nowrap;
 }
-@keyframes wordSlide {
-  from { opacity: 0; transform: translateY(100%); }
-  to   { opacity: 1; transform: translateY(0); }
+.hero__rotating.is-leaving {
+  opacity: 0;
+  transform: translateY(6px) scale(0.994);
+  filter: blur(1.8px);
+}
+.hero__rotating.is-entering {
+  opacity: 0;
+  transform: translateY(7px) scale(0.992);
+  filter: blur(2px);
+}
+.hero__rotating.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+}
+
+@keyframes heroTitleReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(22px) scale(0.985);
+    filter: blur(4px);
+    letter-spacing: 0.055em;
+  }
+  55% {
+    opacity: 0.82;
+    transform: translateY(2px) scale(0.996);
+    filter: blur(1.4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+    letter-spacing: 0.04em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero__title {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    animation: none;
+  }
+  .hero__rotating {
+    transition: none;
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
 }
 /* ── SCHEDULE SECTION (календар після практик) ── */
 .schedule-calendar-section {
@@ -816,8 +888,10 @@ img, svg { display: block; }
   margin-bottom: 14px;
 }
 .section__title {
-  font-family: var(--ff-display);
+  font-family: var(--ff-airy);
   font-size: clamp(1.7rem, 3.5vw, 2.5rem);
+  font-weight: 300;
+  letter-spacing: 0.04em;
   line-height: 1.2;
   color: var(--brown-dark);
   margin-bottom: 0;
@@ -1152,9 +1226,10 @@ details[open] .accordion__icon::after { transform: translate(-50%,-50%) rotate(9
 
 .pricing-card__header { display: flex; flex-direction: column; gap: 4px; }
 .pricing-card__title {
-  font-family: var(--ff-display);
+  font-family: var(--ff-airy);
   font-size: clamp(1.25rem, 2.5vw, 1.55rem);
-  font-weight: 700;
+  font-weight: 300;
+  letter-spacing: 0.04em;
   color: var(--brown-dark);
 }
 .pricing-card__duration {

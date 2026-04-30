@@ -12,15 +12,71 @@ window.addEventListener("scroll", syncNavTheme, { passive: true });
 const words = ["подорож", "відчуття", "свідомість", "вільний рух", "відкриття"];
 let wordIdx = 0;
 const rotating = document.getElementById("rotatingWord");
+const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const ROTATE_INTERVAL_MS = 3400;
+const ROTATE_PHASE_MS = 440;
+
+function stabilizeRotatingSlotWidth() {
+  if (!rotating || !rotating.parentElement) return;
+
+  const probe = document.createElement("span");
+  probe.className = rotating.className;
+  probe.style.position = "absolute";
+  probe.style.visibility = "hidden";
+  probe.style.whiteSpace = "nowrap";
+  probe.style.pointerEvents = "none";
+  probe.style.transform = "none";
+  probe.style.filter = "none";
+  probe.style.opacity = "1";
+  probe.style.transition = "none";
+
+  document.body.appendChild(probe);
+
+  let maxWidth = 0;
+  for (const word of words) {
+    probe.textContent = word;
+    maxWidth = Math.max(maxWidth, probe.getBoundingClientRect().width);
+  }
+
+  document.body.removeChild(probe);
+  rotating.parentElement.style.setProperty("--rotating-slot-width", `${Math.ceil(maxWidth + 20)}px`);
+}
 
 function nextWord() {
-  rotating.style.animation = "none";
-  rotating.offsetHeight; // reflow
-  rotating.style.animation = "";
-  wordIdx = (wordIdx + 1) % words.length;
-  rotating.textContent = words[wordIdx];
+  if (!rotating) return;
+
+  if (prefersReducedMotion) {
+    wordIdx = (wordIdx + 1) % words.length;
+    rotating.textContent = words[wordIdx];
+    return;
+  }
+
+  rotating.classList.remove("is-entering", "is-visible");
+  rotating.classList.add("is-leaving");
+
+  window.setTimeout(() => {
+    wordIdx = (wordIdx + 1) % words.length;
+    rotating.textContent = words[wordIdx];
+
+    rotating.classList.remove("is-leaving", "is-visible");
+    rotating.classList.add("is-entering");
+
+    requestAnimationFrame(() => {
+      rotating.classList.remove("is-entering");
+      rotating.classList.add("is-visible");
+    });
+  }, ROTATE_PHASE_MS);
 }
-setInterval(nextWord, 2600);
+
+if (rotating && !prefersReducedMotion) {
+  rotating.classList.add("is-visible");
+}
+stabilizeRotatingSlotWidth();
+window.addEventListener("resize", stabilizeRotatingSlotWidth);
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(stabilizeRotatingSlotWidth);
+}
+setInterval(nextWord, ROTATE_INTERVAL_MS);
 
 /* ── SCHEDULE CALENDAR (тижневий розклад = seed_kyiv_schedule) ── */
 const UK_DOW = ["неділя", "понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота"];
@@ -306,7 +362,7 @@ function clearError(inputId, errorId) {
   document.getElementById(errorId).textContent = "";
 }
 
-form.addEventListener("submit", (e) => {
+form.addEventListener("submit", async (e) => {
   e.preventDefault();
   let valid = true;
 
@@ -327,12 +383,28 @@ form.addEventListener("submit", (e) => {
 
   if (!valid) return;
 
-  form.hidden = true;
-  formSuccess.hidden = false;
-  setTimeout(closeModal, 2800);
-  setTimeout(() => {
-    form.hidden = false;
-    formSuccess.hidden = true;
-    form.reset();
-  }, 3200);
+  try {
+    const response = await fetch("/api/signup", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name, contact }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Request failed");
+    }
+
+    form.hidden = true;
+    formSuccess.hidden = false;
+    setTimeout(closeModal, 2800);
+    setTimeout(() => {
+      form.hidden = false;
+      formSuccess.hidden = true;
+      form.reset();
+    }, 3200);
+  } catch (error) {
+    showError("contact", "contactError", "Не вдалося надіслати заявку. Спробуй ще раз.");
+  }
 });
