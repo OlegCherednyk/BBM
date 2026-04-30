@@ -1,3 +1,6 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabase-config.js";
+
 /* ── NAV SCROLL ── */
 const nav = document.getElementById("nav");
 function syncNavTheme() {
@@ -80,7 +83,7 @@ setInterval(nextWord, ROTATE_INTERVAL_MS);
 
 /* ── SCHEDULE CALENDAR (тижневий розклад = seed_kyiv_schedule) ── */
 const UK_DOW = ["неділя", "понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота"];
-const scheduleSlots = [
+let scheduleSlots = [
   { dow: 2, time: "19:00", bank: "left", type: "Сучасний танець", duration: "1,5 год", venue: "Лівий берег · Мішуги", address: "вул. Мішуги, 10" },
   { dow: 3, time: "17:30", bank: "right", type: "Тренаж", duration: "1 год", venue: "Правий берег · Кирилівська", address: "вул. Кирилівська, 41" },
   { dow: 3, time: "18:30", bank: "right", type: "Сучасний танець", duration: "1,5 год", venue: "Правий берег · Кирилівська", address: "вул. Кирилівська, 41" },
@@ -90,6 +93,95 @@ const scheduleSlots = [
   { dow: 6, time: "11:00", bank: "right", type: "Сучасний танець", duration: "1,5 год", venue: "Правий берег · Кирилівська", address: "вул. Кирилівська, 41" },
   { dow: 6, time: "12:30", bank: "left", type: "Тренаж", duration: "1 год", venue: "Лівий берег · Мішуги", address: "вул. Мішуги, 10" },
 ];
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+function normalizeBank(riverBank) {
+  const v = String(riverBank || "").toLowerCase();
+  if (v.includes("лів")) return "left";
+  if (v.includes("прав")) return "right";
+  return "all";
+}
+
+function formatDuration(minutes) {
+  if (!Number.isFinite(minutes) || minutes <= 0) return "";
+  if (minutes % 60 === 0) return `${minutes / 60} год`;
+  const h = minutes / 60;
+  return `${String(h).replace(".", ",")} год`;
+}
+
+function formatTimeToHm(value) {
+  if (!value) return "";
+  return String(value).slice(0, 5);
+}
+
+async function loadScheduleSlotsFromSupabase() {
+  const { data, error } = await supabase
+    .from("lesson_times")
+    .select("day_of_week, start_time, lesson_types(name,duration_minutes), places(name,address,river_bank)");
+
+  if (error) {
+    console.error("Cannot load schedule from Supabase:", error.message);
+    return;
+  }
+
+  const mapped = (data || [])
+    .filter((row) => row?.lesson_types?.name && row?.places?.name)
+    .map((row) => ({
+      dow: row.day_of_week,
+      time: formatTimeToHm(row.start_time),
+      bank: normalizeBank(row.places.river_bank),
+      type: row.lesson_types.name,
+      duration: formatDuration(row.lesson_types.duration_minutes),
+      venue: row.places.name,
+      address: row.places.address || "",
+    }));
+
+  if (mapped.length) {
+    scheduleSlots = mapped;
+  }
+}
+
+function formatUah(amount) {
+  return new Intl.NumberFormat("uk-UA").format(amount);
+}
+
+function lessonKey(lessonType) {
+  const slug = String(lessonType?.slug || "").toLowerCase();
+  if (slug) return slug;
+  const name = String(lessonType?.name || "").toLowerCase();
+  if (name.includes("тренаж")) return "training";
+  if (name.includes("сучас")) return "contemporary";
+  return "";
+}
+
+async function loadPricesFromSupabase() {
+  const { data, error } = await supabase.from("prices").select("price_kind,visits_count,amount_uah,lesson_types(slug,name)");
+  if (error) {
+    console.error("Cannot load prices from Supabase:", error.message);
+    return;
+  }
+
+  const byKey = {};
+  for (const row of data || []) {
+    const key = lessonKey(row.lesson_types);
+    if (!key) continue;
+    if (!byKey[key]) byKey[key] = {};
+    if (row.price_kind === "single") byKey[key].single = row.amount_uah;
+    if (row.price_kind === "abon" && Number(row.visits_count) === 8) byKey[key].abon8 = row.amount_uah;
+  }
+
+  const setText = (id, amount) => {
+    if (!Number.isFinite(amount)) return;
+    const el = document.getElementById(id);
+    if (el) el.textContent = formatUah(amount);
+  };
+
+  setText("priceTrainingSingle", byKey.training?.single);
+  setText("priceTrainingAbon", byKey.training?.abon8);
+  setText("priceContemporarySingle", byKey.contemporary?.single);
+  setText("priceContemporaryAbon", byKey.contemporary?.abon8);
+}
 
 let selectedBank = "all";
 let selectedType = "all";
@@ -248,6 +340,8 @@ if (typeSelect) {
   });
 }
 
+await loadScheduleSlotsFromSupabase();
+await loadPricesFromSupabase();
 renderCalGrid();
 renderDetail();
 

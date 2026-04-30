@@ -276,6 +276,8 @@ function escapeHtml(text) {
 function initPriceForm() {
   const form = maybeEl("priceForm");
   if (!form) return;
+  // We validate in JS to avoid native validation conflicts with custom-select UI.
+  form.noValidate = true;
   const toggle = maybeEl("priceFormToggle");
   const cancel = maybeEl("priceFormCancel");
   document.querySelectorAll('input[name="priceKind"]').forEach((r) => r.addEventListener("change", refreshPriceKindUI));
@@ -326,6 +328,7 @@ function initPriceForm() {
     }
 
     resetPriceForm();
+    setPriceFormOpen(false);
     await renderPricesPanel();
     showDashOk(id ? "Ціну оновлено." : "Ціну додано.");
   });
