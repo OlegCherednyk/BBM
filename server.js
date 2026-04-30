@@ -77,11 +77,17 @@ app.post("/api/signup", async (req, res) => {
       return res.status(500).json({ ok: false, error: "TELEGRAM_BOT_TOKEN is not configured." });
     }
 
+    const when = new Date().toLocaleString("uk-UA", {
+      dateStyle: "long",
+      timeStyle: "short",
+    });
+
     const text = [
-      "New contact request",
-      `Name: ${name}`,
-      `Contact: ${contact}`,
-      `Time: ${new Date().toISOString()}`,
+      "✨ Нова заявка з сайту",
+      "",
+      `👤 Імʼя: ${name}`,
+      `📇 Контакт: ${contact}`,
+      `🕐 Отримано: ${when}`,
     ].join("\n");
 
     const targetChatIds = await resolveTargetChatIds();

@@ -15,6 +15,8 @@
   --hero-ink:   #1a120d;
 
   --ff-display: "Space Grotesk", sans-serif;
+  /* Wordmark / UI emphasis — same face as `.nav__logo` */
+  --ff-brand:   var(--ff-display);
   --ff-airy:    "Montserrat", sans-serif;
   --ff-body:    "Montserrat", sans-serif;
 
@@ -78,7 +80,7 @@ img, svg { display: block; }
 .nav__logo {
   position: relative;
   display: inline-block;
-  font-family: var(--ff-display);
+  font-family: var(--ff-brand);
   font-weight: 700;
   font-size: 1.15rem;
   letter-spacing: -.01em;
@@ -1084,6 +1086,7 @@ details[open] .accordion__icon::after { transform: translate(-50%,-50%) rotate(9
   transform: translate(-50%, -50%);
   z-index: 200;
   padding: 40px 36px;
+  font-family: var(--ff-body);
   transition: opacity .25s ease, transform .25s ease;
 }
 .modal:not([open]) { display: none; }
@@ -1105,7 +1108,9 @@ details[open] .accordion__icon::after { transform: translate(-50%,-50%) rotate(9
   color: var(--olive); margin-bottom: 8px;
 }
 .modal__title {
-  font-family: var(--ff-display);
+  font-family: var(--ff-brand);
+  font-weight: 700;
+  letter-spacing: -0.01em;
   font-size: 1.9rem; color: var(--brown-dark);
   margin-bottom: 8px;
 }
