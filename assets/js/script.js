@@ -457,6 +457,23 @@ function clearError(inputId, errorId) {
   document.getElementById(errorId).textContent = "";
 }
 
+function mapSignupErrorToUa(message) {
+  const m = String(message || "").toLowerCase();
+  if (m.includes("bot can't initiate conversation")) {
+    return "Бот не може написати першим. Спочатку відкрий бота в Telegram і натисни Start, потім спробуй ще раз.";
+  }
+  if (m.includes("chat not found")) {
+    return "Чат не знайдено. Перевір TELEGRAM_CHAT_ID або напиши боту в Telegram, щоб чат став доступним.";
+  }
+  if (m.includes("forbidden")) {
+    return "Telegram заборонив надсилання в цей чат. Перевір, чи бот не заблокований і чи ти натиснула Start.";
+  }
+  if (m.includes("no chat ids found")) {
+    return "Не знайдено чат для надсилання. Спочатку напиши боту в Telegram або додай TELEGRAM_CHAT_ID у .env.";
+  }
+  return "Не вдалося надіслати заявку. Спробуй ще раз.";
+}
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   let valid = true;
@@ -488,7 +505,14 @@ form.addEventListener("submit", async (e) => {
     });
 
     if (!response.ok) {
-      throw new Error("Request failed");
+      let serverError = "";
+      try {
+        const payload = await response.json();
+        serverError = String(payload?.error || payload?.message || "");
+      } catch (_ignored) {
+        serverError = "";
+      }
+      throw new Error(serverError || `Request failed with status ${response.status}`);
     }
 
     form.hidden = true;
@@ -500,6 +524,6 @@ form.addEventListener("submit", async (e) => {
       form.reset();
     }, 3200);
   } catch (error) {
-    showError("contact", "contactError", "Не вдалося надіслати заявку. Спробуй ще раз.");
+    showError("contact", "contactError", mapSignupErrorToUa(error?.message));
   }
 });

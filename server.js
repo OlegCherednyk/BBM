@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Telegraf } from "telegraf";
+import { createClient } from "@supabase/supabase-js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
@@ -17,8 +18,15 @@ const botToken = process.env.TELEGRAM_BOT_TOKEN || "";
 const telegramChatId = process.env.TELEGRAM_CHAT_ID || "";
 const publicSupabaseUrl = process.env.PUBLIC_SUPABASE_URL || "";
 const publicSupabaseAnonKey = process.env.PUBLIC_SUPABASE_ANON_KEY || "";
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 const bot = botToken ? new Telegraf(botToken) : null;
+const supabaseAdmin =
+  publicSupabaseUrl && supabaseServiceRoleKey
+    ? createClient(publicSupabaseUrl, supabaseServiceRoleKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      })
+    : null;
 
 app.use(express.json());
 app.use(express.static("."));
@@ -50,29 +58,186 @@ function extractChatIdsFromUpdates(updates) {
   return [...chatIds];
 }
 
+function extractChatsFromUpdates(updates) {
+  const chatsMap = new Map();
+
+  for (const update of updates || []) {
+    const chat = update?.message?.chat ?? update?.channel_post?.chat;
+    if (!chat?.id) continue;
+
+    const key = String(chat.id);
+    if (!chatsMap.has(key)) {
+      chatsMap.set(key, {
+        id: key,
+        type: chat.type || "unknown",
+        title: chat.title || null,
+        username: chat.username || null,
+        firstName: chat.first_name || null,
+        lastName: chat.last_name || null,
+      });
+    }
+  }
+
+  return [...chatsMap.values()];
+}
+
+async function getRecentUpdates() {
+  if (!bot) return [];
+  return bot.telegram.getUpdates({ limit: 100, timeout: 0 });
+}
+
+async function saveChatsToSupabase(chats) {
+  if (!supabaseAdmin || !chats.length) return;
+
+  const payload = chats.map((chat) => ({
+    chat_id: chat.id,
+    chat_type: chat.type || "unknown",
+    title: chat.title || null,
+    username: chat.username || null,
+    first_name: chat.firstName || null,
+    last_name: chat.lastName || null,
+    last_seen_at: new Date().toISOString(),
+  }));
+
+  const { error } = await supabaseAdmin.from("telegram_chat_targets").upsert(payload, {
+    onConflict: "chat_id",
+  });
+  if (error) {
+    console.error("Failed to upsert telegram_chat_targets:", error.message);
+  }
+}
+
+async function loadChatIdsFromSupabase() {
+  if (!supabaseAdmin) return [];
+  const { data, error } = await supabaseAdmin.from("telegram_chat_targets").select("chat_id");
+  if (error) {
+    console.error("Failed to load telegram_chat_targets:", error.message);
+    return [];
+  }
+  return (data || []).map((row) => String(row.chat_id)).filter(Boolean);
+}
+
 async function resolveTargetChatIds() {
   const chatIds = new Set();
-
-  if (telegramChatId) {
-    chatIds.add(String(telegramChatId));
-  }
+  const dbChatIds = await loadChatIdsFromSupabase();
+  for (const id of dbChatIds) chatIds.add(id);
 
   if (!bot) {
     return [...chatIds];
   }
 
   try {
-    const updates = await bot.telegram.getUpdates({ limit: 100, timeout: 0 });
-    for (const id of extractChatIdsFromUpdates(updates)) {
-      chatIds.add(id);
-    }
+    const updates = await getRecentUpdates();
+    const chats = extractChatsFromUpdates(updates);
+    const updateChatIds = extractChatIdsFromUpdates(updates);
+    for (const id of updateChatIds) chatIds.add(id);
+    await saveChatsToSupabase(chats);
   } catch (error) {
-    // Keep fallback IDs (e.g. TELEGRAM_CHAT_ID) even if getUpdates fails.
     console.error("Failed to fetch Telegram updates:", error?.description || error?.message || error);
   }
 
+  if (telegramChatId) {
+    const fallbackChatId = String(telegramChatId);
+    chatIds.add(fallbackChatId);
+    await saveChatsToSupabase([
+      {
+        id: fallbackChatId,
+        type: "unknown",
+        title: null,
+        username: null,
+        firstName: null,
+        lastName: null,
+      },
+    ]);
+  }
   return [...chatIds];
 }
+
+app.get("/api/telegram/health", async (_req, res) => {
+  const health = {
+    ok: false,
+    tokenConfigured: Boolean(botToken),
+    chatIdConfigured: Boolean(telegramChatId),
+    supabaseConfigured: Boolean(supabaseAdmin),
+    configuredChatId: telegramChatId || null,
+    botInfo: null,
+    discoveredChatIds: [],
+    persistedChatIds: [],
+    sendProbe: null,
+    errors: [],
+  };
+
+  if (!bot) {
+    health.errors.push("TELEGRAM_BOT_TOKEN is not configured.");
+    return res.status(500).json(health);
+  }
+
+  try {
+    const me = await bot.telegram.getMe();
+    health.botInfo = {
+      id: me.id,
+      username: me.username || null,
+      firstName: me.first_name || null,
+    };
+  } catch (error) {
+    health.errors.push(`getMe failed: ${error?.description || error?.message || "unknown error"}`);
+  }
+
+  try {
+    health.persistedChatIds = await loadChatIdsFromSupabase();
+    const targetChatIds = await resolveTargetChatIds();
+    health.discoveredChatIds = targetChatIds;
+  } catch (error) {
+    health.errors.push(`resolveTargetChatIds failed: ${error?.description || error?.message || "unknown error"}`);
+  }
+
+  if (telegramChatId) {
+    try {
+      await bot.telegram.getChat(telegramChatId);
+      health.sendProbe = { chatId: telegramChatId, canAccessChat: true };
+    } catch (error) {
+      health.sendProbe = {
+        chatId: telegramChatId,
+        canAccessChat: false,
+        error: error?.description || error?.message || "unknown error",
+      };
+      health.errors.push(`chat probe failed: ${health.sendProbe.error}`);
+    }
+  }
+
+  health.ok = health.errors.length === 0;
+  return res.status(health.ok ? 200 : 500).json(health);
+});
+
+app.get("/api/telegram/chats", async (_req, res) => {
+  if (!bot) {
+    return res.status(500).json({
+      ok: false,
+      error: "TELEGRAM_BOT_TOKEN is not configured.",
+      chats: [],
+    });
+  }
+
+  try {
+    const updates = await getRecentUpdates();
+    const chats = extractChatsFromUpdates(updates);
+    await saveChatsToSupabase(chats);
+    const persistedChatIds = await loadChatIdsFromSupabase();
+    return res.status(200).json({
+      ok: true,
+      total: chats.length,
+      chats,
+      persistedTotal: persistedChatIds.length,
+      persistedChatIds,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      error: error?.description || error?.message || "Failed to load chats from Telegram updates.",
+      chats: [],
+    });
+  }
+});
 
 app.post("/api/signup", async (req, res) => {
   try {
@@ -104,8 +269,7 @@ app.post("/api/signup", async (req, res) => {
     if (!targetChatIds.length) {
       return res.status(500).json({
         ok: false,
-        error:
-          "No chat IDs found. Send a message to bot first, or set TELEGRAM_CHAT_ID in .env as fallback.",
+        error: "No chat IDs found. Send a message to bot first (private chat/group/channel).",
       });
     }
 
@@ -116,6 +280,12 @@ app.post("/api/signup", async (req, res) => {
     const delivered = sendResults.filter((result) => result.status === "fulfilled").length;
     if (!delivered) {
       const firstError = sendResults.find((result) => result.status === "rejected");
+      if (firstError && firstError.status === "rejected") {
+        console.error(
+          "Telegram delivery failed for all target chats:",
+          firstError.reason?.description || firstError.reason?.message || firstError.reason
+        );
+      }
       return res.status(500).json({
         ok: false,
         error:
