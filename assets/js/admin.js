@@ -834,7 +834,7 @@ async function routeAfterAuth(user) {
   clearDashMessages();
 
   if (isLoginPage) {
-    location.href = "./lesson-types.html";
+    location.href = "./places.html";
     return;
   }
 
