@@ -44,6 +44,41 @@ let cachedLessonTypes = [];
 
 let editingPriceId = null;
 let editingTeacherId = null;
+/** @type {{ chat_id: string, username: string | null, first_name: string | null, last_name: string | null }[]} */
+let cachedPrivateTelegramTargets = [];
+
+async function loadPrivateTelegramTargets() {
+  const { data, error } = await supabase
+    .from("telegram_chat_targets")
+    .select("chat_id, username, first_name, last_name")
+    .eq("chat_type", "private");
+  if (error) throw error;
+  cachedPrivateTelegramTargets = (data || []).filter((row) => typeof row.chat_id === "string" && row.chat_id.trim().length > 0);
+}
+
+function populateTeacherChatSelect(selectedChatId = "") {
+  const sel = maybeEl("teacherChatTarget");
+  if (!sel) return;
+  sel.innerHTML = "";
+  const defaultOpt = document.createElement("option");
+  defaultOpt.value = "";
+  defaultOpt.textContent = "— не вибрано —";
+  sel.appendChild(defaultOpt);
+
+  const rows = cachedPrivateTelegramTargets.filter((row) => row.username && row.username.trim());
+  for (const row of rows) {
+    const opt = document.createElement("option");
+    opt.value = row.chat_id;
+    opt.textContent = `@${row.username}`;
+    sel.appendChild(opt);
+  }
+  if (selectedChatId && rows.some((row) => row.chat_id === selectedChatId)) {
+    sel.value = selectedChatId;
+  } else {
+    sel.value = "";
+  }
+  syncCustomSelect(sel);
+}
 
 function setTeacherFormOpen(isOpen) {
   const form = maybeEl("teacherForm");
@@ -62,34 +97,49 @@ function resetTeacherForm() {
   const submitBtn = maybeEl("teacherSubmitBtn");
   const cancelEdit = maybeEl("teacherCancelEdit");
   const descriptionWrap = maybeEl("teacherDescriptionWrap");
+  const chatWrap = maybeEl("teacherChatWrap");
   const nameInput = maybeEl("teacherName");
   const descInput = maybeEl("teacherDescription");
+  const chatSel = maybeEl("teacherChatTarget");
   if (!form || !editingId || !submitBtn || !nameInput || !descInput) return;
   editingTeacherId = null;
   editingId.value = "";
   nameInput.value = "";
   descInput.value = "";
+  if (chatSel) chatSel.value = "";
   submitBtn.textContent = "Додати викладача";
   cancelEdit?.classList.add("admin-hide");
   descriptionWrap?.classList.add("admin-hide");
+  chatWrap?.classList.add("admin-hide");
   setTeacherFormOpen(false);
 }
 
-function beginEditTeacher(teacher) {
+async function beginEditTeacher(teacher) {
   const editingId = maybeEl("teacherEditingId");
   const submitBtn = maybeEl("teacherSubmitBtn");
   const cancelEdit = maybeEl("teacherCancelEdit");
   const descriptionWrap = maybeEl("teacherDescriptionWrap");
+  const chatWrap = maybeEl("teacherChatWrap");
   const nameInput = maybeEl("teacherName");
   const descInput = maybeEl("teacherDescription");
+  const chatSel = maybeEl("teacherChatTarget");
   if (!editingId || !submitBtn || !nameInput || !descInput) return;
+  try {
+    await loadPrivateTelegramTargets();
+  } catch (error) {
+    showDashError(error?.message || String(error));
+    return;
+  }
   editingTeacherId = teacher.id;
   editingId.value = teacher.id;
   nameInput.value = teacher.name || "";
   descInput.value = teacher.short_description || "";
+  populateTeacherChatSelect(teacher.chat_id || "");
+  if (chatSel && (!teacher.chat_id || chatSel.value !== teacher.chat_id)) chatSel.value = "";
   submitBtn.textContent = "Зберегти зміни";
   cancelEdit?.classList.remove("admin-hide");
   descriptionWrap?.classList.remove("admin-hide");
+  chatWrap?.classList.remove("admin-hide");
   setTeacherFormOpen(true);
 }
 
@@ -97,11 +147,20 @@ async function renderTeachersPanel() {
   const root = maybeEl("teachersList");
   if (!root) return;
   root.innerHTML = '<p class="admin-muted">Завантаження…</p>';
-  const { data: teachers, error } = await supabase.from("teachers").select("*").order("sort_order", { ascending: true });
+  const { data: teachers, error } = await supabase
+    .from("teachers")
+    .select("id, name, short_description, sort_order, chat_id")
+    .order("sort_order", { ascending: true });
   if (error) {
     root.innerHTML = `<p class="admin-muted">${error.message}</p>`;
     return;
   }
+  const { data: tgTargets, error: tgError } = await supabase.from("telegram_chat_targets").select("chat_id, username");
+  if (tgError) {
+    root.innerHTML = `<p class="admin-muted">${tgError.message}</p>`;
+    return;
+  }
+  const tgByChatId = new Map((tgTargets || []).map((row) => [String(row.chat_id), row.username || null]));
   if (!teachers?.length) {
     root.innerHTML = '<p class="admin-muted">Ще немає викладачів.</p>';
     return;
@@ -109,12 +168,14 @@ async function renderTeachersPanel() {
 
   const tbl = document.createElement("table");
   tbl.className = "admin-prices-table";
-  tbl.innerHTML = `<thead><tr><th>Ім'я</th><th></th></tr></thead><tbody></tbody>`;
+  tbl.innerHTML = `<thead><tr><th>Ім'я</th><th>Telegram</th><th></th></tr></thead><tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
 
   for (const teacher of teachers) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${escapeHtml(teacher.name || "—")}</td>`;
+    const tgUsername = teacher.chat_id ? tgByChatId.get(String(teacher.chat_id)) : null;
+    const tgLabel = tgUsername ? `@${tgUsername}` : "—";
+    tr.innerHTML = `<td>${escapeHtml(teacher.name || "—")}</td><td>${escapeHtml(tgLabel)}</td>`;
     const td = document.createElement("td");
 
     const editBtn = document.createElement("button");
@@ -179,7 +240,14 @@ function initTeacherForm() {
     }
 
     const id = maybeEl("teacherEditingId")?.value ?? "";
-    const payload = id ? { name, short_description: short_description || null } : { name, short_description: null };
+    const selectedChatId = maybeEl("teacherChatTarget")?.value?.trim() ?? "";
+    const validSelectedChatId =
+      selectedChatId && cachedPrivateTelegramTargets.some((row) => row.chat_id === selectedChatId && row.username?.trim())
+        ? selectedChatId
+        : null;
+    const payload = id
+      ? { name, short_description: short_description || null, chat_id: validSelectedChatId }
+      : { name, short_description: null, chat_id: null };
     let dbError;
     if (id) {
       const { error } = await supabase.from("teachers").update(payload).eq("id", id);
