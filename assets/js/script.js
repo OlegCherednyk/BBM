@@ -12,7 +12,7 @@ syncNavTheme();
 window.addEventListener("scroll", syncNavTheme, { passive: true });
 
 /* ── ROTATING HERO WORDS ── */
-const words = ["подорож", "відчуття", "свідомість", "вільний рух", "відкриття"];
+const words = ["це подорож", "це відчуття", "це свідомість", "це вільний рух", "це відкриття"];
 let wordIdx = 0;
 const rotating = document.getElementById("rotatingWord");
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
