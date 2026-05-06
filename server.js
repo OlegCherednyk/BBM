@@ -169,6 +169,18 @@ async function getRecentUpdates() {
   return bot.telegram.getUpdates({ limit: 100, timeout: 0 });
 }
 
+/** Те саме, що GET /api/telegram/chats: нові чати з getUpdates + upsert у telegram_chat_targets. */
+async function syncTelegramChatsFromUpdates() {
+  if (!bot) {
+    return { chats: [], persistedChatIds: [] };
+  }
+  const updates = await getRecentUpdates();
+  const chats = extractChatsFromUpdates(updates);
+  await saveChatsToSupabase(chats);
+  const persistedChatIds = await loadChatIdsFromSupabase();
+  return { chats, persistedChatIds };
+}
+
 async function saveChatsToSupabase(chats) {
   if (!supabaseAdmin || !chats.length) return;
 
@@ -1373,10 +1385,7 @@ app.get("/api/telegram/chats", async (_req, res) => {
   }
 
   try {
-    const updates = await getRecentUpdates();
-    const chats = extractChatsFromUpdates(updates);
-    await saveChatsToSupabase(chats);
-    const persistedChatIds = await loadChatIdsFromSupabase();
+    const { chats, persistedChatIds } = await syncTelegramChatsFromUpdates();
     return res.status(200).json({
       ok: true,
       total: chats.length,
@@ -1464,6 +1473,24 @@ app.use((err, req, res, next) => {
 });
 
 if (bot) {
+  /** Поки працює long-polling Telegraf, додатковий getUpdates може не бачити ті самі апдейти — зберігаємо чат із кожного вхідного оновлення. */
+  bot.use((ctx, next) => {
+    const chat = ctx.chat;
+    if (chat?.id) {
+      void saveChatsToSupabase([
+        {
+          id: String(chat.id),
+          type: chat.type || "unknown",
+          title: chat.title ?? null,
+          username: chat.username ?? null,
+          firstName: chat.first_name ?? null,
+          lastName: chat.last_name ?? null,
+        },
+      ]);
+    }
+    return next();
+  });
+
   bot.on("callback_query", async (ctx) => {
     try {
       const data = String(ctx.callbackQuery?.data || "");
@@ -1561,6 +1588,14 @@ if (bot) {
     .launch()
     .then(() => {
       console.log("Telegram bot polling started");
+      syncTelegramChatsFromUpdates().catch((e) =>
+        console.error("Initial Telegram chat discovery:", e?.description || e?.message || e)
+      );
+      setInterval(() => {
+        syncTelegramChatsFromUpdates().catch((e) =>
+          console.error("Telegram chat discovery tick:", e?.description || e?.message || e)
+        );
+      }, SCHEDULER_TICK_MS);
       if (supabaseAdmin) {
         hydrateOpenLessonVotesFromDb()
           .then(() =>
