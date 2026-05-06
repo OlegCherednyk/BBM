@@ -15,7 +15,7 @@ function syncCustomSelect(selectEl) {
   }
 }
 
-/** @type {"login"|"lesson-types"|"prices"|"places"} */
+/** @type {"login"|"lesson-types"|"prices"|"places"|"teachers"} */
 const ADMIN_PAGE = /** @type {any} */ (document.body?.dataset.adminPage ?? "lesson-types");
 
 const isLoginPage = ADMIN_PAGE === "login";
@@ -43,6 +43,161 @@ const allowlistSnippet = maybeEl("allowlistSnippet");
 let cachedLessonTypes = [];
 
 let editingPriceId = null;
+let editingTeacherId = null;
+
+function setTeacherFormOpen(isOpen) {
+  const form = maybeEl("teacherForm");
+  const toggle = maybeEl("teacherFormToggle");
+  if (!form) return;
+  form.classList.toggle("admin-hide", !isOpen);
+  if (toggle) {
+    toggle.textContent = isOpen ? "Закрити форму" : "+ Новий викладач";
+    toggle.setAttribute("aria-expanded", String(isOpen));
+  }
+}
+
+function resetTeacherForm() {
+  const form = maybeEl("teacherForm");
+  const editingId = maybeEl("teacherEditingId");
+  const submitBtn = maybeEl("teacherSubmitBtn");
+  const cancelEdit = maybeEl("teacherCancelEdit");
+  const descriptionWrap = maybeEl("teacherDescriptionWrap");
+  const nameInput = maybeEl("teacherName");
+  const descInput = maybeEl("teacherDescription");
+  if (!form || !editingId || !submitBtn || !nameInput || !descInput) return;
+  editingTeacherId = null;
+  editingId.value = "";
+  nameInput.value = "";
+  descInput.value = "";
+  submitBtn.textContent = "Додати викладача";
+  cancelEdit?.classList.add("admin-hide");
+  descriptionWrap?.classList.add("admin-hide");
+  setTeacherFormOpen(false);
+}
+
+function beginEditTeacher(teacher) {
+  const editingId = maybeEl("teacherEditingId");
+  const submitBtn = maybeEl("teacherSubmitBtn");
+  const cancelEdit = maybeEl("teacherCancelEdit");
+  const descriptionWrap = maybeEl("teacherDescriptionWrap");
+  const nameInput = maybeEl("teacherName");
+  const descInput = maybeEl("teacherDescription");
+  if (!editingId || !submitBtn || !nameInput || !descInput) return;
+  editingTeacherId = teacher.id;
+  editingId.value = teacher.id;
+  nameInput.value = teacher.name || "";
+  descInput.value = teacher.short_description || "";
+  submitBtn.textContent = "Зберегти зміни";
+  cancelEdit?.classList.remove("admin-hide");
+  descriptionWrap?.classList.remove("admin-hide");
+  setTeacherFormOpen(true);
+}
+
+async function renderTeachersPanel() {
+  const root = maybeEl("teachersList");
+  if (!root) return;
+  root.innerHTML = '<p class="admin-muted">Завантаження…</p>';
+  const { data: teachers, error } = await supabase.from("teachers").select("*").order("sort_order", { ascending: true });
+  if (error) {
+    root.innerHTML = `<p class="admin-muted">${error.message}</p>`;
+    return;
+  }
+  if (!teachers?.length) {
+    root.innerHTML = '<p class="admin-muted">Ще немає викладачів.</p>';
+    return;
+  }
+
+  const tbl = document.createElement("table");
+  tbl.className = "admin-prices-table";
+  tbl.innerHTML = `<thead><tr><th>Ім'я</th><th></th></tr></thead><tbody></tbody>`;
+  const tbody = tbl.querySelector("tbody");
+
+  for (const teacher of teachers) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${escapeHtml(teacher.name || "—")}</td>`;
+    const td = document.createElement("td");
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "btn btn--ghost btn--sm";
+    editBtn.style.padding = "6px 10px";
+    editBtn.textContent = "Змінити";
+    editBtn.addEventListener("click", () => beginEditTeacher(teacher));
+
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "btn btn--danger btn--sm";
+    delBtn.style.padding = "6px 10px";
+    delBtn.style.marginLeft = "6px";
+    delBtn.textContent = "✕";
+    delBtn.title = "Видалити";
+    delBtn.addEventListener("click", async () => {
+      if (!confirm("Видалити цього викладача?")) return;
+      clearDashMessages();
+      const { error: delErr } = await supabase.from("teachers").delete().eq("id", teacher.id);
+      if (delErr) {
+        showDashError(delErr.message);
+        return;
+      }
+      if (editingTeacherId === teacher.id) resetTeacherForm();
+      await renderTeachersPanel();
+      showDashOk("Викладача видалено.");
+    });
+
+    td.append(editBtn, delBtn);
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "prices-table-wrap";
+  wrap.appendChild(tbl);
+  root.innerHTML = "";
+  root.appendChild(wrap);
+}
+
+function initTeacherForm() {
+  const form = maybeEl("teacherForm");
+  if (!form) return;
+  const toggle = maybeEl("teacherFormToggle");
+  const cancel = maybeEl("teacherFormCancel");
+  const cancelEdit = maybeEl("teacherCancelEdit");
+  form.noValidate = true;
+
+  toggle?.addEventListener("click", () => setTeacherFormOpen(form.classList.contains("admin-hide")));
+  cancel?.addEventListener("click", () => resetTeacherForm());
+  cancelEdit?.addEventListener("click", () => resetTeacherForm());
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearDashMessages();
+    const name = maybeEl("teacherName")?.value.trim() ?? "";
+    const short_description = maybeEl("teacherDescription")?.value.trim() ?? "";
+    if (!name) {
+      showDashError("Вкажи ім'я викладача.");
+      return;
+    }
+
+    const id = maybeEl("teacherEditingId")?.value ?? "";
+    const payload = id ? { name, short_description: short_description || null } : { name, short_description: null };
+    let dbError;
+    if (id) {
+      const { error } = await supabase.from("teachers").update(payload).eq("id", id);
+      dbError = error;
+    } else {
+      const { error } = await supabase.from("teachers").insert(payload);
+      dbError = error;
+    }
+
+    if (dbError) {
+      showDashError(dbError.message);
+      return;
+    }
+    resetTeacherForm();
+    await renderTeachersPanel();
+    showDashOk(id ? "Викладача оновлено." : "Викладача додано.");
+  });
+}
 
 function setPriceFormOpen(isOpen) {
   const form = maybeEl("priceForm");
@@ -275,6 +430,16 @@ function escapeHtml(text) {
   return d.innerHTML;
 }
 
+function parseRentPerHourUah(rawValue) {
+  const normalized = String(rawValue ?? "").trim();
+  if (!normalized) return { value: null, error: null };
+  const parsed = parseInt(normalized, 10);
+  if (Number.isNaN(parsed) || parsed < 0) {
+    return { value: null, error: "Вкажи коректну ціну оренди за годину (грн)." };
+  }
+  return { value: parsed, error: null };
+}
+
 function initPriceForm() {
   const form = maybeEl("priceForm");
   if (!form) return;
@@ -352,6 +517,10 @@ async function refreshDashboard() {
       case "places":
         await loadLessonTypesIntoCache();
         await loadPlacesHtml();
+        break;
+      case "teachers":
+        resetTeacherForm();
+        await renderTeachersPanel();
         break;
       default:
         break;
@@ -496,6 +665,14 @@ function renderPlaceCard(place) {
 
   head.append(left, headActions);
   wrap.appendChild(head);
+
+  if (Number.isFinite(place.rent_per_hour_uah)) {
+    const rent = document.createElement("p");
+    rent.className = "admin-muted";
+    rent.style.margin = "6px 0 8px";
+    rent.textContent = `Оренда: ${new Intl.NumberFormat("uk-UA").format(place.rent_per_hour_uah)} ₴/год`;
+    wrap.appendChild(rent);
+  }
 
   if (place.notes) {
     const n = document.createElement("p");
@@ -653,6 +830,10 @@ function renderPlaceCard(place) {
         <option value="Лівий берег">Лівий берег</option>
       </select>
     </div>
+    <div class="admin-field">
+      <label>Оренда за годину (₴)</label>
+      <input data-e="rent" type="number" min="0" step="1" />
+    </div>
     <div class="admin-field admin-grid-span-2">
       <label>Нотатки</label>
       <textarea data-e="notes"></textarea>
@@ -666,6 +847,8 @@ function renderPlaceCard(place) {
   editForm.querySelector('[data-e="name"]').value = place.name || "";
   editForm.querySelector('[data-e="address"]').value = place.address || "";
   editForm.querySelector('[data-e="notes"]').value = place.notes || "";
+  editForm.querySelector('[data-e="rent"]').value =
+    Number.isFinite(place.rent_per_hour_uah) ? String(place.rent_per_hour_uah) : "";
   const riverSel = editForm.querySelector('[data-e="river"]');
   if (riverSel) riverSel.value = place.river_bank || "";
 
@@ -684,6 +867,8 @@ function renderPlaceCard(place) {
     editForm.querySelector('[data-e="name"]').value = place.name || "";
     editForm.querySelector('[data-e="address"]').value = place.address || "";
     editForm.querySelector('[data-e="notes"]').value = place.notes || "";
+    editForm.querySelector('[data-e="rent"]').value =
+      Number.isFinite(place.rent_per_hour_uah) ? String(place.rent_per_hour_uah) : "";
     if (riverSel) riverSel.value = place.river_bank || "";
     setEditFormOpen(false);
   });
@@ -696,6 +881,12 @@ function renderPlaceCard(place) {
     const address = editForm.querySelector('[data-e="address"]').value.trim();
     const notes = editForm.querySelector('[data-e="notes"]').value.trim();
     const river_bank = riverSel ? riverSel.value.trim() || null : null;
+    const rentRaw = editForm.querySelector('[data-e="rent"]').value;
+    const { value: rent_per_hour_uah, error: rentError } = parseRentPerHourUah(rentRaw);
+    if (rentError) {
+      showDashError(rentError);
+      return;
+    }
     const { error } = await supabase
       .from("places")
       .update({
@@ -704,6 +895,7 @@ function renderPlaceCard(place) {
         address: address || null,
         notes: notes || null,
         river_bank,
+        rent_per_hour_uah,
       })
       .eq("id", place.id);
     if (error) {
@@ -890,12 +1082,19 @@ if (placeFormEl) {
     const address = maybeEl("placeAddress")?.value.trim() ?? "";
     const notes = maybeEl("placeNotes")?.value.trim() ?? "";
     const river_bank = maybeEl("placeRiverBank")?.value.trim() || null;
+    const rentRaw = maybeEl("placeRentPerHour")?.value ?? "";
+    const { value: rent_per_hour_uah, error: rentError } = parseRentPerHourUah(rentRaw);
+    if (rentError) {
+      showDashError(rentError);
+      return;
+    }
     const { error } = await supabase.from("places").insert({
       name,
       sort_order,
       address: address || null,
       notes: notes || null,
       river_bank,
+      rent_per_hour_uah,
     });
     if (error) {
       showDashError(error.message);
@@ -914,6 +1113,7 @@ if (placeFormEl) {
 }
 
 initPriceForm();
+initTeacherForm();
 
 function wireSignOut(btn) {
   if (!btn) return;
