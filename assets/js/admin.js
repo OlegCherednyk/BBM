@@ -46,6 +46,9 @@ let editingPriceId = null;
 let editingTeacherId = null;
 /** @type {{ chat_id: string, username: string | null, first_name: string | null, last_name: string | null }[]} */
 let cachedPrivateTelegramTargets = [];
+let teacherTestVoteWired = false;
+/** voteId останнього успішного тесту в цій вкладці (для ручного закриття) */
+let lastTeacherTestVoteId = "";
 
 async function loadPrivateTelegramTargets() {
   const { data, error } = await supabase
@@ -146,6 +149,7 @@ async function beginEditTeacher(teacher) {
 async function renderTeachersPanel() {
   const root = maybeEl("teachersList");
   if (!root) return;
+  ensureTeacherTestVoteWired();
   root.innerHTML = '<p class="admin-muted">Завантаження…</p>';
   const { data: teachers, error } = await supabase
     .from("teachers")
@@ -215,6 +219,97 @@ async function renderTeachersPanel() {
   wrap.appendChild(tbl);
   root.innerHTML = "";
   root.appendChild(wrap);
+}
+
+function refreshTeacherCloseTestVoteUi() {
+  const closeBtn = maybeEl("teacherCloseTestVoteBtn");
+  if (closeBtn) {
+    closeBtn.disabled = !lastTeacherTestVoteId;
+  }
+}
+
+function ensureTeacherTestVoteWired() {
+  if (teacherTestVoteWired) return;
+  const btn = maybeEl("teacherTestVoteBtn");
+  if (!btn) return;
+  teacherTestVoteWired = true;
+
+  refreshTeacherCloseTestVoteUi();
+
+  const closeBtn = maybeEl("teacherCloseTestVoteBtn");
+  closeBtn?.addEventListener("click", async () => {
+    clearDashMessages();
+    if (!lastTeacherTestVoteId) {
+      showDashError("Спочатку запустіть «Тест голосування».");
+      return;
+    }
+    closeBtn.disabled = true;
+    try {
+      const res = await fetch("/api/telegram/teachers/test-vote/close", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vote_id: lastTeacherTestVoteId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.ok) {
+        showDashError(body.error || `Помилка ${res.status}`);
+        refreshTeacherCloseTestVoteUi();
+        return;
+      }
+      lastTeacherTestVoteId = "";
+      refreshTeacherCloseTestVoteUi();
+      showDashOk("Тестове голосування в Telegram закрито (кнопки прибрано).");
+    } catch (err) {
+      showDashError(err?.message || String(err));
+    } finally {
+      refreshTeacherCloseTestVoteUi();
+    }
+  });
+
+  btn.addEventListener("click", async () => {
+    clearDashMessages();
+    btn.disabled = true;
+    try {
+      const res = await fetch("/api/telegram/teachers/test-vote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.ok) {
+        showDashError(body.error || `Помилка ${res.status}`);
+        refreshTeacherCloseTestVoteUi();
+        return;
+      }
+      if (typeof body.voteId === "string" && body.voteId.trim()) {
+        lastTeacherTestVoteId = body.voteId.trim();
+      }
+      refreshTeacherCloseTestVoteUi();
+      const r = body.resolvedSlot;
+      let msg = "";
+      if (r?.lessonTimeLabel && r?.placeLabel) {
+        msg = `Слот: ${r.lessonTimeLabel} · ${r.placeLabel} · ${r.lessonTypeLabel || "—"}. `;
+      }
+      if (r?.defaultUsed) {
+        msg += "За замовчуванням — останнє заняття в розкладному слоті, що вже відбулося (час Києва). ";
+      }
+      if (body.groupAttendance?.messageId) {
+        msg += `У групу (учасники): повідомлення надіслано. `;
+      }
+      msg += `Викладачам (хто проводить): ${body.deliveredCount ?? 0}`;
+      if (body.teachersTotal != null && body.teachersTotal > 0 && body.failedCount > 0) {
+        msg += `, не доставлено: ${body.failedCount}`;
+      }
+      if (body.teachersTotal === 0) {
+        msg += ` (немає викладачів із прив’язаним чатом — лише група)`;
+      }
+      showDashOk(msg);
+    } catch (err) {
+      showDashError(err?.message || String(err));
+    } finally {
+      btn.disabled = false;
+    }
+  });
 }
 
 function initTeacherForm() {

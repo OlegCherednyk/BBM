@@ -69,7 +69,26 @@
         <div class="admin-panel" id="section-teachers">
           <div class="admin-price-create__head">
             <h2>Список викладачів</h2>
-            <button id="teacherFormToggle" class="btn btn--primary btn--sm btn--price-add" type="button">+ Новий викладач</button>
+            <div class="admin-price-create__actions">
+              <button
+                id="teacherTestVoteBtn"
+                class="btn btn--ghost btn--sm btn--price-add"
+                type="button"
+                title="Тестове голосування в Telegram: останнє заняття з розкладу (Київ), лише викладачі з прив’язаним чатом"
+              >
+                Тест голосування
+              </button>
+              <button
+                id="teacherCloseTestVoteBtn"
+                class="btn btn--ghost btn--sm btn--price-add"
+                type="button"
+                disabled
+                title="Закрити тест у Telegram прибравши кнопки (цю ж сесію було відкрито цим браузером після останнього успішного тесту)"
+              >
+                Закрити тест
+              </button>
+              <button id="teacherFormToggle" class="btn btn--primary btn--sm btn--price-add" type="button">+ Новий викладач</button>
+            </div>
           </div>
           <form id="teacherForm" class="admin-grid admin-grid--2 admin-hide">
             <input type="hidden" id="teacherEditingId" value="" />

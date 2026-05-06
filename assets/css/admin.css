@@ -290,6 +290,14 @@
   margin-bottom: 10px;
 }
 
+.admin-price-create__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .btn--price-add {
   min-width: 170px;
 }
