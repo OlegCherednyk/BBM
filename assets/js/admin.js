@@ -33,6 +33,7 @@ const authSection = maybeEl("authSection");
 const blockedSection = maybeEl("blockedSection");
 const dashSection = maybeEl("dashSection");
 const authError = maybeEl("authError");
+const authOk = maybeEl("authOk");
 const dashError = maybeEl("dashError");
 const dashOk = maybeEl("dashOk");
 const userLine = maybeEl("userLine");
@@ -362,14 +363,26 @@ async function refreshDashboard() {
 
 function showAuthError(msg) {
   if (!authError) return;
+  if (authOk) authOk.classList.add("admin-hide");
   authError.textContent = msg;
   authError.classList.remove("admin-hide");
 }
 
-function clearAuthError() {
+function showAuthOk(msg) {
+  if (!authOk) return;
+  if (authError) authError.classList.add("admin-hide");
+  authOk.textContent = msg;
+  authOk.classList.remove("admin-hide");
+}
+
+function clearAuthMessages() {
   if (!authError) return;
   authError.textContent = "";
   authError.classList.add("admin-hide");
+  if (authOk) {
+    authOk.textContent = "";
+    authOk.classList.add("admin-hide");
+  }
 }
 
 function showDashError(msg) {
@@ -497,7 +510,7 @@ function renderPlaceCard(place) {
 
   const lessonsTitle = document.createElement("p");
   lessonsTitle.className = "admin-sub";
-  lessonsTitle.textContent = "Час занять (розклад за київським часом)";
+  lessonsTitle.textContent = "Час занять";
 
   const lessonFormToggle = document.createElement("button");
   lessonFormToggle.type = "button";
@@ -711,7 +724,8 @@ function lessonRow(lt) {
   row.className = "lesson-row";
   row.innerHTML = `<span></span><div class="admin-actions"></div>`;
   const typeName = lt.lesson_types?.name || lt.lesson_types?.slug || "—";
-  const label = `${typeName} · ${DAYS_UK[lt.day_of_week]}, ${fmtTime(lt.start_time)} за Києвом`;
+  const label = `${typeName} · ${DAYS_UK[lt.day_of_week]}, ${fmtTime(lt.start_time)}
+  `;
   row.querySelector("span").textContent = label;
 
   const del = document.createElement("button");
@@ -751,7 +765,7 @@ const signInForm = maybeEl("signInForm");
 if (signInForm) {
   signInForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    clearAuthError();
+    clearAuthMessages();
     const email = maybeEl("email")?.value.trim() ?? "";
     const password = maybeEl("password")?.value ?? "";
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -763,23 +777,40 @@ if (signInForm) {
   });
 }
 
+async function signUpWithCredentials(email, password) {
+  const { data, error } = await supabase.auth.signUp({ email, password });
+  if (error) {
+    showAuthError(error.message);
+    return;
+  }
+  if (data.user && !data.session) {
+    showAuthOk("Реєстрація успішна. Перевір пошту для підтвердження (якщо увімкнено), потім увійди.");
+    return;
+  }
+  if (data.user) {
+    showAuthOk("Реєстрація успішна.");
+    await routeAfterAuth(data.user);
+  }
+}
+
+const registerBtn = maybeEl("registerBtn");
+if (registerBtn) {
+  registerBtn.addEventListener("click", async () => {
+    clearAuthMessages();
+    const email = maybeEl("email")?.value.trim() ?? "";
+    const password = maybeEl("password")?.value ?? "";
+    await signUpWithCredentials(email, password);
+  });
+}
+
 const signUpForm = maybeEl("signUpForm");
 if (signUpForm) {
   signUpForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    clearAuthError();
+    clearAuthMessages();
     const email = maybeEl("signupEmail")?.value.trim() ?? "";
     const password = maybeEl("signupPassword")?.value ?? "";
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) {
-      showAuthError(error.message);
-      return;
-    }
-    if (data.user && !data.session) {
-      showAuthError("Перевір пошту для підтвердження (якщо увімкнено), потім увійди.");
-      return;
-    }
-    if (data.user) await routeAfterAuth(data.user);
+    await signUpWithCredentials(email, password);
   });
 }
 
@@ -900,7 +931,7 @@ async function applySession(session) {
   if (!session?.user) {
     if (isLoginPage) {
       showView("auth");
-      clearAuthError();
+      clearAuthMessages();
     } else {
       location.href = "./index.html";
     }
