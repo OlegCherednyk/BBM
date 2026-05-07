@@ -1717,7 +1717,6 @@ async function renderStatsDashboard() {
   const totalNetAfterRent = totalRevenue - totalRent;
 
   cardsRoot.innerHTML = `
-    <div class="admin-stats-card"><div class="admin-stats-card__label">Викладачів</div><div class="admin-stats-card__value">${rows.length}</div></div>
     <div class="admin-stats-card"><div class="admin-stats-card__label">Проведено занять</div><div class="admin-stats-card__value">${totalLessons}</div></div>
     <div class="admin-stats-card"><div class="admin-stats-card__label">Всього людей</div><div class="admin-stats-card__value">${totalPeople}</div></div>
     <div class="admin-stats-card"><div class="admin-stats-card__label">Чистий після оренди</div><div class="admin-stats-card__value">${fmtMoney(totalNetAfterRent)}</div></div>
