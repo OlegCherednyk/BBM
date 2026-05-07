@@ -15,7 +15,7 @@ function syncCustomSelect(selectEl) {
   }
 }
 
-/** @type {"login"|"lesson-types"|"prices"|"places"|"teachers"} */
+/** @type {"login"|"lesson-types"|"prices"|"places"|"teachers"|"lessons"} */
 const ADMIN_PAGE = /** @type {any} */ (document.body?.dataset.adminPage ?? "lesson-types");
 
 const isLoginPage = ADMIN_PAGE === "login";
@@ -46,9 +46,9 @@ let editingPriceId = null;
 let editingTeacherId = null;
 /** @type {{ chat_id: string, username: string | null, first_name: string | null, last_name: string | null }[]} */
 let cachedPrivateTelegramTargets = [];
-let teacherTestVoteWired = false;
-/** voteId останнього успішного тесту в цій вкладці (для ручного закриття) */
-let lastTeacherTestVoteId = "";
+let lessonsBatchVoteWired = false;
+const LESSONS_PAGE_SIZE = 10;
+let lessonsPage = 1;
 
 async function loadPrivateTelegramTargets() {
   const { data, error } = await supabase
@@ -149,7 +149,6 @@ async function beginEditTeacher(teacher) {
 async function renderTeachersPanel() {
   const root = maybeEl("teachersList");
   if (!root) return;
-  ensureTeacherTestVoteWired();
   root.innerHTML = '<p class="admin-muted">Завантаження…</p>';
   const { data: teachers, error } = await supabase
     .from("teachers")
@@ -221,56 +220,485 @@ async function renderTeachersPanel() {
   root.appendChild(wrap);
 }
 
-function refreshTeacherCloseTestVoteUi() {
-  const closeBtn = maybeEl("teacherCloseTestVoteBtn");
-  if (closeBtn) {
-    closeBtn.disabled = !lastTeacherTestVoteId;
+const KYIV_DATE_FMT = new Intl.DateTimeFormat("uk-UA", {
+  timeZone: "Europe/Kyiv",
+  weekday: "short",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+function fmtKyivDateTime(isoLike) {
+  if (!isoLike) return "—";
+  const d = new Date(isoLike);
+  if (Number.isNaN(d.getTime())) return "—";
+  return KYIV_DATE_FMT.format(d).replace(",", " ·");
+}
+
+/** @type {{ id: string, name: string }[]} */
+let cachedLessonTeachers = [];
+/** @type {{ id: string, name: string }[]} */
+let cachedLessonPlaces = [];
+
+function makeNativeSelect() {
+  const sel = document.createElement("select");
+  sel.dataset.customSelectReady = "true";
+  sel.style.cssText =
+    "padding:6px 8px;border:1px solid var(--cream-mid);border-radius:6px;background:var(--cream-soft);font:inherit;color:inherit;max-width:100%;";
+  return sel;
+}
+
+function makeNumberInput(value) {
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = "0";
+  input.step = "1";
+  input.value = String(Number.isFinite(value) ? value : 0);
+  input.style.cssText =
+    "width:64px;padding:6px 8px;border:1px solid var(--cream-mid);border-radius:6px;background:var(--cream-soft);font:inherit;color:inherit;";
+  return input;
+}
+
+function lessonTeacherLabel(row) {
+  return (
+    row.teachers?.name?.trim() ||
+    row.conducting_display_name?.trim() ||
+    "—"
+  );
+}
+
+function lessonPlaceLabel(row) {
+  return row.places?.name?.trim() || "—";
+}
+
+function lessonTypeLabel(row) {
+  return (
+    row.lesson_times?.lesson_types?.name?.trim() ||
+    row.lesson_times?.lesson_types?.slug ||
+    "—"
+  );
+}
+
+function renderLessonRowView(tr, row, onEdit, onDelete) {
+  tr.innerHTML = "";
+  const cells = [
+    fmtKyivDateTime(row.starts_at),
+    lessonTeacherLabel(row),
+    lessonPlaceLabel(row),
+    lessonTypeLabel(row),
+    String(Number.isFinite(row.abon_count) ? row.abon_count : 0),
+    String(Number.isFinite(row.single_visitors_count) ? row.single_visitors_count : 0),
+    String(Number.isFinite(row.skip_visitors_count) ? row.skip_visitors_count : 0),
+  ];
+  for (const text of cells) {
+    const td = document.createElement("td");
+    td.textContent = text;
+    tr.appendChild(td);
+  }
+
+  const actionsTd = document.createElement("td");
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "btn btn--ghost btn--sm";
+  editBtn.style.padding = "6px 10px";
+  editBtn.textContent = "Змінити";
+  editBtn.addEventListener("click", () => onEdit());
+  actionsTd.appendChild(editBtn);
+
+  const delBtn = document.createElement("button");
+  delBtn.type = "button";
+  delBtn.className = "btn btn--danger btn--sm";
+  delBtn.style.padding = "6px 10px";
+  delBtn.style.marginLeft = "6px";
+  delBtn.textContent = "✕";
+  delBtn.title = "Видалити";
+  delBtn.addEventListener("click", () => onDelete());
+  actionsTd.appendChild(delBtn);
+  tr.appendChild(actionsTd);
+}
+
+function renderLessonRowEdit(tr, row, onCancel, onSave) {
+  tr.innerHTML = "";
+
+  const timeTd = document.createElement("td");
+  timeTd.textContent = fmtKyivDateTime(row.starts_at);
+  tr.appendChild(timeTd);
+
+  const teacherTd = document.createElement("td");
+  const teacherSel = makeNativeSelect();
+  const noneOpt = document.createElement("option");
+  noneOpt.value = "";
+  noneOpt.textContent = "— не вибрано —";
+  teacherSel.appendChild(noneOpt);
+  for (const t of cachedLessonTeachers) {
+    const opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent = t.name || "—";
+    teacherSel.appendChild(opt);
+  }
+  teacherSel.value = row.teachers?.id || "";
+  teacherTd.appendChild(teacherSel);
+  tr.appendChild(teacherTd);
+
+  const placeTd = document.createElement("td");
+  const placeSel = makeNativeSelect();
+  const placeNone = document.createElement("option");
+  placeNone.value = "";
+  placeNone.textContent = "— не вибрано —";
+  placeSel.appendChild(placeNone);
+  for (const p of cachedLessonPlaces) {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.name || "—";
+    placeSel.appendChild(opt);
+  }
+  placeSel.value = row.places?.id || "";
+  placeTd.appendChild(placeSel);
+  tr.appendChild(placeTd);
+
+  const typeTd = document.createElement("td");
+  typeTd.textContent = lessonTypeLabel(row);
+  tr.appendChild(typeTd);
+
+  const abonTd = document.createElement("td");
+  const abonInput = makeNumberInput(row.abon_count);
+  abonTd.appendChild(abonInput);
+  tr.appendChild(abonTd);
+
+  const singleTd = document.createElement("td");
+  const singleInput = makeNumberInput(row.single_visitors_count);
+  singleTd.appendChild(singleInput);
+  tr.appendChild(singleTd);
+
+  const skipTd = document.createElement("td");
+  const skipInput = makeNumberInput(row.skip_visitors_count);
+  skipTd.appendChild(skipInput);
+  tr.appendChild(skipTd);
+
+  const actionsTd = document.createElement("td");
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "btn btn--primary btn--sm";
+  saveBtn.style.padding = "6px 10px";
+  saveBtn.textContent = "Зберегти";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "btn btn--ghost btn--sm";
+  cancelBtn.style.padding = "6px 10px";
+  cancelBtn.style.marginLeft = "6px";
+  cancelBtn.textContent = "Скасувати";
+  cancelBtn.addEventListener("click", () => onCancel());
+
+  saveBtn.addEventListener("click", async () => {
+    const teacherId = teacherSel.value || null;
+    const placeId = placeSel.value || null;
+    const abon = parseInt(abonInput.value, 10);
+    const single = parseInt(singleInput.value, 10);
+    const skip = parseInt(skipInput.value, 10);
+    if (!Number.isFinite(abon) || abon < 0 || !Number.isFinite(single) || single < 0 || !Number.isFinite(skip) || skip < 0) {
+      showDashError("Кількості мають бути цілими ≥ 0.");
+      return;
+    }
+    saveBtn.disabled = true;
+    cancelBtn.disabled = true;
+    await onSave({
+      teacher_id: teacherId,
+      place_id: placeId,
+      abon_count: abon,
+      single_visitors_count: single,
+      skip_visitors_count: skip,
+    });
+  });
+
+  actionsTd.append(saveBtn, cancelBtn);
+  tr.appendChild(actionsTd);
+}
+
+async function renderLessonsPanel() {
+  const root = maybeEl("lessonsList");
+  const paginationRoot = maybeEl("lessonsPagination");
+  const openVotesRoot = maybeEl("openLessonVotesList");
+  if (!root) return;
+  ensureLessonsBatchVoteWired();
+  root.innerHTML = '<p class="admin-muted">Завантаження…</p>';
+  if (paginationRoot) paginationRoot.innerHTML = "";
+  if (openVotesRoot) openVotesRoot.innerHTML = '<p class="admin-muted">Завантаження…</p>';
+
+  const [lessonsRes, teachersRes, placesRes, openVotesFetch] = await Promise.all([
+    supabase
+      .from("lessons")
+      .select(
+        `id, starts_at, abon_count, single_visitors_count, skip_visitors_count,
+         conducting_display_name, vote_finalized_at,
+         teachers ( id, name ),
+         places ( id, name, address ),
+         lesson_times ( id, start_time, day_of_week, lesson_types ( id, name, slug ) )`,
+      )
+      .order("starts_at", { ascending: false, nullsFirst: false }),
+    supabase.from("teachers").select("id, name").order("sort_order", { ascending: true }),
+    supabase.from("places").select("id, name").order("sort_order", { ascending: true }),
+    fetch("/api/admin/lesson-votes/open"),
+  ]);
+
+  if (lessonsRes.error) {
+    root.innerHTML = `<p class="admin-muted">${escapeHtml(lessonsRes.error.message)}</p>`;
+    return;
+  }
+  if (teachersRes.error) {
+    root.innerHTML = `<p class="admin-muted">${escapeHtml(teachersRes.error.message)}</p>`;
+    return;
+  }
+  if (placesRes.error) {
+    root.innerHTML = `<p class="admin-muted">${escapeHtml(placesRes.error.message)}</p>`;
+    return;
+  }
+  let openVotes = [];
+  if (openVotesFetch.ok) {
+    const body = await openVotesFetch.json().catch(() => ({}));
+    if (body?.ok && Array.isArray(body.rows)) {
+      openVotes = body.rows;
+    } else if (openVotesRoot) {
+      openVotesRoot.innerHTML = `<p class="admin-muted">${escapeHtml(body?.error || `Помилка ${openVotesFetch.status}`)}</p>`;
+    }
+  } else if (openVotesRoot) {
+    openVotesRoot.innerHTML = `<p class="admin-muted">Помилка ${openVotesFetch.status}</p>`;
+  }
+
+  cachedLessonTeachers = teachersRes.data || [];
+  cachedLessonPlaces = placesRes.data || [];
+  const lessons = lessonsRes.data || [];
+  const totalPages = Math.max(1, Math.ceil(lessons.length / LESSONS_PAGE_SIZE));
+  lessonsPage = Math.min(Math.max(1, lessonsPage), totalPages);
+
+  root.innerHTML = "";
+  if (!lessons.length) {
+    root.innerHTML = '<p class="admin-muted">Поки немає закритих голосувань.</p>';
+  } else {
+    const pageStart = (lessonsPage - 1) * LESSONS_PAGE_SIZE;
+    const pageRows = lessons.slice(pageStart, pageStart + LESSONS_PAGE_SIZE);
+    const tbl = document.createElement("table");
+    tbl.className = "admin-prices-table";
+    tbl.innerHTML = `<thead><tr>
+        <th>Час</th>
+        <th>Викладач</th>
+        <th>Місце</th>
+        <th>Напрям</th>
+        <th>Абон</th>
+        <th>Разове</th>
+        <th>Пропуск</th>
+        <th></th>
+      </tr></thead><tbody></tbody>`;
+    const tbody = tbl.querySelector("tbody");
+
+    for (const row of pageRows) {
+      const tr = document.createElement("tr");
+
+      const enterView = () => {
+        renderLessonRowView(
+          tr,
+          row,
+          () => enterEdit(),
+          async () => {
+            if (!confirm("Видалити цей запис заняття?")) return;
+            clearDashMessages();
+            try {
+              const res = await fetch("/api/admin/lessons/delete", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ lesson_id: row.id }),
+              });
+              const body = await res.json().catch(() => ({}));
+              if (!res.ok || !body.ok) {
+                showDashError(body.error || `Помилка ${res.status}`);
+                return;
+              }
+            } catch (err) {
+              showDashError(err?.message || String(err));
+              return;
+            }
+            await renderLessonsPanel();
+            showDashOk("Запис заняття (і пов'язане голосування) видалено.");
+          },
+        );
+      };
+
+      const enterEdit = () => {
+        renderLessonRowEdit(
+          tr,
+          row,
+          () => enterView(),
+          async (payload) => {
+            clearDashMessages();
+            const { data: updated, error: updErr } = await supabase
+              .from("lessons")
+              .update(payload)
+              .eq("id", row.id)
+              .select(
+                `id, starts_at, abon_count, single_visitors_count, skip_visitors_count,
+                 conducting_display_name, vote_finalized_at,
+                 teachers ( id, name ),
+                 places ( id, name, address ),
+                 lesson_times ( id, start_time, day_of_week, lesson_types ( id, name, slug ) )`,
+              )
+              .single();
+            if (updErr) {
+              showDashError(updErr.message);
+              enterEdit();
+              return;
+            }
+            Object.assign(row, updated);
+            enterView();
+            showDashOk("Запис оновлено.");
+          },
+        );
+      };
+
+      enterView();
+      tbody.appendChild(tr);
+    }
+
+    const wrap = document.createElement("div");
+    wrap.className = "prices-table-wrap";
+    wrap.appendChild(tbl);
+    root.appendChild(wrap);
+  }
+
+  if (paginationRoot) {
+    paginationRoot.innerHTML = "";
+    if (lessons.length > LESSONS_PAGE_SIZE) {
+      const pagination = document.createElement("div");
+      pagination.className = "admin-lessons__pagination";
+
+      const prevBtn = document.createElement("button");
+      prevBtn.type = "button";
+      prevBtn.className = "btn btn--ghost btn--sm";
+      prevBtn.textContent = "← Попередні";
+      prevBtn.disabled = lessonsPage <= 1;
+      prevBtn.addEventListener("click", async () => {
+        if (lessonsPage <= 1) return;
+        lessonsPage -= 1;
+        await renderLessonsPanel();
+      });
+
+      const info = document.createElement("span");
+      info.className = "admin-muted";
+      info.textContent = `Сторінка ${lessonsPage} з ${totalPages} · записів: ${lessons.length}`;
+
+      const nextBtn = document.createElement("button");
+      nextBtn.type = "button";
+      nextBtn.className = "btn btn--ghost btn--sm";
+      nextBtn.textContent = "Наступні →";
+      nextBtn.disabled = lessonsPage >= totalPages;
+      nextBtn.addEventListener("click", async () => {
+        if (lessonsPage >= totalPages) return;
+        lessonsPage += 1;
+        await renderLessonsPanel();
+      });
+
+      pagination.append(prevBtn, info, nextBtn);
+      paginationRoot.appendChild(pagination);
+    }
+  }
+
+  if (openVotesRoot) {
+    openVotesRoot.innerHTML = "";
+    if (!openVotes.length) {
+      openVotesRoot.innerHTML = '<p class="admin-muted">Немає відкритих голосувань.</p>';
+    } else {
+      const tbl = document.createElement("table");
+      tbl.className = "admin-prices-table";
+      tbl.innerHTML = `<thead><tr>
+          <th>Час</th>
+          <th>Викладач</th>
+          <th>Місце</th>
+          <th>Напрям</th>
+          <th>Абон</th>
+          <th>Разове</th>
+          <th>Пропуск</th>
+          <th></th>
+        </tr></thead><tbody></tbody>`;
+      const tbody = tbl.querySelector("tbody");
+
+      const voteCount = (snapshot, key) => {
+        const group = snapshot && typeof snapshot === "object" ? snapshot[key] : null;
+        if (!group || typeof group !== "object") return 0;
+        return Object.keys(group).length;
+      };
+
+      for (const vote of openVotes) {
+        const tr = document.createElement("tr");
+        const snap = vote.lesson_snapshot && typeof vote.lesson_snapshot === "object" ? vote.lesson_snapshot : {};
+        const cells = [
+          fmtKyivDateTime(vote.occurrence_at),
+          vote.conducting_display_name?.trim() || "—",
+          snap.placeLabel || "—",
+          snap.lessonTypeLabel || "—",
+          String(voteCount(vote.votes_snapshot, "abon")),
+          String(voteCount(vote.votes_snapshot, "single")),
+          String(voteCount(vote.votes_snapshot, "skip")),
+        ];
+        for (const text of cells) {
+          const td = document.createElement("td");
+          td.textContent = text;
+          tr.appendChild(td);
+        }
+
+        const actionsTd = document.createElement("td");
+        const closeBtn = document.createElement("button");
+        closeBtn.type = "button";
+        closeBtn.className = "btn btn--danger btn--sm";
+        closeBtn.style.padding = "6px 10px";
+        closeBtn.textContent = "Закрити";
+        closeBtn.addEventListener("click", async () => {
+          if (!confirm("Закрити це голосування?")) return;
+          closeBtn.disabled = true;
+          clearDashMessages();
+          try {
+            const res = await fetch("/api/telegram/lesson-votes/close", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ occurrence_id: vote.id }),
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok || !body.ok) {
+              showDashError(body.error || `Помилка ${res.status}`);
+              closeBtn.disabled = false;
+              return;
+            }
+            showDashOk("Голосування закрито.");
+            await renderLessonsPanel();
+          } catch (err) {
+            showDashError(err?.message || String(err));
+            closeBtn.disabled = false;
+          }
+        });
+        actionsTd.appendChild(closeBtn);
+        tr.appendChild(actionsTd);
+        tbody.appendChild(tr);
+      }
+
+      const wrap = document.createElement("div");
+      wrap.className = "prices-table-wrap";
+      wrap.appendChild(tbl);
+      openVotesRoot.appendChild(wrap);
+    }
   }
 }
 
-function ensureTeacherTestVoteWired() {
-  if (teacherTestVoteWired) return;
-  const btn = maybeEl("teacherTestVoteBtn");
+function ensureLessonsBatchVoteWired() {
+  if (lessonsBatchVoteWired) return;
+  const btn = maybeEl("lessonsBatchVoteBtn");
   if (!btn) return;
-  teacherTestVoteWired = true;
-
-  refreshTeacherCloseTestVoteUi();
-
-  const closeBtn = maybeEl("teacherCloseTestVoteBtn");
-  closeBtn?.addEventListener("click", async () => {
-    clearDashMessages();
-    if (!lastTeacherTestVoteId) {
-      showDashError("Спочатку запустіть «Тест голосування».");
-      return;
-    }
-    closeBtn.disabled = true;
-    try {
-      const res = await fetch("/api/telegram/teachers/test-vote/close", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vote_id: lastTeacherTestVoteId }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || !body.ok) {
-        showDashError(body.error || `Помилка ${res.status}`);
-        refreshTeacherCloseTestVoteUi();
-        return;
-      }
-      lastTeacherTestVoteId = "";
-      refreshTeacherCloseTestVoteUi();
-      showDashOk("Тестове голосування в Telegram закрито (кнопки прибрано).");
-    } catch (err) {
-      showDashError(err?.message || String(err));
-    } finally {
-      refreshTeacherCloseTestVoteUi();
-    }
-  });
+  lessonsBatchVoteWired = true;
 
   btn.addEventListener("click", async () => {
     clearDashMessages();
     btn.disabled = true;
     try {
-      const res = await fetch("/api/telegram/teachers/test-vote", {
+      const res = await fetch("/api/telegram/teachers/vote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -278,32 +706,20 @@ function ensureTeacherTestVoteWired() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body.ok) {
         showDashError(body.error || `Помилка ${res.status}`);
-        refreshTeacherCloseTestVoteUi();
         return;
       }
-      if (typeof body.voteId === "string" && body.voteId.trim()) {
-        lastTeacherTestVoteId = body.voteId.trim();
-      }
-      refreshTeacherCloseTestVoteUi();
-      const r = body.resolvedSlot;
-      let msg = "";
-      if (r?.lessonTimeLabel && r?.placeLabel) {
-        msg = `Слот: ${r.lessonTimeLabel} · ${r.placeLabel} · ${r.lessonTypeLabel || "—"}. `;
-      }
-      if (r?.defaultUsed) {
-        msg += "За замовчуванням — останнє заняття в розкладному слоті, що вже відбулося (час Києва). ";
-      }
-      if (body.groupAttendance?.messageId) {
-        msg += `У групу (учасники): повідомлення надіслано. `;
-      }
-      msg += `Викладачам (хто проводить): ${body.deliveredCount ?? 0}`;
-      if (body.teachersTotal != null && body.teachersTotal > 0 && body.failedCount > 0) {
-        msg += `, не доставлено: ${body.failedCount}`;
-      }
-      if (body.teachersTotal === 0) {
-        msg += ` (немає викладачів із прив’язаним чатом — лише група)`;
-      }
+
+      const created = body.createdCount ?? 0;
+      const dup = body.skippedDuplicate ?? 0;
+      const outWin = body.skippedOutOfWindow ?? 0;
+      const fail = Array.isArray(body.failures) ? body.failures.length : 0;
+      const elig = body.eligibleInWindow ?? 0;
+      let msg = `Створення бойових голосувань у вікні планувальника: від ${body.windowHoursMinExclusive ?? 1} до ${body.windowHoursMaxInclusive ?? 120} год до заняття (Київ). `;
+      msg += `Створено: ${created} з ${elig} підходящих слотів. `;
+      msg += `Пропущено дублів: ${dup}. Поза вікном: ${outWin}.`;
+      if (fail > 0) msg += ` Помилок відправки: ${fail}.`;
       showDashOk(msg);
+      await renderLessonsPanel();
     } catch (err) {
       showDashError(err?.message || String(err));
     } finally {
@@ -684,6 +1100,9 @@ async function refreshDashboard() {
       case "teachers":
         resetTeacherForm();
         await renderTeachersPanel();
+        break;
+      case "lessons":
+        await renderLessonsPanel();
         break;
       default:
         break;

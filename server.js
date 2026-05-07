@@ -42,8 +42,42 @@ const DAY_SHORT_UK = ["Нд", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
 const KYIV_TZ = "Europe/Kyiv";
 /** Вікно автоголосування: відправка не раніше ніж за 5×24 год і не пізніше ніж за 24 год до початку заняття (Київ) */
 const VOTE_SCHED_OPEN_MAX_HOURS_BEFORE = 5 * 24;
-const VOTE_SCHED_CLOSE_MAX_HOURS_BEFORE = 24;
+const VOTE_SCHED_CLOSE_MAX_HOURS_BEFORE = 1;
+const VOTE_RECENCY_DAYS = 5;
 const SCHEDULER_TICK_MS = 60 * 1000;
+
+/** Те саме вікно, що й у runScheduledLessonVotesTick: (1; 120] год до початку заняття (Київ). */
+function isOccurrenceInScheduledVoteWindow(occurrenceKyiv, nowKyiv) {
+  const hoursUntil = occurrenceKyiv.diff(nowKyiv, "hours").hours;
+  return hoursUntil > VOTE_SCHED_CLOSE_MAX_HOURS_BEFORE && hoursUntil <= VOTE_SCHED_OPEN_MAX_HOURS_BEFORE;
+}
+
+/**
+ * Чи існує хоч одне бойове голосування (open/finalized) у межах ±5 днів від now.
+ * Якщо такого запису немає — крон має право створити голосування одразу.
+ */
+async function hasRecentLessonVoteOccurrence(lessonTimeId, nowKyiv) {
+  if (!supabaseAdmin) return false;
+  const fromIso = nowKyiv.minus({ days: VOTE_RECENCY_DAYS }).toUTC().toISO();
+  const toIso = nowKyiv.plus({ days: VOTE_RECENCY_DAYS }).toUTC().toISO();
+  if (!fromIso || !toIso) return false;
+
+  const { data, error } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .select("id")
+    .eq("lesson_time_id", lessonTimeId)
+    .eq("is_test", false)
+    .in("status", ["open", "finalized"])
+    .gte("occurrence_at", fromIso)
+    .lte("occurrence_at", toIso)
+    .limit(1);
+
+  if (error) {
+    console.error("scheduler recent votes lookup:", error.message);
+    return true;
+  }
+  return Array.isArray(data) && data.length > 0;
+}
 
 function resolveGroupVoteChatId() {
   const dedicated = String(telegramGroupChatId || "").trim();
@@ -286,7 +320,7 @@ function buildLessonVoteMessage({
     "",
     `🕒 Час: ${lessonTimeLabel}`,
     `📍 Місце: ${placeLabel}`,
-    `💃 Тип заняття: ${lessonTypeLabel}`,
+    `💃 Напрям: ${lessonTypeLabel}`,
     ...teacherLine,
     ...conductingLine,
     "",
@@ -327,7 +361,7 @@ function buildLessonConductMessage(lessonContext, conductorDisplayName) {
     "",
     `🕒 Час: ${lessonContext.lessonTimeLabel}`,
     `📍 Місце: ${lessonContext.placeLabel}`,
-    `💃 Тип заняття: ${lessonContext.lessonTypeLabel}`,
+    `💃 Напрям: ${lessonContext.lessonTypeLabel}`,
     "",
     `Проводить: ${who}`,
   ].join("\n");
@@ -391,16 +425,23 @@ async function persistOccurrenceVotesOnly(voteOccurrenceId, votesByKind) {
   }
 }
 
-async function persistOccurrenceConducting(voteOccurrenceId, conductingDisplayName) {
+async function persistOccurrenceConducting(voteOccurrenceId, conductingDisplayName, conductingTelegramChatId) {
   if (!voteOccurrenceId || !supabaseAdmin) return;
   try {
     const val =
       typeof conductingDisplayName === "string" && conductingDisplayName.trim().length > 0
         ? conductingDisplayName.trim()
         : null;
+    const chatVal =
+      typeof conductingTelegramChatId === "string" && conductingTelegramChatId.trim().length > 0
+        ? conductingTelegramChatId.trim()
+        : null;
     const { error } = await supabaseAdmin
       .from("lesson_vote_occurrences")
-      .update({ conducting_display_name: val })
+      .update({
+        conducting_display_name: val,
+        conducting_telegram_chat_id: chatVal,
+      })
       .eq("id", voteOccurrenceId);
     if (error) console.error("persistOccurrenceConducting:", error.message);
   } catch (e) {
@@ -408,7 +449,11 @@ async function persistOccurrenceConducting(voteOccurrenceId, conductingDisplayNa
   }
 }
 
-async function refreshGroupAttendanceAfterConduct(linkedGroupVoteKey, conductingDisplayName) {
+async function refreshGroupAttendanceAfterConduct(
+  linkedGroupVoteKey,
+  conductingDisplayName,
+  conductingTelegramChatId,
+) {
   if (!bot || !linkedGroupVoteKey) return;
   const groupState = activeLessonVotes.get(linkedGroupVoteKey);
   if (!groupState) return;
@@ -417,6 +462,12 @@ async function refreshGroupAttendanceAfterConduct(linkedGroupVoteKey, conducting
     typeof conductingDisplayName === "string" && conductingDisplayName.trim().length > 0
       ? conductingDisplayName.trim()
       : null;
+
+  const conductChatStr =
+    conductingTelegramChatId != null && String(conductingTelegramChatId).trim().length > 0
+      ? String(conductingTelegramChatId).trim()
+      : null;
+  groupState.conductingTelegramChatId = conductChatStr;
 
   const parts = parseMessageStateKey(linkedGroupVoteKey);
   if (!parts) return;
@@ -438,7 +489,28 @@ async function refreshGroupAttendanceAfterConduct(linkedGroupVoteKey, conducting
   }
 
   if (groupState.voteOccurrenceId) {
-    await persistOccurrenceConducting(groupState.voteOccurrenceId, groupState.conductingDisplayName);
+    await persistOccurrenceConducting(
+      groupState.voteOccurrenceId,
+      groupState.conductingDisplayName,
+      groupState.conductingTelegramChatId,
+    );
+  }
+}
+
+async function resolveTeacherIdByTelegramChatId(chatIdRaw) {
+  if (!supabaseAdmin || chatIdRaw == null || chatIdRaw === "") return null;
+  const cid = String(chatIdRaw).trim();
+  if (!cid) return null;
+  try {
+    const { data, error } = await supabaseAdmin.from("teachers").select("id").eq("chat_id", cid).maybeSingle();
+    if (error) {
+      console.warn("resolveTeacherIdByTelegramChatId:", error.message);
+      return null;
+    }
+    return data?.id ?? null;
+  } catch (e) {
+    console.warn("resolveTeacherIdByTelegramChatId:", e?.message || e);
+    return null;
   }
 }
 
@@ -735,6 +807,7 @@ async function executeLessonAttendanceVote(opts) {
     lessonContext,
     teacherName: null,
     conductingDisplayName: null,
+    conductingTelegramChatId: null,
     audience: "group",
     votesByKind: votesByKindGroup,
     voteOccurrenceId,
@@ -842,6 +915,107 @@ async function executeLessonAttendanceVote(opts) {
   return {
     success: true,
     payload: voteOccurrenceId ? { ...payloadBase, lessonVoteOccurrenceId: voteOccurrenceId } : payloadBase,
+  };
+}
+
+/**
+ * Тестові голосування для кожного слоту розкладу, чия найближча подія потрапляє у вікно автопланувальника.
+ * Дублікати з існуючим рядком (lesson_time_id + occurrence_at) пропускаються без помилки.
+ */
+async function runBatchTeacherVotesInWindow({ isTest = false } = {}) {
+  if (!bot) {
+    return { ok: false, error: "TELEGRAM_BOT_TOKEN is not configured.", httpStatus: 500 };
+  }
+  if (!supabaseAdmin) {
+    return { ok: false, error: "Supabase admin client is not configured.", httpStatus: 500 };
+  }
+
+  const nowKyiv = DateTime.now().setZone(KYIV_TZ);
+  const { data: slots, error } = await supabaseAdmin
+    .from("lesson_times")
+    .select("id, place_id, day_of_week, start_time")
+    .not("place_id", "is", null);
+
+  if (error) {
+    return { ok: false, error: error.message, httpStatus: 500 };
+  }
+
+  const planned = [];
+  let skippedNoNext = 0;
+  let skippedOutOfWindow = 0;
+
+  for (const row of slots || []) {
+    const next = computeNextOccurrenceKyiv(row);
+    if (!next) {
+      skippedNoNext++;
+      continue;
+    }
+    if (!isOccurrenceInScheduledVoteWindow(next, nowKyiv)) {
+      skippedOutOfWindow++;
+      continue;
+    }
+    planned.push({
+      lessonTimeId: row.id,
+      placeId: row.place_id,
+      occurrenceAtIso: next.toUTC().toISO(),
+      nextKyiv: next,
+    });
+  }
+
+  planned.sort((a, b) => a.nextKyiv.toMillis() - b.nextKyiv.toMillis());
+
+  const voteIds = [];
+  const created = [];
+  let skippedDuplicate = 0;
+  const failures = [];
+
+  for (const p of planned) {
+    const exec = await executeLessonAttendanceVote({
+      lessonTimeId: p.lessonTimeId,
+      placeId: p.placeId,
+      defaultUsed: false,
+      occurredAt: null,
+      persistToDb: true,
+      occurrenceAtIso: p.occurrenceAtIso,
+      isTest: Boolean(isTest),
+    });
+
+    if (exec.duplicate) {
+      skippedDuplicate++;
+      continue;
+    }
+    if (!exec.success) {
+      failures.push({
+        lesson_time_id: p.lessonTimeId,
+        error: exec.error || "unknown",
+      });
+      continue;
+    }
+    voteIds.push(exec.payload.voteId);
+    created.push({
+      voteId: exec.payload.voteId,
+      resolvedSlot: exec.payload.resolvedSlot,
+      deliveredCount: exec.payload.deliveredCount,
+      failedCount: exec.payload.failedCount,
+      teachersTotal: exec.payload.teachersTotal,
+    });
+  }
+
+  return {
+    ok: true,
+    batch: true,
+    isTest: Boolean(isTest),
+    windowHoursMinExclusive: VOTE_SCHED_CLOSE_MAX_HOURS_BEFORE,
+    windowHoursMaxInclusive: VOTE_SCHED_OPEN_MAX_HOURS_BEFORE,
+    createdCount: voteIds.length,
+    skippedDuplicate,
+    skippedOutOfWindow,
+    skippedNoNext,
+    totalLessonSlots: (slots || []).length,
+    eligibleInWindow: planned.length,
+    voteIds,
+    created,
+    failures,
   };
 }
 
@@ -969,8 +1143,8 @@ async function markLessonVoteOccurrenceFinalizedInDb(rowId, votesByKind, conduct
   return { ok: true };
 }
 
-async function persistFinalizedVotesToLessonRow(row, votesByKind, conductingDisplayName) {
-  if (!supabaseAdmin || row?.is_test) return;
+async function persistFinalizedVotesToLessonRow(row, votesByKind, conductingDisplayName, conductingTelegramChatIdOverride) {
+  if (!supabaseAdmin) return;
   const lessonTimeId = row.lesson_time_id;
   const placeId = row.place_id;
   const startsAt = row.occurrence_at;
@@ -986,7 +1160,16 @@ async function persistFinalizedVotesToLessonRow(row, votesByKind, conductingDisp
       : null;
   const finalVotesSnapshot = votesByKindToSnapshot(votesByKind);
 
+  const chatRaw =
+    conductingTelegramChatIdOverride != null && String(conductingTelegramChatIdOverride).trim() !== ""
+      ? String(conductingTelegramChatIdOverride).trim()
+      : row.conducting_telegram_chat_id != null && String(row.conducting_telegram_chat_id).trim() !== ""
+        ? String(row.conducting_telegram_chat_id).trim()
+        : null;
+
   try {
+    const teacherId = await resolveTeacherIdByTelegramChatId(chatRaw);
+
     const { data: existing, error: selErr } = await supabaseAdmin
       .from("lessons")
       .select("id")
@@ -1003,6 +1186,7 @@ async function persistFinalizedVotesToLessonRow(row, votesByKind, conductingDisp
       lesson_time_id: lessonTimeId,
       place_id: placeId,
       starts_at: startsAt,
+      teacher_id: teacherId,
       abon_count: abon,
       single_visitors_count: single,
       skip_visitors_count: skip,
@@ -1017,7 +1201,28 @@ async function persistFinalizedVotesToLessonRow(row, votesByKind, conductingDisp
       if (upLesson) console.error("persistFinalizedVotesToLessonRow update:", upLesson.message);
     } else {
       const { error: insLesson } = await supabaseAdmin.from("lessons").insert(payload);
-      if (insLesson) console.error("persistFinalizedVotesToLessonRow insert:", insLesson.message);
+      if (insLesson) {
+        const isDup =
+          insLesson.code === "23505" || /duplicate key|unique constraint/i.test(String(insLesson.message || ""));
+        if (isDup) {
+          const { data: existing2, error: sel2 } = await supabaseAdmin
+            .from("lessons")
+            .select("id")
+            .eq("lesson_time_id", lessonTimeId)
+            .eq("starts_at", startsAt)
+            .maybeSingle();
+          if (sel2) {
+            console.error("persistFinalizedVotesToLessonRow select after dup:", sel2.message);
+          } else if (existing2?.id) {
+            const { error: up2 } = await supabaseAdmin.from("lessons").update(payload).eq("id", existing2.id);
+            if (up2) console.error("persistFinalizedVotesToLessonRow update after dup:", up2.message);
+          } else {
+            console.error("persistFinalizedVotesToLessonRow insert dup but row not found:", insLesson.message);
+          }
+        } else {
+          console.error("persistFinalizedVotesToLessonRow insert:", insLesson.message);
+        }
+      }
     }
   } catch (e) {
     console.error("persistFinalizedVotesToLessonRow:", e?.message || e);
@@ -1068,7 +1273,12 @@ async function finalizeLessonVoteOccurrence(row) {
     return;
   }
 
-  await persistFinalizedVotesToLessonRow(row, votesByKind, conductingDisplayName);
+  await persistFinalizedVotesToLessonRow(
+    row,
+    votesByKind,
+    conductingDisplayName,
+    live?.conductingTelegramChatId ?? row.conducting_telegram_chat_id,
+  );
 }
 
 /** Після рестарту відновлює in-memory стан для відкритих голосувань (callback-и знову працюють). */
@@ -1105,6 +1315,10 @@ async function hydrateOpenLessonVotesFromDb() {
         lessonContext,
         teacherName: null,
         conductingDisplayName: row.conducting_display_name ?? null,
+        conductingTelegramChatId:
+          row.conducting_telegram_chat_id != null && String(row.conducting_telegram_chat_id).trim() !== ""
+            ? String(row.conducting_telegram_chat_id).trim()
+            : null,
         audience: "group",
         votesByKind,
         voteOccurrenceId: row.id,
@@ -1169,12 +1383,16 @@ async function runScheduledLessonVotesTick() {
     for (const row of slots || []) {
       const next = computeNextOccurrenceKyiv(row);
       if (!next) continue;
-      const hoursUntil = next.diff(nowKyiv, "hours").hours;
-      if (hoursUntil <= VOTE_SCHED_CLOSE_MAX_HOURS_BEFORE || hoursUntil > VOTE_SCHED_OPEN_MAX_HOURS_BEFORE) {
-        continue;
+      const inWindow = isOccurrenceInScheduledVoteWindow(next, nowKyiv);
+      if (!inWindow) {
+        const hasRecent = await hasRecentLessonVoteOccurrence(row.id, nowKyiv);
+        if (hasRecent) continue;
       }
 
       const occurrenceIso = next.toUTC().toISO();
+      if (!occurrenceIso) {
+        continue;
+      }
       const exec = await executeLessonAttendanceVote({
         lessonTimeId: row.id,
         placeId: row.place_id,
@@ -1194,8 +1412,104 @@ async function runScheduledLessonVotesTick() {
   }
 }
 
+/**
+ * Закриває одне тестове голосування з адмінки (кнопка «Закрити тест»).
+ * @returns {Promise<{ ok: true, voteId: string } | { ok: false, voteId: string, error: string, notFound?: boolean, telegramWarning?: boolean }>}
+ */
+async function closeSingleTeacherTestVote(voteIdRaw) {
+  const voteId = String(voteIdRaw || "").trim();
+  if (!voteId) {
+    return { ok: false, voteId: "", error: "Порожній ідентифікатор голосування." };
+  }
+  if (!bot) {
+    return { ok: false, voteId, error: "TELEGRAM_BOT_TOKEN is not configured." };
+  }
+
+  const found = findActiveLessonVoteByVoteId(voteId);
+  if (!found) {
+    return {
+      ok: false,
+      voteId,
+      notFound: true,
+      error:
+        "Не знайдено активного голосування для цього vote_id у пам'яті сервера (вже закрито або після перезапуску — закрий запис у lesson_vote_occurrences вручну, якщо status=open).",
+    };
+  }
+
+  const p = parseMessageStateKey(found.stateKey);
+  if (!p || !found.state.lessonContext || !found.state.votesByKind) {
+    return { ok: false, voteId, error: "Пошкоджений стан голосування в пам'яті." };
+  }
+
+  const conductChatTargets = collectConductChatTargets(found.stateKey, null);
+  const conductingDisplayName =
+    typeof found.state.conductingDisplayName === "string" && found.state.conductingDisplayName.trim().length > 0
+      ? found.state.conductingDisplayName.trim()
+      : null;
+
+  const votesSnap = found.state.votesByKind;
+  const occIdClose = found.state.voteOccurrenceId;
+
+  const closeRes = await closeAttendanceVotesInTelegramAndMemory({
+    groupChatId: p.chatId,
+    groupMessageId: p.messageId,
+    lessonContext: found.state.lessonContext,
+    votesByKind: found.state.votesByKind,
+    conductingDisplayName,
+    conductChatTargets,
+    groupStateKey: found.stateKey,
+  });
+
+  if (!closeRes.ok) {
+    return {
+      ok: false,
+      voteId,
+      telegramWarning: true,
+      error:
+        closeRes.error ||
+        "Не вдалося коректно оновити Telegram; перевір журнал сервера. Стан голосування в пам'яті очищено.",
+    };
+  }
+
+  if (occIdClose && supabaseAdmin) {
+    const markTry = await markLessonVoteOccurrenceFinalizedInDb(occIdClose, votesSnap, conductingDisplayName);
+    if (!markTry.ok) {
+      console.warn("test-vote/close DB finalize:", markTry.error);
+    } else {
+      const { data: occRow, error: occFetchErr } = await supabaseAdmin
+        .from("lesson_vote_occurrences")
+        .select("*")
+        .eq("id", occIdClose)
+        .maybeSingle();
+      if (occFetchErr) {
+        console.warn("test-vote/close load occurrence for lessons:", occFetchErr.message);
+      } else if (occRow) {
+        await persistFinalizedVotesToLessonRow(
+          occRow,
+          votesSnap,
+          conductingDisplayName,
+          found.state.conductingTelegramChatId ?? occRow.conducting_telegram_chat_id,
+        );
+      }
+    }
+  }
+
+  return { ok: true, voteId };
+}
+
 app.post("/api/telegram/teachers/test-vote", async (req, res) => {
   try {
+    const body = req.body || {};
+    const reqLessonTimeId = String(body?.lesson_time_id || "").trim();
+
+    if (!reqLessonTimeId) {
+      const batch = await runBatchTeacherVotesInWindow({ isTest: true });
+      if (!batch.ok) {
+        return res.status(batch.httpStatus || 500).json({ ok: false, error: batch.error });
+      }
+      return res.status(200).json({ ok: true, ...batch });
+    }
+
     if (!bot) {
       return res.status(500).json({ ok: false, error: "TELEGRAM_BOT_TOKEN is not configured." });
     }
@@ -1203,14 +1517,13 @@ app.post("/api/telegram/teachers/test-vote", async (req, res) => {
       return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
     }
 
-    const ids = await resolveLessonIdsForVote(req.body || {});
+    const ids = await resolveLessonIdsForVote(body);
     const { lessonTimeId, placeId, defaultUsed, occurredAt } = ids;
 
     if (!lessonTimeId) {
       return res.status(400).json({
         ok: false,
-        error:
-          "Не знайдено заняття за замовчуванням: у таблиці lesson_times немає слотів або не вдалося підібрати останнє минуле заняття.",
+        error: "Не знайдено заняття: перевір lesson_time_id у тілі JSON.",
       });
     }
 
@@ -1230,16 +1543,40 @@ app.post("/api/telegram/teachers/test-vote", async (req, res) => {
     });
 
     if (exec.duplicate) {
-      return res.status(409).json({ ok: false, error: "Дубль голосування (неочікувано для тесту)." });
+      return res.status(409).json({
+        ok: false,
+        error:
+          "Голосування для цього слоту та часу вже існує (у БД unique lesson_time_id + occurrence_at).",
+      });
     }
     if (!exec.success) {
       return res.status(exec.httpStatus || 500).json({ ok: false, error: exec.error });
     }
 
-    return res.status(200).json(exec.payload);
+    return res.status(200).json({ ok: true, ...exec.payload, batch: false });
   } catch (error) {
     console.error("Failed to send teacher test vote:", error);
     return res.status(500).json({ ok: false, error: error?.message || "Failed to send teacher test vote." });
+  }
+});
+
+app.post("/api/telegram/teachers/vote", async (_req, res) => {
+  try {
+    if (!bot) {
+      return res.status(500).json({ ok: false, error: "TELEGRAM_BOT_TOKEN is not configured." });
+    }
+    if (!supabaseAdmin) {
+      return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+    }
+
+    const batch = await runBatchTeacherVotesInWindow({ isTest: false });
+    if (!batch.ok) {
+      return res.status(batch.httpStatus || 500).json({ ok: false, error: batch.error });
+    }
+    return res.status(200).json({ ok: true, ...batch });
+  } catch (error) {
+    console.error("Failed to send teacher vote batch:", error);
+    return res.status(500).json({ ok: false, error: error?.message || "Failed to send teacher vote batch." });
   }
 });
 
@@ -1248,68 +1585,165 @@ app.post("/api/telegram/teachers/test-vote/close", async (req, res) => {
     if (!bot) {
       return res.status(500).json({ ok: false, error: "TELEGRAM_BOT_TOKEN is not configured." });
     }
-    const voteId = String(req.body?.vote_id || req.body?.voteId || "").trim();
-    if (!voteId) {
+    const single = String(req.body?.vote_id || req.body?.voteId || "").trim();
+    const rawArr = req.body?.vote_ids ?? req.body?.voteIds;
+    const fromArr = Array.isArray(rawArr) ? rawArr : [];
+    const targetIds = [
+      ...new Set([...fromArr.map((x) => String(x || "").trim()).filter(Boolean), ...(single ? [single] : [])]),
+    ];
+
+    if (!targetIds.length) {
       return res.status(400).json({
         ok: false,
-        error: "Передайте vote_id (з відповіді тестового запиту) у тілі JSON.",
-      });
-    }
-    const found = findActiveLessonVoteByVoteId(voteId);
-    if (!found) {
-      return res.status(404).json({
-        ok: false,
-        error:
-          "Не знайдено активного голосування для цього vote_id у пам'яті сервера (вже закрито або після перезапуску — закрий запис у lesson_vote_occurrences вручну, якщо status=open).",
+        error: "Передайте vote_id або vote_ids (масив) у тілі JSON.",
       });
     }
 
-    const p = parseMessageStateKey(found.stateKey);
-    if (!p || !found.state.lessonContext || !found.state.votesByKind) {
-      return res.status(500).json({ ok: false, error: "Пошкоджений стан голосування в пам'яті." });
-    }
-
-    const conductChatTargets = collectConductChatTargets(found.stateKey, null);
-    const conductingDisplayName =
-      typeof found.state.conductingDisplayName === "string" && found.state.conductingDisplayName.trim().length > 0
-        ? found.state.conductingDisplayName.trim()
-        : null;
-
-    /** Знімаємо до закриття (пам'ять очиститься після Telegram). */
-    const votesSnap = found.state.votesByKind;
-    const occIdClose = found.state.voteOccurrenceId;
-
-    const closeRes = await closeAttendanceVotesInTelegramAndMemory({
-      groupChatId: p.chatId,
-      groupMessageId: p.messageId,
-      lessonContext: found.state.lessonContext,
-      votesByKind: found.state.votesByKind,
-      conductingDisplayName,
-      conductChatTargets,
-      groupStateKey: found.stateKey,
-    });
-
-    if (!closeRes.ok) {
-      return res.status(502).json({
-        ok: false,
-        error:
-          closeRes.error ||
-          "Не вдалося коректно оновити Telegram; перевір журнал сервера. Стан голосування в пам'яті очищено.",
-        telegramWarning: true,
-      });
-    }
-
-    if (occIdClose && supabaseAdmin) {
-      const markTry = await markLessonVoteOccurrenceFinalizedInDb(occIdClose, votesSnap, conductingDisplayName);
-      if (!markTry.ok) {
-        console.warn("test-vote/close DB finalize:", markTry.error);
+    if (targetIds.length === 1) {
+      const r = await closeSingleTeacherTestVote(targetIds[0]);
+      if (!r.ok) {
+        const status = r.notFound ? 404 : r.telegramWarning ? 502 : 500;
+        return res.status(status).json({
+          ok: false,
+          error: r.error,
+          ...(r.telegramWarning ? { telegramWarning: true } : {}),
+        });
       }
+      return res.status(200).json({ ok: true, voteId: r.voteId });
     }
 
-    return res.status(200).json({ ok: true, voteId });
+    const results = [];
+    let closedCount = 0;
+    let anyTelegramWarning = false;
+    for (const vid of targetIds) {
+      const r = await closeSingleTeacherTestVote(vid);
+      results.push({
+        voteId: vid,
+        ok: r.ok,
+        error: r.ok ? null : r.error,
+        telegramWarning: Boolean(r.telegramWarning),
+      });
+      if (r.ok) closedCount++;
+      if (r.telegramWarning) anyTelegramWarning = true;
+    }
+
+    return res.status(200).json({
+      ok: closedCount > 0,
+      closedCount,
+      failedCount: targetIds.length - closedCount,
+      results,
+      ...(anyTelegramWarning ? { telegramWarning: true } : {}),
+    });
   } catch (error) {
     console.error("test-vote close failed:", error);
     return res.status(500).json({ ok: false, error: error?.message || "Failed to close test vote." });
+  }
+});
+
+app.post("/api/telegram/lesson-votes/close", async (req, res) => {
+  try {
+    if (!bot) {
+      return res.status(500).json({ ok: false, error: "TELEGRAM_BOT_TOKEN is not configured." });
+    }
+    if (!supabaseAdmin) {
+      return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+    }
+
+    const occurrenceId = String(req.body?.occurrence_id || req.body?.occurrenceId || "").trim();
+    if (!occurrenceId) {
+      return res.status(400).json({ ok: false, error: "Передайте occurrence_id у тілі JSON." });
+    }
+
+    const { data: row, error: rowErr } = await supabaseAdmin
+      .from("lesson_vote_occurrences")
+      .select("*")
+      .eq("id", occurrenceId)
+      .eq("status", "open")
+      .maybeSingle();
+    if (rowErr) {
+      return res.status(500).json({ ok: false, error: rowErr.message });
+    }
+    if (!row) {
+      return res.status(404).json({ ok: false, error: "Відкрите голосування не знайдено або вже закрите." });
+    }
+
+    await finalizeLessonVoteOccurrence(row);
+    return res.status(200).json({ ok: true, occurrenceId });
+  } catch (error) {
+    console.error("lesson-votes/close failed:", error);
+    return res.status(500).json({ ok: false, error: error?.message || "Failed to close lesson vote." });
+  }
+});
+
+app.get("/api/admin/lesson-votes/open", async (_req, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+    }
+    const { data, error } = await supabaseAdmin
+      .from("lesson_vote_occurrences")
+      .select("id, vote_id, occurrence_at, conducting_display_name, votes_snapshot, lesson_snapshot, status, is_test")
+      .eq("status", "open")
+      .order("occurrence_at", { ascending: false, nullsFirst: false });
+    if (error) {
+      return res.status(500).json({ ok: false, error: error.message });
+    }
+    return res.status(200).json({ ok: true, rows: data || [] });
+  } catch (error) {
+    console.error("admin lesson-votes open failed:", error);
+    return res.status(500).json({ ok: false, error: error?.message || "Failed to load open lesson votes." });
+  }
+});
+
+app.post("/api/admin/lessons/delete", async (req, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+    }
+    const lessonId = String(req.body?.lesson_id || req.body?.lessonId || "").trim();
+    if (!lessonId) {
+      return res.status(400).json({ ok: false, error: "Передайте lesson_id у тілі JSON." });
+    }
+
+    const { data: lessonRow, error: lessonErr } = await supabaseAdmin
+      .from("lessons")
+      .select("id, lesson_time_id, starts_at, lesson_vote_occurrence_id")
+      .eq("id", lessonId)
+      .maybeSingle();
+    if (lessonErr) {
+      return res.status(500).json({ ok: false, error: lessonErr.message });
+    }
+    if (!lessonRow) {
+      return res.status(404).json({ ok: false, error: "Запис заняття не знайдено." });
+    }
+
+    const { error: delLessonErr } = await supabaseAdmin.from("lessons").delete().eq("id", lessonId);
+    if (delLessonErr) {
+      return res.status(500).json({ ok: false, error: delLessonErr.message });
+    }
+
+    let deletedOccurrenceId = null;
+    const linkedOccurrenceId = String(lessonRow.lesson_vote_occurrence_id || "").trim();
+    if (linkedOccurrenceId) {
+      const { error: delOccErr } = await supabaseAdmin
+        .from("lesson_vote_occurrences")
+        .delete()
+        .eq("id", linkedOccurrenceId)
+        .eq("status", "finalized");
+      if (delOccErr) {
+        return res.status(500).json({
+          ok: false,
+          error: `Заняття видалено, але не вдалося видалити пов'язане голосування: ${delOccErr.message}`,
+          lessonDeleted: true,
+        });
+      }
+      deletedOccurrenceId = linkedOccurrenceId;
+    }
+
+    return res.status(200).json({ ok: true, lessonId, deletedOccurrenceId });
+  } catch (error) {
+    console.error("admin lessons delete failed:", error);
+    return res.status(500).json({ ok: false, error: error?.message || "Failed to delete lesson." });
   }
 });
 
@@ -1519,9 +1953,9 @@ if (bot) {
         await ctx.editMessageText(text, { reply_markup: buildLessonConductKeyboard(conductId) });
 
         if (state.linkedGroupVoteKey) {
-          await refreshGroupAttendanceAfterConduct(state.linkedGroupVoteKey, displayName);
+          await refreshGroupAttendanceAfterConduct(state.linkedGroupVoteKey, displayName, String(chatId));
         } else if (state.voteOccurrenceId) {
-          await persistOccurrenceConducting(state.voteOccurrenceId, displayName);
+          await persistOccurrenceConducting(state.voteOccurrenceId, displayName, String(chatId));
         }
 
         await ctx.answerCbQuery(`Проводить: ${displayName}`);

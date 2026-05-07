@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" type="image/png" href="../logo_bbm_circle.png" />
-    <title>Адмін — викладачі</title>
+    <title>Адмін — заняття</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="../assets/css/styles.css" />
     <link rel="stylesheet" href="../assets/css/admin.css" />
   </head>
-  <body data-admin-page="teachers">
+  <body data-admin-page="lessons">
     <nav class="nav nav--admin scrolled" aria-label="Адмін">
       <div class="admin-nav__inner">
         <div class="admin-nav__brand">
@@ -26,8 +26,8 @@
         <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі за порядком">
           <li><a href="prices.html">Ціни</a></li>
           <li><a href="places.html">Місця</a></li>
-          <li><a href="teachers.html" aria-current="page">Викладачі</a></li>
-          <li><a href="lessons.html">Заняття</a></li>
+          <li><a href="teachers.html">Викладачі</a></li>
+          <li><a href="lessons.html" aria-current="page">Заняття</a></li>
         </ol>
         <div id="adminNavMeta" class="admin-nav__meta admin-hide">
           <p class="admin-user admin-nav__user" id="userLine"></p>
@@ -62,41 +62,23 @@
 
       <div id="dashSection" class="admin-hide">
         <div class="admin-top admin-top--title-only">
-          <h1>Викладачі</h1>
+          <h1>Заняття</h1>
         </div>
         <div id="dashError" class="admin-alert admin-alert--error admin-hide" role="status"></div>
         <div id="dashOk" class="admin-alert admin-alert--ok admin-hide" role="status"></div>
 
-        <div class="admin-panel" id="section-teachers">
-          <div class="admin-price-create__head">
-            <h2>Список викладачів</h2>
-            <div class="admin-price-create__actions">
-              <button id="teacherFormToggle" class="btn btn--primary btn--sm btn--price-add" type="button">+ Новий викладач</button>
-            </div>
+        <div class="admin-panel" id="section-lessons">
+          <div class="admin-lessons__head">
+            <h2>Закриті голосування та проведені заняття</h2>
+            <button type="button" class="btn btn--primary btn--sm" id="lessonsBatchVoteBtn">Створити голосування</button>
           </div>
-          <form id="teacherForm" class="admin-grid admin-grid--2 admin-hide">
-            <input type="hidden" id="teacherEditingId" value="" />
-            <div class="admin-field admin-grid-span-2">
-              <label for="teacherName">Ім'я</label>
-              <input id="teacherName" type="text" required />
-            </div>
-            <div id="teacherDescriptionWrap" class="admin-field admin-grid-span-2 admin-hide">
-              <label for="teacherDescription">Короткий опис (необов'язково)</label>
-              <textarea id="teacherDescription" placeholder="Цей текст видно лише в редагуванні"></textarea>
-            </div>
-            <div id="teacherChatWrap" class="admin-field admin-grid-span-2 admin-hide">
-              <label for="teacherChatTarget">Telegram</label>
-              <select id="teacherChatTarget">
-                <option value="">— не вибрано —</option>
-              </select>
-            </div>
-            <div class="admin-actions admin-grid-span-2">
-              <button type="submit" class="btn btn--primary btn--sm" id="teacherSubmitBtn">Додати викладача</button>
-              <button type="button" class="btn btn--ghost btn--sm" id="teacherFormCancel">Скасувати</button>
-              <button type="button" class="btn btn--ghost btn--sm admin-hide" id="teacherCancelEdit">Скасувати редагування</button>
-            </div>
-          </form>
-          <div id="teachersList"><p class="admin-muted">Завантаження…</p></div>
+          <div id="lessonsList"><p class="admin-muted">Завантаження…</p></div>
+          <div id="lessonsPagination"></div>
+          <hr class="admin-lessons__divider" />
+          <div class="admin-lessons__head">
+            <h2>Відкриті голосування</h2>
+          </div>
+          <div id="openLessonVotesList"><p class="admin-muted">Завантаження…</p></div>
         </div>
       </div>
     </main>

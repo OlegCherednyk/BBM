@@ -157,7 +157,7 @@
 
   .admin-nav__jumps {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     order: 3;
     width: 100%;
     gap: 4px;
@@ -264,6 +264,28 @@
   color: var(--brown-dark);
   letter-spacing: -0.015em;
   margin-bottom: 6px;
+}
+
+.admin-lessons__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.admin-lessons__pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.admin-lessons__divider {
+  border: 0;
+  border-top: 1px solid var(--admin-panel-border);
+  margin: 20px 0 14px;
 }
 
 .admin-panel > .admin-muted:first-of-type {
