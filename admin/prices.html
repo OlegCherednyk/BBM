@@ -101,8 +101,72 @@
               <button type="button" class="btn btn--ghost btn--sm admin-hide" id="priceCancelEdit">Скасувати редагування</button>
             </div>
           </form>
-          <div class="admin-sub" style="margin-top: 20px">Поточні ціни</div>
           <div id="pricesList"><p class="admin-muted">Завантаження…</p></div>
+        </div>
+
+        <div class="admin-panel" id="section-smm-prices">
+          <div class="admin-price-create__head">
+            <h2>Гроші краде Віка (грн)</h2>
+            <button id="smmPriceFormToggle" class="btn btn--primary btn--sm btn--price-add" type="button">+ Нова ціна</button>
+          </div>
+          <form id="smmPriceForm" class="admin-grid admin-grid--2 admin-hide">
+            <input type="hidden" id="smmPriceEditingId" value="" />
+            <div class="admin-field">
+              <label for="smmPricePeopleFrom">Людей від</label>
+              <input id="smmPricePeopleFrom" type="number" min="1" step="1" required />
+            </div>
+            <div class="admin-field">
+              <label for="smmPricePeopleTo">Людей до (порожньо = без верхньої межі)</label>
+              <input id="smmPricePeopleTo" type="number" min="1" step="1" />
+            </div>
+            <div class="admin-field admin-grid-span-2 admin-field--price-amount">
+              <label for="smmPriceAmount">Сума (₴)</label>
+              <input id="smmPriceAmount" type="number" min="0" step="1" required />
+            </div>
+            <div class="admin-actions admin-grid-span-2">
+              <button type="submit" class="btn btn--primary btn--sm" id="smmPriceSubmitBtn">Додати ціну</button>
+              <button type="button" class="btn btn--ghost btn--sm" id="smmPriceFormCancel">Скасувати</button>
+              <button type="button" class="btn btn--ghost btn--sm admin-hide" id="smmPriceCancelEdit">
+                Скасувати редагування
+              </button>
+            </div>
+          </form>
+          <div id="smmPricesList"><p class="admin-muted">Завантаження…</p></div>
+        </div>
+
+        <div class="admin-panel" id="section-place-prices">
+          <div class="admin-price-create__head">
+            <h2>Оренда (грн)</h2>
+            <button id="placePriceFormToggle" class="btn btn--primary btn--sm btn--price-add" type="button">
+              + Новий тариф
+            </button>
+          </div>
+          <form id="placePriceForm" class="admin-grid admin-grid--2 admin-hide">
+            <input type="hidden" id="placePriceEditingId" value="" />
+            <div class="admin-field admin-grid-span-2">
+              <label for="placePricePlaceId">Місце</label>
+              <select id="placePricePlaceId" required></select>
+            </div>
+            <div class="admin-field">
+              <label for="placePriceDuration">Тривалість</label>
+              <select id="placePriceDuration" required>
+                <option value="60">1 година</option>
+                <option value="90">1.5 години</option>
+              </select>
+            </div>
+            <div class="admin-field admin-field--price-amount">
+              <label for="placePriceAmount">Сума (₴)</label>
+              <input id="placePriceAmount" type="number" min="0" step="1" required />
+            </div>
+            <div class="admin-actions admin-grid-span-2">
+              <button type="submit" class="btn btn--primary btn--sm" id="placePriceSubmitBtn">Додати тариф</button>
+              <button type="button" class="btn btn--ghost btn--sm" id="placePriceFormCancel">Скасувати</button>
+              <button type="button" class="btn btn--ghost btn--sm admin-hide" id="placePriceCancelEdit">
+                Скасувати редагування
+              </button>
+            </div>
+          </form>
+          <div id="placePricesList"><p class="admin-muted">Завантаження…</p></div>
         </div>
       </div>
     </main>

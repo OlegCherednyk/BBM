@@ -43,12 +43,16 @@ const allowlistSnippet = maybeEl("allowlistSnippet");
 let cachedLessonTypes = [];
 
 let editingPriceId = null;
+let editingSmmPriceId = null;
+let editingPlacePriceId = null;
 let editingTeacherId = null;
 /** @type {{ chat_id: string, username: string | null, first_name: string | null, last_name: string | null }[]} */
 let cachedPrivateTelegramTargets = [];
 let lessonsBatchVoteWired = false;
 const LESSONS_PAGE_SIZE = 10;
 let lessonsPage = 1;
+/** @type {{ id: string, name: string }[]} */
+let cachedPlaces = [];
 
 async function loadPrivateTelegramTargets() {
   const { data, error } = await supabase
@@ -1003,20 +1007,292 @@ async function renderPricesPanel() {
   root.appendChild(wrap);
 }
 
+function fmtSmmPeopleRange(minPeople, maxPeople) {
+  const minVal = Number(minPeople) || 0;
+  const maxVal = Number(maxPeople) || null;
+  if (!maxVal) return `${minVal}+`;
+  if (minVal === maxVal) return `${minVal}`;
+  return `${minVal}-${maxVal}`;
+}
+
+function setSmmPriceFormOpen(isOpen) {
+  const form = maybeEl("smmPriceForm");
+  const toggle = maybeEl("smmPriceFormToggle");
+  if (!form) return;
+  form.classList.toggle("admin-hide", !isOpen);
+  if (toggle) {
+    toggle.textContent = isOpen ? "Закрити форму" : "+ Нова ціна";
+    toggle.setAttribute("aria-expanded", String(isOpen));
+  }
+}
+
+function resetSmmPriceForm() {
+  if (!maybeEl("smmPriceForm")) return;
+  editingSmmPriceId = null;
+  const editingId = maybeEl("smmPriceEditingId");
+  const submitBtn = maybeEl("smmPriceSubmitBtn");
+  const cancelEdit = maybeEl("smmPriceCancelEdit");
+  const peopleFrom = maybeEl("smmPricePeopleFrom");
+  const peopleTo = maybeEl("smmPricePeopleTo");
+  const amount = maybeEl("smmPriceAmount");
+  if (!editingId || !submitBtn || !peopleFrom || !peopleTo || !amount) return;
+  editingId.value = "";
+  peopleFrom.value = "";
+  peopleTo.value = "";
+  amount.value = "";
+  submitBtn.textContent = "Додати ціну";
+  cancelEdit?.classList.add("admin-hide");
+  setSmmPriceFormOpen(false);
+}
+
+function beginEditSmmPrice(row) {
+  const editingId = maybeEl("smmPriceEditingId");
+  const submitBtn = maybeEl("smmPriceSubmitBtn");
+  const cancelEdit = maybeEl("smmPriceCancelEdit");
+  const peopleFrom = maybeEl("smmPricePeopleFrom");
+  const peopleTo = maybeEl("smmPricePeopleTo");
+  const amount = maybeEl("smmPriceAmount");
+  if (!editingId || !submitBtn || !peopleFrom || !peopleTo || !amount) return;
+  editingSmmPriceId = row.id;
+  editingId.value = row.id;
+  peopleFrom.value = String(row.people_from ?? "");
+  peopleTo.value = row.people_to == null ? "" : String(row.people_to);
+  amount.value = String(row.amount_uah ?? 0);
+  submitBtn.textContent = "Зберегти зміни";
+  cancelEdit?.classList.remove("admin-hide");
+  setSmmPriceFormOpen(true);
+}
+
+async function renderSmmPricesPanel() {
+  const root = maybeEl("smmPricesList");
+  if (!root) return;
+  root.innerHTML = '<p class="admin-muted">Завантаження…</p>';
+
+  const { data, error } = await supabase.from("smm_prices").select("*").order("people_from", { ascending: true });
+  if (error) {
+    root.innerHTML = `<p class="admin-muted">${error.message}</p>`;
+    return;
+  }
+  const rows = data || [];
+  if (!rows.length) {
+    root.innerHTML = '<p class="admin-muted">Ще немає SMM прайсів.</p>';
+    return;
+  }
+
+  const tbl = document.createElement("table");
+  tbl.className = "admin-prices-table";
+  tbl.innerHTML = `<thead><tr><th>К-сть людей</th><th>₴</th><th></th></tr></thead><tbody></tbody>`;
+  const tbody = tbl.querySelector("tbody");
+
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${escapeHtml(fmtSmmPeopleRange(row.people_from, row.people_to))}</td><td>${row.amount_uah}</td>`;
+    const td = document.createElement("td");
+
+    const ed = document.createElement("button");
+    ed.type = "button";
+    ed.className = "btn btn--ghost btn--sm";
+    ed.style.padding = "6px 10px";
+    ed.textContent = "Змінити";
+    ed.addEventListener("click", () => beginEditSmmPrice(row));
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "btn btn--danger btn--sm";
+    del.style.padding = "6px 10px";
+    del.style.marginLeft = "6px";
+    del.textContent = "✕";
+    del.title = "Видалити";
+    del.addEventListener("click", async () => {
+      if (!confirm("Видалити цей SMM прайс?")) return;
+      clearDashMessages();
+      const { error: delErr } = await supabase.from("smm_prices").delete().eq("id", row.id);
+      if (delErr) {
+        showDashError(delErr.message);
+        return;
+      }
+      if (editingSmmPriceId === row.id) resetSmmPriceForm();
+      await renderSmmPricesPanel();
+      showDashOk("SMM прайс видалено.");
+    });
+
+    td.append(ed, del);
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "prices-table-wrap";
+  wrap.appendChild(tbl);
+  root.innerHTML = "";
+  root.appendChild(wrap);
+}
+
+function fmtPlacePriceDuration(durationMinutes) {
+  const d = Number(durationMinutes);
+  if (d === 90) return "1.5 години";
+  return "1 година";
+}
+
+function setPlacePriceFormOpen(isOpen) {
+  const form = maybeEl("placePriceForm");
+  const toggle = maybeEl("placePriceFormToggle");
+  if (!form) return;
+  form.classList.toggle("admin-hide", !isOpen);
+  if (toggle) {
+    toggle.textContent = isOpen ? "Закрити форму" : "+ Новий тариф";
+    toggle.setAttribute("aria-expanded", String(isOpen));
+  }
+}
+
+function populatePlacePricePlaceSelect(selectedPlaceId = "") {
+  const sel = maybeEl("placePricePlaceId");
+  if (!sel) return;
+  sel.innerHTML = "";
+  if (!cachedPlaces.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "(немає місць)";
+    sel.appendChild(opt);
+    return;
+  }
+  for (const place of cachedPlaces) {
+    const opt = document.createElement("option");
+    opt.value = place.id;
+    opt.textContent = place.name || "—";
+    sel.appendChild(opt);
+  }
+  if (selectedPlaceId) sel.value = selectedPlaceId;
+  syncCustomSelect(sel);
+}
+
+function resetPlacePriceForm() {
+  if (!maybeEl("placePriceForm")) return;
+  editingPlacePriceId = null;
+  const editingId = maybeEl("placePriceEditingId");
+  const submitBtn = maybeEl("placePriceSubmitBtn");
+  const cancelEdit = maybeEl("placePriceCancelEdit");
+  const duration = maybeEl("placePriceDuration");
+  const amount = maybeEl("placePriceAmount");
+  if (!editingId || !submitBtn || !duration || !amount) return;
+  editingId.value = "";
+  amount.value = "";
+  duration.value = "60";
+  submitBtn.textContent = "Додати тариф";
+  cancelEdit?.classList.add("admin-hide");
+  populatePlacePricePlaceSelect();
+  setPlacePriceFormOpen(false);
+}
+
+function beginEditPlacePrice(row) {
+  const editingId = maybeEl("placePriceEditingId");
+  const submitBtn = maybeEl("placePriceSubmitBtn");
+  const cancelEdit = maybeEl("placePriceCancelEdit");
+  const placeSel = maybeEl("placePricePlaceId");
+  const duration = maybeEl("placePriceDuration");
+  const amount = maybeEl("placePriceAmount");
+  if (!editingId || !submitBtn || !placeSel || !duration || !amount) return;
+
+  editingPlacePriceId = row.id;
+  editingId.value = row.id;
+  submitBtn.textContent = "Зберегти зміни";
+  cancelEdit?.classList.remove("admin-hide");
+  populatePlacePricePlaceSelect(row.place_id);
+  duration.value = String(row.duration_minutes || 60);
+  amount.value = String(row.amount_uah ?? 0);
+  setPlacePriceFormOpen(true);
+}
+
+async function renderPlacePricesPanel() {
+  const root = maybeEl("placePricesList");
+  if (!root) return;
+  root.innerHTML = '<p class="admin-muted">Завантаження…</p>';
+
+  const [{ data: places, error: placesError }, { data: rows, error: pricesError }] = await Promise.all([
+    supabase.from("places").select("id, name").order("sort_order", { ascending: true }),
+    supabase
+      .from("places_prices")
+      .select("id, place_id, duration_minutes, amount_uah, places(name)")
+      .order("created_at", { ascending: true }),
+  ]);
+
+  if (placesError) {
+    root.innerHTML = `<p class="admin-muted">${placesError.message}</p>`;
+    return;
+  }
+  if (pricesError) {
+    root.innerHTML = `<p class="admin-muted">${pricesError.message}</p>`;
+    return;
+  }
+
+  cachedPlaces = places || [];
+  populatePlacePricePlaceSelect();
+
+  const sorted = [...(rows || [])].sort((a, b) => {
+    const placeA = (a.places?.name || "").toLowerCase();
+    const placeB = (b.places?.name || "").toLowerCase();
+    if (placeA !== placeB) return placeA.localeCompare(placeB, "uk");
+    return (a.duration_minutes ?? 0) - (b.duration_minutes ?? 0);
+  });
+
+  if (!sorted.length) {
+    root.innerHTML = '<p class="admin-muted">Ще немає тарифів оренди.</p>';
+    return;
+  }
+
+  const tbl = document.createElement("table");
+  tbl.className = "admin-prices-table";
+  tbl.innerHTML = `<thead><tr><th>Місце</th><th>Тривалість</th><th>₴</th><th></th></tr></thead><tbody></tbody>`;
+  const tbody = tbl.querySelector("tbody");
+
+  for (const row of sorted) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${escapeHtml(row.places?.name || "—")}</td><td>${fmtPlacePriceDuration(row.duration_minutes)}</td><td>${row.amount_uah}</td>`;
+    const td = document.createElement("td");
+
+    const ed = document.createElement("button");
+    ed.type = "button";
+    ed.className = "btn btn--ghost btn--sm";
+    ed.style.padding = "6px 10px";
+    ed.textContent = "Змінити";
+    ed.addEventListener("click", () => beginEditPlacePrice(row));
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "btn btn--danger btn--sm";
+    del.style.padding = "6px 10px";
+    del.style.marginLeft = "6px";
+    del.textContent = "✕";
+    del.title = "Видалити";
+    del.addEventListener("click", async () => {
+      if (!confirm("Видалити цей тариф оренди?")) return;
+      clearDashMessages();
+      const { error: delErr } = await supabase.from("places_prices").delete().eq("id", row.id);
+      if (delErr) {
+        showDashError(delErr.message);
+        return;
+      }
+      if (editingPlacePriceId === row.id) resetPlacePriceForm();
+      await renderPlacePricesPanel();
+      showDashOk("Тариф оренди видалено.");
+    });
+
+    td.append(ed, del);
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "prices-table-wrap";
+  wrap.appendChild(tbl);
+  root.innerHTML = "";
+  root.appendChild(wrap);
+}
+
 function escapeHtml(text) {
   const d = document.createElement("div");
   d.textContent = text;
   return d.innerHTML;
-}
-
-function parseRentPerHourUah(rawValue) {
-  const normalized = String(rawValue ?? "").trim();
-  if (!normalized) return { value: null, error: null };
-  const parsed = parseInt(normalized, 10);
-  if (Number.isNaN(parsed) || parsed < 0) {
-    return { value: null, error: "Вкажи коректну ціну оренди за годину (грн)." };
-  }
-  return { value: parsed, error: null };
 }
 
 function initPriceForm() {
@@ -1080,6 +1356,112 @@ function initPriceForm() {
   });
 }
 
+function initSmmPriceForm() {
+  const form = maybeEl("smmPriceForm");
+  if (!form) return;
+  form.noValidate = true;
+  const toggle = maybeEl("smmPriceFormToggle");
+  const cancel = maybeEl("smmPriceFormCancel");
+  const cancelEdit = maybeEl("smmPriceCancelEdit");
+  toggle?.addEventListener("click", () => setSmmPriceFormOpen(form.classList.contains("admin-hide")));
+  cancel?.addEventListener("click", () => resetSmmPriceForm());
+  cancelEdit?.addEventListener("click", () => resetSmmPriceForm());
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearDashMessages();
+
+    const people_from = parseInt(maybeEl("smmPricePeopleFrom")?.value ?? "", 10);
+    const peopleToRaw = (maybeEl("smmPricePeopleTo")?.value ?? "").trim();
+    const amount_uah = parseInt(maybeEl("smmPriceAmount")?.value ?? "", 10);
+    const people_to = peopleToRaw ? parseInt(peopleToRaw, 10) : null;
+
+    if (Number.isNaN(people_from) || people_from < 1) {
+      showDashError("Вкажи коректне значення «Людей від».");
+      return;
+    }
+    if (peopleToRaw && (Number.isNaN(people_to) || people_to < people_from)) {
+      showDashError("Верхня межа має бути не меншою за «Людей від».");
+      return;
+    }
+    if (Number.isNaN(amount_uah) || amount_uah < 0) {
+      showDashError("Вкажи коректну суму (грн).");
+      return;
+    }
+
+    const payload = { people_from, people_to, amount_uah };
+    const id = maybeEl("smmPriceEditingId")?.value ?? "";
+    let errRow;
+    if (id) {
+      const { error } = await supabase.from("smm_prices").update(payload).eq("id", id);
+      errRow = error;
+    } else {
+      const { error } = await supabase.from("smm_prices").insert(payload);
+      errRow = error;
+    }
+    if (errRow) {
+      showDashError(errRow.message);
+      return;
+    }
+
+    resetSmmPriceForm();
+    await renderSmmPricesPanel();
+    showDashOk(id ? "SMM прайс оновлено." : "SMM прайс додано.");
+  });
+}
+
+function initPlacePriceForm() {
+  const form = maybeEl("placePriceForm");
+  if (!form) return;
+  form.noValidate = true;
+  const toggle = maybeEl("placePriceFormToggle");
+  const cancel = maybeEl("placePriceFormCancel");
+  const cancelEdit = maybeEl("placePriceCancelEdit");
+  toggle?.addEventListener("click", () => setPlacePriceFormOpen(form.classList.contains("admin-hide")));
+  cancel?.addEventListener("click", () => resetPlacePriceForm());
+  cancelEdit?.addEventListener("click", () => resetPlacePriceForm());
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearDashMessages();
+
+    const place_id = maybeEl("placePricePlaceId")?.value ?? "";
+    const duration_minutes = parseInt(maybeEl("placePriceDuration")?.value ?? "", 10);
+    const amount_uah = parseInt(maybeEl("placePriceAmount")?.value ?? "", 10);
+    if (!place_id) {
+      showDashError("Обери місце.");
+      return;
+    }
+    if (![60, 90].includes(duration_minutes)) {
+      showDashError("Тривалість має бути 60 або 90 хв.");
+      return;
+    }
+    if (Number.isNaN(amount_uah) || amount_uah < 0) {
+      showDashError("Вкажи коректну суму (грн).");
+      return;
+    }
+
+    const payload = { place_id, duration_minutes, amount_uah };
+    const id = maybeEl("placePriceEditingId")?.value ?? "";
+    let errRow;
+    if (id) {
+      const { error } = await supabase.from("places_prices").update(payload).eq("id", id);
+      errRow = error;
+    } else {
+      const { error } = await supabase.from("places_prices").insert(payload);
+      errRow = error;
+    }
+    if (errRow) {
+      showDashError(errRow.message);
+      return;
+    }
+
+    resetPlacePriceForm();
+    await renderPlacePricesPanel();
+    showDashOk(id ? "Тариф оренди оновлено." : "Тариф оренди додано.");
+  });
+}
+
 async function refreshDashboard() {
   try {
     switch (ADMIN_PAGE) {
@@ -1091,7 +1473,11 @@ async function refreshDashboard() {
         await loadLessonTypesIntoCache();
         populatePriceLessonTypeSelect();
         resetPriceForm();
+        resetSmmPriceForm();
+        resetPlacePriceForm();
         await renderPricesPanel();
+        await renderSmmPricesPanel();
+        await renderPlacePricesPanel();
         break;
       case "places":
         await loadLessonTypesIntoCache();
@@ -1247,14 +1633,6 @@ function renderPlaceCard(place) {
 
   head.append(left, headActions);
   wrap.appendChild(head);
-
-  if (Number.isFinite(place.rent_per_hour_uah)) {
-    const rent = document.createElement("p");
-    rent.className = "admin-muted";
-    rent.style.margin = "6px 0 8px";
-    rent.textContent = `Оренда: ${new Intl.NumberFormat("uk-UA").format(place.rent_per_hour_uah)} ₴/год`;
-    wrap.appendChild(rent);
-  }
 
   if (place.notes) {
     const n = document.createElement("p");
@@ -1412,10 +1790,6 @@ function renderPlaceCard(place) {
         <option value="Лівий берег">Лівий берег</option>
       </select>
     </div>
-    <div class="admin-field">
-      <label>Оренда за годину (₴)</label>
-      <input data-e="rent" type="number" min="0" step="1" />
-    </div>
     <div class="admin-field admin-grid-span-2">
       <label>Нотатки</label>
       <textarea data-e="notes"></textarea>
@@ -1429,8 +1803,6 @@ function renderPlaceCard(place) {
   editForm.querySelector('[data-e="name"]').value = place.name || "";
   editForm.querySelector('[data-e="address"]').value = place.address || "";
   editForm.querySelector('[data-e="notes"]').value = place.notes || "";
-  editForm.querySelector('[data-e="rent"]').value =
-    Number.isFinite(place.rent_per_hour_uah) ? String(place.rent_per_hour_uah) : "";
   const riverSel = editForm.querySelector('[data-e="river"]');
   if (riverSel) riverSel.value = place.river_bank || "";
 
@@ -1449,8 +1821,6 @@ function renderPlaceCard(place) {
     editForm.querySelector('[data-e="name"]').value = place.name || "";
     editForm.querySelector('[data-e="address"]').value = place.address || "";
     editForm.querySelector('[data-e="notes"]').value = place.notes || "";
-    editForm.querySelector('[data-e="rent"]').value =
-      Number.isFinite(place.rent_per_hour_uah) ? String(place.rent_per_hour_uah) : "";
     if (riverSel) riverSel.value = place.river_bank || "";
     setEditFormOpen(false);
   });
@@ -1463,12 +1833,6 @@ function renderPlaceCard(place) {
     const address = editForm.querySelector('[data-e="address"]').value.trim();
     const notes = editForm.querySelector('[data-e="notes"]').value.trim();
     const river_bank = riverSel ? riverSel.value.trim() || null : null;
-    const rentRaw = editForm.querySelector('[data-e="rent"]').value;
-    const { value: rent_per_hour_uah, error: rentError } = parseRentPerHourUah(rentRaw);
-    if (rentError) {
-      showDashError(rentError);
-      return;
-    }
     const { error } = await supabase
       .from("places")
       .update({
@@ -1477,7 +1841,6 @@ function renderPlaceCard(place) {
         address: address || null,
         notes: notes || null,
         river_bank,
-        rent_per_hour_uah,
       })
       .eq("id", place.id);
     if (error) {
@@ -1497,17 +1860,125 @@ function lessonRow(lt) {
   const row = document.createElement("div");
   row.className = "lesson-row";
   row.innerHTML = `<span></span><div class="admin-actions"></div>`;
-  const typeName = lt.lesson_types?.name || lt.lesson_types?.slug || "—";
-  const label = `${typeName} · ${DAYS_UK[lt.day_of_week]}, ${fmtTime(lt.start_time)}
-  `;
-  row.querySelector("span").textContent = label;
+  const labelEl = row.querySelector("span");
+  const actions = row.querySelector(".admin-actions");
+  let isEditing = false;
 
-  const del = document.createElement("button");
-  del.type = "button";
-  del.className = "btn btn--danger btn--sm";
-  del.textContent = "Видалити";
-  del.addEventListener("click", () => deleteLesson(lt.id));
-  row.querySelector(".admin-actions").appendChild(del);
+  const renderView = () => {
+    isEditing = false;
+    const typeName = lt.lesson_types?.name || lt.lesson_types?.slug || "—";
+    labelEl.textContent = `${typeName} · ${DAYS_UK[lt.day_of_week]}, ${fmtTime(lt.start_time)}`;
+    actions.innerHTML = "";
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "btn btn--ghost btn--sm";
+    editBtn.textContent = "Змінити";
+    editBtn.addEventListener("click", () => renderEdit());
+
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "btn btn--danger btn--sm";
+    delBtn.textContent = "Видалити";
+    delBtn.addEventListener("click", () => deleteLesson(lt.id));
+
+    actions.append(editBtn, delBtn);
+  };
+
+  const renderEdit = () => {
+    if (isEditing) return;
+    isEditing = true;
+    actions.innerHTML = "";
+
+    const wrap = document.createElement("div");
+    wrap.className = "lesson-row__editor";
+
+    const typeSel = document.createElement("select");
+    typeSel.className = "lesson-row__input";
+    for (const t of cachedLessonTypes) {
+      const opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = t.name || t.slug;
+      typeSel.appendChild(opt);
+    }
+    typeSel.value = lt.lesson_type_id || "";
+
+    const daySel = document.createElement("select");
+    daySel.className = "lesson-row__input";
+    for (let i = 0; i < DAYS_UK.length; i++) {
+      const opt = document.createElement("option");
+      opt.value = String(i);
+      opt.textContent = DAYS_UK[i];
+      daySel.appendChild(opt);
+    }
+    daySel.value = String(lt.day_of_week ?? 0);
+
+    const timeIn = document.createElement("input");
+    timeIn.className = "lesson-row__input lesson-row__time";
+    timeIn.type = "time";
+    timeIn.step = "60";
+    timeIn.lang = "uk-UA";
+    timeIn.setAttribute("aria-label", "Час заняття у форматі 24 години");
+    timeIn.value = fmtTime(lt.start_time);
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "btn btn--primary btn--sm";
+    saveBtn.textContent = "Зберегти";
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "btn btn--ghost btn--sm";
+    cancelBtn.textContent = "Скасувати";
+    cancelBtn.addEventListener("click", () => renderView());
+
+    saveBtn.addEventListener("click", async () => {
+      clearDashMessages();
+      const lesson_type_id = typeSel.value;
+      const day_of_week = parseInt(daySel.value, 10);
+      const tm = String(timeIn.value || "").trim();
+      if (!lesson_type_id) {
+        showDashError("Обери тип заняття.");
+        return;
+      }
+      if (!/^\d{2}:\d{2}$/.test(tm)) {
+        showDashError("Вкажи час у форматі 24 години (HH:mm).");
+        return;
+      }
+
+      saveBtn.disabled = true;
+      cancelBtn.disabled = true;
+      const { data, error } = await supabase
+        .from("lesson_times")
+        .update({
+          lesson_type_id,
+          day_of_week,
+          start_time: `${tm}:00`,
+        })
+        .eq("id", lt.id)
+        .select("id, lesson_type_id, day_of_week, start_time, lesson_types(id, slug, name)")
+        .single();
+
+      if (error) {
+        showDashError(error.message);
+        saveBtn.disabled = false;
+        cancelBtn.disabled = false;
+        return;
+      }
+
+      lt.lesson_type_id = data.lesson_type_id;
+      lt.day_of_week = data.day_of_week;
+      lt.start_time = data.start_time;
+      lt.lesson_types = data.lesson_types;
+      renderView();
+      showDashOk("Слот оновлено.");
+    });
+
+    wrap.append(typeSel, daySel, timeIn, saveBtn, cancelBtn);
+    actions.appendChild(wrap);
+  };
+
+  renderView();
   return row;
 }
 
@@ -1664,19 +2135,12 @@ if (placeFormEl) {
     const address = maybeEl("placeAddress")?.value.trim() ?? "";
     const notes = maybeEl("placeNotes")?.value.trim() ?? "";
     const river_bank = maybeEl("placeRiverBank")?.value.trim() || null;
-    const rentRaw = maybeEl("placeRentPerHour")?.value ?? "";
-    const { value: rent_per_hour_uah, error: rentError } = parseRentPerHourUah(rentRaw);
-    if (rentError) {
-      showDashError(rentError);
-      return;
-    }
     const { error } = await supabase.from("places").insert({
       name,
       sort_order,
       address: address || null,
       notes: notes || null,
       river_bank,
-      rent_per_hour_uah,
     });
     if (error) {
       showDashError(error.message);
@@ -1695,6 +2159,8 @@ if (placeFormEl) {
 }
 
 initPriceForm();
+initSmmPriceForm();
+initPlacePriceForm();
 initTeacherForm();
 
 function wireSignOut(btn) {

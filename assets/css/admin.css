@@ -711,6 +711,28 @@
   color: var(--brown-dark);
 }
 
+.lesson-row__editor {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.lesson-row__input {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--cream-mid);
+  border-radius: 8px;
+  background: var(--cream-soft);
+  color: var(--brown-dark);
+  font: inherit;
+  font-size: 0.84rem;
+}
+
+.lesson-row__time {
+  min-width: 112px;
+}
+
 /* ── PRICES TABLE ── */
 .prices-table-wrap {
   overflow-x: auto;
