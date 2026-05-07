@@ -157,7 +157,7 @@
 
   .admin-nav__jumps {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     order: 3;
     width: 100%;
     gap: 4px;
@@ -781,6 +781,103 @@
 .admin-prices-table td:last-child {
   white-space: nowrap;
   text-align: right;
+}
+
+.admin-stats-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.admin-stats-range-panel {
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+
+.admin-stats-range-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(180px, 240px) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.admin-stats-range-form .admin-actions {
+  margin-top: 0;
+  justify-content: flex-start;
+}
+
+.admin-stats-card {
+  border: 1px solid var(--admin-panel-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.admin-stats-card__label {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brown-light);
+  font-weight: 700;
+}
+
+.admin-stats-card__value {
+  margin-top: 6px;
+  font-size: 1.35rem;
+  font-family: var(--ff-display);
+  font-weight: 700;
+  color: var(--brown-dark);
+}
+
+.admin-stats-chart {
+  display: grid;
+  gap: 9px;
+}
+
+.admin-stats-bar {
+  display: grid;
+  grid-template-columns: 180px 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-stats-bar__name {
+  font-size: 0.88rem;
+  color: var(--brown-dark);
+}
+
+.admin-stats-bar__track {
+  height: 16px;
+  border-radius: 999px;
+  background: var(--cream-soft);
+  border: 1px solid var(--admin-panel-border);
+  overflow: hidden;
+}
+
+.admin-stats-bar__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #74862f 0%, #9db458 100%);
+}
+
+.admin-stats-bar__value {
+  font-size: 0.83rem;
+  color: var(--brown-mid);
+  font-weight: 700;
+}
+
+@media (max-width: 860px) {
+  .admin-stats-range-form {
+    grid-template-columns: 1fr 1fr;
+  }
+  .admin-stats-range-form .admin-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 560px) {
+  .admin-stats-range-form {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── CODE/PRE ── */

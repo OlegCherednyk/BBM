@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" type="image/png" href="../logo_bbm_circle.png" />
-    <title>Адмін — місця та розклад</title>
+    <title>Адмін — статистика</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="../assets/css/styles.css" />
     <link rel="stylesheet" href="../assets/css/admin.css" />
   </head>
-  <body data-admin-page="places">
+  <body data-admin-page="stats">
     <nav class="nav nav--admin scrolled" aria-label="Адмін">
       <div class="admin-nav__inner">
         <div class="admin-nav__brand">
@@ -25,10 +25,10 @@
         </div>
         <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі за порядком">
           <li><a href="prices.html">Ціни</a></li>
-          <li><a href="places.html" aria-current="page">Місця</a></li>
+          <li><a href="places.html">Місця</a></li>
           <li><a href="teachers.html">Викладачі</a></li>
           <li><a href="lessons.html">Заняття</a></li>
-          <li><a href="stats.html">Статистика</a></li>
+          <li><a href="stats.html" aria-current="page">Статистика</a></li>
         </ol>
         <div id="adminNavMeta" class="admin-nav__meta admin-hide">
           <button type="button" class="btn btn--ghost btn--sm" id="signOutDash">Вийти</button>
@@ -62,51 +62,41 @@
 
       <div id="dashSection" class="admin-hide">
         <div class="admin-top admin-top--title-only">
-          <h1>Місця та час занять</h1>
+          <h1>Статистика викладачів</h1>
         </div>
         <div id="dashError" class="admin-alert admin-alert--error admin-hide" role="status"></div>
         <div id="dashOk" class="admin-alert admin-alert--ok admin-hide" role="status"></div>
 
-        <div class="admin-panel" id="section-places">
-          <div class="admin-place-create__head">
-            <h2>Місця</h2>
-            <button id="placeFormToggle" class="btn btn--primary btn--sm btn--place-add" type="button">+ Нове місце</button>
-          </div>
-          <form id="placeForm" class="admin-grid admin-grid--2 admin-hide">
+        <div class="admin-panel admin-stats-range-panel">
+          <form id="statsRangeForm" class="admin-stats-range-form">
             <div class="admin-field">
-              <label for="placeName">Назва</label>
-              <input id="placeName" type="text" required placeholder="Студія, зал …" />
+              <label for="statsDateFrom">Період від</label>
+              <input id="statsDateFrom" type="date" />
             </div>
             <div class="admin-field">
-              <label for="placeAddress">Адреса</label>
-              <input id="placeAddress" type="text" placeholder="вул. …" />
+              <label for="statsDateTo">Період до</label>
+              <input id="statsDateTo" type="date" />
             </div>
-            <div class="admin-field admin-grid-span-2">
-              <label for="placeRiverBank">Берег Дніпра</label>
-              <select id="placeRiverBank">
-                <option value="">— не вказано —</option>
-                <option value="Правий берег">Правий берег</option>
-                <option value="Лівий берег">Лівий берег</option>
-              </select>
-              <div class="admin-quick-bank">
-                <button class="btn btn--ghost btn--sm" type="button" data-river-quick="Правий берег">Правий берег</button>
-                <button class="btn btn--ghost btn--sm" type="button" data-river-quick="Лівий берег">Лівий берег</button>
-              </div>
-            </div>
-            <div class="admin-field admin-grid-span-2">
-              <label for="placeNotes">Нотатки</label>
-              <textarea id="placeNotes" placeholder="Орієнтир, паркування …"></textarea>
-            </div>
-            <div class="admin-actions admin-grid-span-2">
-              <button class="btn btn--primary btn--sm" type="submit">Зберегти місце</button>
-              <button id="placeFormCancel" class="btn btn--ghost btn--sm" type="button">Скасувати</button>
+            <div class="admin-actions">
+              <button type="submit" class="btn btn--primary btn--sm">Застосувати</button>
+              <button type="button" id="statsRangeReset" class="btn btn--ghost btn--sm">Скинути</button>
             </div>
           </form>
         </div>
 
         <div class="admin-panel">
-          <h2>Мої місця</h2>
-          <div id="placesList"><p class="admin-muted">Завантаження…</p></div>
+          <h2>Розрахунок виплат</h2>
+          <div id="statsSummaryCards" class="admin-stats-cards"><p class="admin-muted">Завантаження…</p></div>
+        </div>
+
+        <div class="admin-panel">
+          <h2>Хто скільки заробив</h2>
+          <div id="statsChart" class="admin-stats-chart"><p class="admin-muted">Завантаження…</p></div>
+        </div>
+
+        <div class="admin-panel">
+          <h2>Детальна таблиця</h2>
+          <div id="statsTeachersTable"><p class="admin-muted">Завантаження…</p></div>
         </div>
       </div>
     </main>

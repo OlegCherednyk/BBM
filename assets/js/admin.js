@@ -15,7 +15,7 @@ function syncCustomSelect(selectEl) {
   }
 }
 
-/** @type {"login"|"lesson-types"|"prices"|"places"|"teachers"|"lessons"} */
+/** @type {"login"|"lesson-types"|"prices"|"places"|"teachers"|"lessons"|"stats"} */
 const ADMIN_PAGE = /** @type {any} */ (document.body?.dataset.adminPage ?? "lesson-types");
 
 const isLoginPage = ADMIN_PAGE === "login";
@@ -24,6 +24,33 @@ function fmtTime(timeStr) {
   if (!timeStr || typeof timeStr !== "string") return "";
   const part = timeStr.slice(0, 5);
   return part;
+}
+
+function fmtMoney(amount) {
+  const n = Number.isFinite(amount) ? amount : 0;
+  return `${Math.round(n).toLocaleString("uk-UA")} ₴`;
+}
+
+function toDateInputValue(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function startOfDayIso(dateInput) {
+  if (!dateInput) return null;
+  const d = new Date(`${dateInput}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function endOfDayIso(dateInput) {
+  if (!dateInput) return null;
+  const d = new Date(`${dateInput}T23:59:59.999`);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
 }
 
 const { url: supabaseUrl, anonKey: supabaseAnonKey } = await getSupabaseConfig();
@@ -36,7 +63,6 @@ const authError = maybeEl("authError");
 const authOk = maybeEl("authOk");
 const dashError = maybeEl("dashError");
 const dashOk = maybeEl("dashOk");
-const userLine = maybeEl("userLine");
 const allowlistSnippet = maybeEl("allowlistSnippet");
 
 /** @type {{ id: string, slug: string, name: string, duration_minutes: number }[]} */
@@ -1490,6 +1516,9 @@ async function refreshDashboard() {
       case "lessons":
         await renderLessonsPanel();
         break;
+      case "stats":
+        await renderStatsDashboard();
+        break;
       default:
         break;
     }
@@ -1540,6 +1569,242 @@ function showDashOk(msg) {
 function clearDashMessages() {
   dashError?.classList.add("admin-hide");
   dashOk?.classList.add("admin-hide");
+}
+
+function pickSmmAmount(rows, peopleCount) {
+  const people = Math.max(0, Number(peopleCount) || 0);
+  for (const row of rows) {
+    const from = Number(row.people_from) || 0;
+    const to = row.people_to == null ? null : Number(row.people_to) || 0;
+    if (people < from) continue;
+    if (to != null && people > to) continue;
+    return Number(row.amount_uah) || 0;
+  }
+  return 0;
+}
+
+function buildPriceByType(pricesRows) {
+  /** @type {Map<string, {single: number, abonUnit: number}>} */
+  const map = new Map();
+  for (const row of pricesRows || []) {
+    const lessonTypeId = String(row.lesson_type_id || "");
+    if (!lessonTypeId) continue;
+    const amount = Number(row.amount_uah) || 0;
+    const visits = Math.max(1, Number(row.visits_count) || 1);
+    const current = map.get(lessonTypeId) || { single: 0, abonUnit: 0 };
+    if (row.price_kind === "single") {
+      current.single = amount;
+    } else if (row.price_kind === "abon") {
+      const unit = amount / visits;
+      if (!current.abonUnit || unit < current.abonUnit) current.abonUnit = unit;
+    }
+    map.set(lessonTypeId, current);
+  }
+  return map;
+}
+
+async function renderStatsDashboard() {
+  const cardsRoot = maybeEl("statsSummaryCards");
+  const chartRoot = maybeEl("statsChart");
+  const tableRoot = maybeEl("statsTeachersTable");
+  if (!cardsRoot || !chartRoot || !tableRoot) return;
+  cardsRoot.innerHTML = '<p class="admin-muted">Завантаження…</p>';
+  chartRoot.innerHTML = '<p class="admin-muted">Завантаження…</p>';
+  tableRoot.innerHTML = '<p class="admin-muted">Завантаження…</p>';
+
+  const fromInput = maybeEl("statsDateFrom")?.value?.trim() || "";
+  const toInput = maybeEl("statsDateTo")?.value?.trim() || "";
+  const fromIso = startOfDayIso(fromInput);
+  const toIso = endOfDayIso(toInput);
+  if (fromInput && !fromIso) {
+    showDashError("Некоректна дата «від».");
+    return;
+  }
+  if (toInput && !toIso) {
+    showDashError("Некоректна дата «до».");
+    return;
+  }
+  if (fromInput && toInput && fromInput > toInput) {
+    showDashError("Дата «від» має бути не пізніше за «до».");
+    return;
+  }
+
+  let lessonsQuery = supabase
+    .from("lessons")
+    .select(
+      "id, starts_at, abon_count, single_visitors_count, conducting_display_name, place_id, teachers(id, name), lesson_times(lesson_types(id, name, slug))",
+    );
+  if (fromIso) lessonsQuery = lessonsQuery.gte("starts_at", fromIso);
+  if (toIso) lessonsQuery = lessonsQuery.lte("starts_at", toIso);
+
+  const [lessonsRes, pricesRes, smmRes, placePricesRes, lessonTypesRes] = await Promise.all([
+    lessonsQuery,
+    supabase.from("prices").select("lesson_type_id, price_kind, visits_count, amount_uah"),
+    supabase.from("smm_prices").select("people_from, people_to, amount_uah").order("people_from", { ascending: true }),
+    supabase.from("places_prices").select("place_id, duration_minutes, amount_uah"),
+    supabase.from("lesson_types").select("id, duration_minutes, name, slug"),
+  ]);
+
+  if (lessonsRes.error || pricesRes.error || smmRes.error || placePricesRes.error || lessonTypesRes.error) {
+    const msg =
+      lessonsRes.error?.message ||
+      pricesRes.error?.message ||
+      smmRes.error?.message ||
+      placePricesRes.error?.message ||
+      lessonTypesRes.error?.message ||
+      "Не вдалося завантажити статистику.";
+    cardsRoot.innerHTML = `<p class="admin-muted">${escapeHtml(msg)}</p>`;
+    chartRoot.innerHTML = "";
+    tableRoot.innerHTML = "";
+    return;
+  }
+
+  const priceByType = buildPriceByType(pricesRes.data || []);
+  const smmRows = smmRes.data || [];
+  const placePriceMap = new Map((placePricesRes.data || []).map((row) => [`${row.place_id}:${row.duration_minutes}`, Number(row.amount_uah) || 0]));
+  const lessonTypeById = new Map((lessonTypesRes.data || []).map((row) => [String(row.id), row]));
+
+  /** @type {Map<string, {name: string, lessonsCount: number, peopleCount: number, revenue: number, rent: number, smm: number, payout: number}>} */
+  const byTeacher = new Map();
+
+  for (const row of lessonsRes.data || []) {
+    const lessonType = row.lesson_times?.lesson_types || null;
+    const lessonTypeId = String(lessonType?.id || "");
+    const singleCount = Math.max(0, Number(row.single_visitors_count) || 0);
+    const abonCount = Math.max(0, Number(row.abon_count) || 0);
+    const peopleCount = singleCount + abonCount;
+
+    const prices = priceByType.get(lessonTypeId) || { single: 0, abonUnit: 0 };
+    const revenue = singleCount * prices.single + abonCount * prices.abonUnit;
+
+    const lessonTypeCfg = lessonTypeById.get(lessonTypeId);
+    const duration = Number(lessonTypeCfg?.duration_minutes) || 60;
+    const placeId = String(row.place_id || "");
+    const rent = placePriceMap.get(`${placeId}:${duration}`) ?? placePriceMap.get(`${placeId}:60`) ?? 0;
+    const smm = pickSmmAmount(smmRows, peopleCount);
+    const payout = revenue - rent - smm;
+
+    const teacherName =
+      row.teachers?.name?.trim() ||
+      String(row.conducting_display_name || "").trim() ||
+      "Без викладача";
+    const teacherKey = String(row.teachers?.id || teacherName);
+    const agg = byTeacher.get(teacherKey) || {
+      name: teacherName,
+      lessonsCount: 0,
+      peopleCount: 0,
+      revenue: 0,
+      rent: 0,
+      smm: 0,
+      payout: 0,
+    };
+    agg.lessonsCount += 1;
+    agg.peopleCount += peopleCount;
+    agg.revenue += revenue;
+    agg.rent += rent;
+    agg.smm += smm;
+    agg.payout += payout;
+    byTeacher.set(teacherKey, agg);
+  }
+
+  const rows = [...byTeacher.values()].sort((a, b) => b.payout - a.payout);
+  const totalLessons = rows.reduce((sum, row) => sum + row.lessonsCount, 0);
+  const totalPayout = rows.reduce((sum, row) => sum + row.payout, 0);
+  const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
+  const totalRent = rows.reduce((sum, row) => sum + row.rent, 0);
+  const totalSmm = rows.reduce((sum, row) => sum + row.smm, 0);
+  const totalPeople = rows.reduce((sum, row) => sum + row.peopleCount, 0);
+  const totalNetAfterRent = totalRevenue - totalRent;
+
+  cardsRoot.innerHTML = `
+    <div class="admin-stats-card"><div class="admin-stats-card__label">Викладачів</div><div class="admin-stats-card__value">${rows.length}</div></div>
+    <div class="admin-stats-card"><div class="admin-stats-card__label">Проведено занять</div><div class="admin-stats-card__value">${totalLessons}</div></div>
+    <div class="admin-stats-card"><div class="admin-stats-card__label">Всього людей</div><div class="admin-stats-card__value">${totalPeople}</div></div>
+    <div class="admin-stats-card"><div class="admin-stats-card__label">Чистий після оренди</div><div class="admin-stats-card__value">${fmtMoney(totalNetAfterRent)}</div></div>
+    <div class="admin-stats-card"><div class="admin-stats-card__label">Загальні SMM витрати</div><div class="admin-stats-card__value">${fmtMoney(totalSmm)}</div></div>
+  `;
+
+  if (!rows.length) {
+    chartRoot.innerHTML = '<p class="admin-muted">Ще немає проведених занять для розрахунку.</p>';
+    tableRoot.innerHTML = '<p class="admin-muted">Немає даних.</p>';
+    return;
+  }
+
+  const maxAbs = Math.max(1, ...rows.map((row) => Math.abs(row.payout)));
+  chartRoot.innerHTML = "";
+  for (const row of rows) {
+    const bar = document.createElement("div");
+    bar.className = "admin-stats-bar";
+    const pct = Math.max(4, Math.round((Math.abs(row.payout) / maxAbs) * 100));
+    const barColor = row.payout >= 0 ? "linear-gradient(90deg, #74862f 0%, #9db458 100%)" : "linear-gradient(90deg, #d97777 0%, #c04f4f 100%)";
+    bar.innerHTML = `
+      <div class="admin-stats-bar__name">${escapeHtml(row.name)}</div>
+      <div class="admin-stats-bar__track"><div class="admin-stats-bar__fill" style="width:${pct}%;background:${barColor}"></div></div>
+      <div class="admin-stats-bar__value">${fmtMoney(row.payout)}</div>
+    `;
+    chartRoot.appendChild(bar);
+  }
+
+  const table = document.createElement("table");
+  table.className = "admin-prices-table";
+  table.innerHTML = `<thead><tr>
+    <th>Викладач</th>
+    <th>Уроків</th>
+    <th>Людей</th>
+    <th>Виручка</th>
+    <th>Оренда</th>
+    <th>SMM</th>
+    <th>Виплата</th>
+  </tr></thead><tbody></tbody>`;
+  const tbody = table.querySelector("tbody");
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(row.name)}</td>
+      <td>${row.lessonsCount}</td>
+      <td>${row.peopleCount}</td>
+      <td>${fmtMoney(row.revenue)}</td>
+      <td>${fmtMoney(row.rent)}</td>
+      <td>${fmtMoney(row.smm)}</td>
+      <td>${fmtMoney(row.payout)}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "prices-table-wrap";
+  wrap.appendChild(table);
+  tableRoot.innerHTML = "";
+  tableRoot.appendChild(wrap);
+}
+
+function initStatsRangeControls() {
+  const form = maybeEl("statsRangeForm");
+  const fromEl = maybeEl("statsDateFrom");
+  const toEl = maybeEl("statsDateTo");
+  const resetBtn = maybeEl("statsRangeReset");
+  if (!form || !fromEl || !toEl) return;
+
+  if (!fromEl.value && !toEl.value) {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    fromEl.value = toDateInputValue(monthStart);
+    toEl.value = toDateInputValue(now);
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearDashMessages();
+    await renderStatsDashboard();
+  });
+
+  resetBtn?.addEventListener("click", async () => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    fromEl.value = toDateInputValue(monthStart);
+    toEl.value = toDateInputValue(now);
+    clearDashMessages();
+    await renderStatsDashboard();
+  });
 }
 
 function showView(view) {
@@ -2075,7 +2340,6 @@ async function routeAfterAuth(user) {
     showView("blocked");
     return;
   }
-  if (userLine) userLine.textContent = user.email || user.id;
   clearDashMessages();
 
   if (isLoginPage) {
@@ -2162,6 +2426,7 @@ initPriceForm();
 initSmmPriceForm();
 initPlacePriceForm();
 initTeacherForm();
+initStatsRangeControls();
 
 function wireSignOut(btn) {
   if (!btn) return;
