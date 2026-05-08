@@ -363,6 +363,24 @@ function formatMoneyUah(amount) {
   return `${rounded.toLocaleString("uk-UA", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} грн`;
 }
 
+async function resolveSmmAmountForPeople(peopleCount) {
+  if (!supabaseAdmin) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("smm_prices")
+      .select("people_from, people_to, amount_uah")
+      .order("people_from", { ascending: true });
+    if (error) {
+      console.warn("resolveSmmAmountForPeople smm_prices:", error.message);
+      return null;
+    }
+    return pickSmmAmount(data || [], peopleCount);
+  } catch (e) {
+    console.warn("resolveSmmAmountForPeople:", e?.message || e);
+    return null;
+  }
+}
+
 async function notifyConductingTeacherPayout({
   row,
   lessonContext,
@@ -1200,7 +1218,12 @@ async function closeAttendanceVotesInTelegramAndMemory({
     conductingDisplayName,
     audience: "group",
   });
-  const closedText = `${baseText}\n\n⛔️ Голосування закрито.`;
+  const singleCount = Math.max(0, Number(votesByKind?.single?.size) || 0);
+  const abonCount = Math.max(0, Number(votesByKind?.abon?.size) || 0);
+  const peopleCount = singleCount + abonCount;
+  const smmAmount = await resolveSmmAmountForPeople(peopleCount);
+  const smmLine = smmAmount == null ? "📣 Оплата SMM: не вдалося розрахувати" : `📣 Оплата SMM: ${formatMoneyUah(smmAmount)}`;
+  const closedText = `${baseText}\n\n👥 Кількість людей: ${peopleCount}\n${smmLine}\n\n⛔️ Голосування закрито.`;
 
   try {
     await bot.telegram.editMessageText(
