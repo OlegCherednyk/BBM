@@ -350,6 +350,112 @@ function buildLessonVoteKeyboard(voteId) {
   };
 }
 
+function pickSmmAmount(rows, peopleCount) {
+  const people = Math.max(0, Number(peopleCount) || 0);
+  for (const row of rows || []) {
+    const from = Number(row.people_from) || 0;
+    const to = row.people_to == null ? null : Number(row.people_to) || 0;
+    if (people < from) continue;
+    if (to != null && people > to) continue;
+    return Number(row.amount_uah) || 0;
+  }
+  return 0;
+}
+
+function buildPriceByType(pricesRows) {
+  /** @type {Map<string, {single: number, abonUnit: number}>} */
+  const map = new Map();
+  for (const row of pricesRows || []) {
+    const lessonTypeId = String(row.lesson_type_id || "");
+    if (!lessonTypeId) continue;
+    const amount = Number(row.amount_uah) || 0;
+    const visits = Math.max(1, Number(row.visits_count) || 1);
+    const current = map.get(lessonTypeId) || { single: 0, abonUnit: 0 };
+    if (row.price_kind === "single") {
+      current.single = amount;
+    } else if (row.price_kind === "abon") {
+      const unit = amount / visits;
+      if (!current.abonUnit || unit < current.abonUnit) current.abonUnit = unit;
+    }
+    map.set(lessonTypeId, current);
+  }
+  return map;
+}
+
+function formatMoneyUah(amount) {
+  const num = Number(amount) || 0;
+  const rounded = Math.round(num * 100) / 100;
+  return `${rounded.toLocaleString("uk-UA", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} грн`;
+}
+
+async function notifyConductingTeacherPayout({
+  row,
+  lessonContext,
+  votesByKind,
+  conductingDisplayName,
+  conductingTelegramChatId,
+}) {
+  if (!bot || !supabaseAdmin) return;
+  const teacherChatId = conductingTelegramChatId != null ? String(conductingTelegramChatId).trim() : "";
+  if (!teacherChatId) return;
+
+  const singleCount = Math.max(0, Number(votesByKind?.single?.size) || 0);
+  const abonCount = Math.max(0, Number(votesByKind?.abon?.size) || 0);
+  const peopleCount = singleCount + abonCount;
+
+  let lessonTypeId = "";
+  let lessonDuration = 60;
+  try {
+    const { data: lessonTimeRow, error: lessonTimeErr } = await supabaseAdmin
+      .from("lesson_times")
+      .select("lesson_type_id, lesson_types(duration_minutes)")
+      .eq("id", row.lesson_time_id)
+      .maybeSingle();
+    if (lessonTimeErr) {
+      console.warn("notifyConductingTeacherPayout lesson_times:", lessonTimeErr.message);
+      return;
+    }
+    lessonTypeId = String(lessonTimeRow?.lesson_type_id || "");
+    lessonDuration = Number(lessonTimeRow?.lesson_types?.duration_minutes) || 60;
+  } catch (e) {
+    console.warn("notifyConductingTeacherPayout lesson_times:", e?.message || e);
+    return;
+  }
+
+  try {
+    const [pricesRes, smmRes, placePricesRes] = await Promise.all([
+      supabaseAdmin.from("prices").select("lesson_type_id, price_kind, visits_count, amount_uah"),
+      supabaseAdmin.from("smm_prices").select("people_from, people_to, amount_uah").order("people_from", { ascending: true }),
+      supabaseAdmin.from("places_prices").select("place_id, duration_minutes, amount_uah"),
+    ]);
+
+    if (pricesRes.error || smmRes.error || placePricesRes.error) {
+      console.warn(
+        "notifyConductingTeacherPayout prices:",
+        pricesRes.error?.message || smmRes.error?.message || placePricesRes.error?.message
+      );
+      return;
+    }
+
+    const priceByType = buildPriceByType(pricesRes.data || []);
+    const prices = priceByType.get(lessonTypeId) || { single: 0, abonUnit: 0 };
+    const revenue = singleCount * prices.single + abonCount * prices.abonUnit;
+    const placePriceMap = new Map(
+      (placePricesRes.data || []).map((pp) => [`${pp.place_id}:${pp.duration_minutes}`, Number(pp.amount_uah) || 0])
+    );
+    const placeId = String(row.place_id || "");
+    const rent = placePriceMap.get(`${placeId}:${lessonDuration}`) ?? placePriceMap.get(`${placeId}:60`) ?? 0;
+    const smm = pickSmmAmount(smmRes.data || [], peopleCount);
+    const payout = revenue - rent - smm;
+
+    const payoutText = `🧾 Твій заробіток: ${formatMoneyUah(payout)}`;
+
+    await bot.telegram.sendMessage(teacherChatId, payoutText);
+  } catch (e) {
+    console.warn("notifyConductingTeacherPayout:", e?.description || e?.message || e);
+  }
+}
+
 function buildLessonConductMessage(lessonContext, conductorDisplayName) {
   const who =
     typeof conductorDisplayName === "string" && conductorDisplayName.trim().length > 0
@@ -1279,6 +1385,14 @@ async function finalizeLessonVoteOccurrence(row) {
     conductingDisplayName,
     live?.conductingTelegramChatId ?? row.conducting_telegram_chat_id,
   );
+
+  await notifyConductingTeacherPayout({
+    row,
+    lessonContext,
+    votesByKind,
+    conductingDisplayName,
+    conductingTelegramChatId: live?.conductingTelegramChatId ?? row.conducting_telegram_chat_id,
+  });
 }
 
 /** Після рестарту відновлює in-memory стан для відкритих голосувань (callback-и знову працюють). */
@@ -1351,6 +1465,13 @@ async function runScheduledLessonVotesTick() {
 
   try {
     const nowKyiv = DateTime.now().setZone(KYIV_TZ);
+    const tickStartedAt = Date.now();
+    let finalizedCount = 0;
+    let createAttempts = 0;
+    let createdCount = 0;
+    let duplicateCount = 0;
+    let createFailedCount = 0;
+    console.log(`[lesson-vote-scheduler] tick start kyiv=${nowKyiv.toISO()}`);
 
     const { data: openRows, error: openErr } = await supabaseAdmin
       .from("lesson_vote_occurrences")
@@ -1366,6 +1487,7 @@ async function runScheduledLessonVotesTick() {
         const hoursUntil = occ.diff(nowKyiv, "hours").hours;
         if (hoursUntil <= VOTE_SCHED_CLOSE_MAX_HOURS_BEFORE) {
           await finalizeLessonVoteOccurrence(row);
+          finalizedCount++;
         }
       }
     }
@@ -1393,6 +1515,7 @@ async function runScheduledLessonVotesTick() {
       if (!occurrenceIso) {
         continue;
       }
+      createAttempts++;
       const exec = await executeLessonAttendanceVote({
         lessonTimeId: row.id,
         placeId: row.place_id,
@@ -1402,11 +1525,21 @@ async function runScheduledLessonVotesTick() {
         occurrenceAtIso: occurrenceIso,
       });
 
-      if (exec.duplicate) continue;
-      if (!exec.success) {
-        console.error("scheduler open vote failed:", exec.error);
+      if (exec.duplicate) {
+        duplicateCount++;
+        continue;
       }
+      if (!exec.success) {
+        createFailedCount++;
+        console.error("scheduler open vote failed:", exec.error);
+        continue;
+      }
+      createdCount++;
     }
+    const elapsedMs = Date.now() - tickStartedAt;
+    console.log(
+      `[lesson-vote-scheduler] tick done finalized=${finalizedCount} createAttempts=${createAttempts} created=${createdCount} duplicates=${duplicateCount} failed=${createFailedCount} elapsedMs=${elapsedMs}`
+    );
   } catch (e) {
     console.error("runScheduledLessonVotesTick:", e?.message || e);
   }
@@ -1490,6 +1623,13 @@ async function closeSingleTeacherTestVote(voteIdRaw) {
           conductingDisplayName,
           found.state.conductingTelegramChatId ?? occRow.conducting_telegram_chat_id,
         );
+        await notifyConductingTeacherPayout({
+          row: occRow,
+          lessonContext: found.state.lessonContext,
+          votesByKind: votesSnap,
+          conductingDisplayName,
+          conductingTelegramChatId: found.state.conductingTelegramChatId ?? occRow.conducting_telegram_chat_id,
+        });
       }
     }
   }
