@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import { Telegraf } from "telegraf";
 import { createClient } from "@supabase/supabase-js";
 import { DateTime } from "luxon";
+import { startDailyLessonVoteCron } from "./lesson-vote-cron.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
@@ -43,40 +44,14 @@ const KYIV_TZ = "Europe/Kyiv";
 /** Вікно автоголосування: відправка не раніше ніж за 5×24 год і не пізніше ніж за 24 год до початку заняття (Київ) */
 const VOTE_SCHED_OPEN_MAX_HOURS_BEFORE = 5 * 24;
 const VOTE_SCHED_CLOSE_MAX_HOURS_BEFORE = 1;
-const VOTE_RECENCY_DAYS = 5;
 const SCHEDULER_TICK_MS = 60 * 1000;
+const lessonVoteDailyCreateCronTime = process.env.LESSON_VOTE_DAILY_CREATE_CRON_TIME;
+const lessonVoteDailyCloseCronTime = process.env.LESSON_VOTE_DAILY_CLOSE_CRON_TIME;
 
-/** Те саме вікно, що й у runScheduledLessonVotesTick: (1; 120] год до початку заняття (Київ). */
+/** Вікно для створення бойових голосувань: (1; 120] год до початку заняття (Київ). */
 function isOccurrenceInScheduledVoteWindow(occurrenceKyiv, nowKyiv) {
   const hoursUntil = occurrenceKyiv.diff(nowKyiv, "hours").hours;
   return hoursUntil > VOTE_SCHED_CLOSE_MAX_HOURS_BEFORE && hoursUntil <= VOTE_SCHED_OPEN_MAX_HOURS_BEFORE;
-}
-
-/**
- * Чи існує хоч одне бойове голосування (open/finalized) у межах ±5 днів від now.
- * Якщо такого запису немає — крон має право створити голосування одразу.
- */
-async function hasRecentLessonVoteOccurrence(lessonTimeId, nowKyiv) {
-  if (!supabaseAdmin) return false;
-  const fromIso = nowKyiv.minus({ days: VOTE_RECENCY_DAYS }).toUTC().toISO();
-  const toIso = nowKyiv.plus({ days: VOTE_RECENCY_DAYS }).toUTC().toISO();
-  if (!fromIso || !toIso) return false;
-
-  const { data, error } = await supabaseAdmin
-    .from("lesson_vote_occurrences")
-    .select("id")
-    .eq("lesson_time_id", lessonTimeId)
-    .eq("is_test", false)
-    .in("status", ["open", "finalized"])
-    .gte("occurrence_at", fromIso)
-    .lte("occurrence_at", toIso)
-    .limit(1);
-
-  if (error) {
-    console.error("scheduler recent votes lookup:", error.message);
-    return true;
-  }
-  return Array.isArray(data) && data.length > 0;
 }
 
 function resolveGroupVoteChatId() {
@@ -594,6 +569,42 @@ async function refreshGroupAttendanceAfterConduct(
     console.error("Failed to refresh group attendance message:", err?.description || err?.message || err);
   }
 
+  // Sync "Я провожу" state across all teachers' private chats for this same group vote.
+  const conductText = buildLessonConductMessage(groupState.lessonContext, groupState.conductingDisplayName);
+  const updatedConductKeys = new Set();
+  for (const [cKey, cState] of activeConductVotes.entries()) {
+    if (cState?.linkedGroupVoteKey !== linkedGroupVoteKey) continue;
+    const cParts = parseMessageStateKey(cKey);
+    if (!cParts) continue;
+    updatedConductKeys.add(cKey);
+    try {
+      await bot.telegram.editMessageText(cParts.chatId, cParts.messageId, undefined, conductText, {
+        reply_markup: buildLessonConductKeyboard(cState.conductId),
+      });
+      cState.conductorDisplayName = groupState.conductingDisplayName;
+    } catch (err) {
+      console.error("Failed to refresh teacher conduct message:", err?.description || err?.message || err);
+    }
+  }
+
+  // If this conduct message was restored only from DB row and is not in memory map, sync it too.
+  const rowConductMessages = Array.isArray(groupState?.conductMessages) ? groupState.conductMessages : [];
+  for (const c of rowConductMessages) {
+    const cid = c?.chat_id;
+    const mid = c?.message_id;
+    const conductId = c?.conduct_id;
+    if (!cid || !Number.isFinite(Number(mid)) || !conductId) continue;
+    const key = attendanceGroupMemoryKey(String(cid), Number(mid));
+    if (updatedConductKeys.has(key)) continue;
+    try {
+      await bot.telegram.editMessageText(String(cid), Number(mid), undefined, conductText, {
+        reply_markup: buildLessonConductKeyboard(String(conductId)),
+      });
+    } catch (err) {
+      console.error("Failed to refresh teacher conduct message (from row):", err?.description || err?.message || err);
+    }
+  }
+
   if (groupState.voteOccurrenceId) {
     await persistOccurrenceConducting(
       groupState.voteOccurrenceId,
@@ -918,6 +929,7 @@ async function executeLessonAttendanceVote(opts) {
     votesByKind: votesByKindGroup,
     voteOccurrenceId,
     isTestOccurrence: Boolean(isTest),
+    conductMessages: [],
   });
 
   const sendResults = await Promise.allSettled(
@@ -965,6 +977,11 @@ async function executeLessonAttendanceVote(opts) {
       })
       .eq("id", voteOccurrenceId);
     if (upErr) console.error("lesson_vote_occurrences update telegram ids:", upErr.message);
+  }
+
+  const groupStateAfterDmSend = activeLessonVotes.get(groupVoteStateKey);
+  if (groupStateAfterDmSend) {
+    groupStateAfterDmSend.conductMessages = conductMessages;
   }
 
   const delivered = [];
@@ -1437,6 +1454,7 @@ async function hydrateOpenLessonVotesFromDb() {
         votesByKind,
         voteOccurrenceId: row.id,
         isTestOccurrence: Boolean(row.is_test),
+        conductMessages: Array.isArray(row.conduct_messages) ? row.conduct_messages : [],
       });
 
       const conducts = Array.isArray(row.conduct_messages) ? row.conduct_messages : [];
@@ -1460,89 +1478,42 @@ async function hydrateOpenLessonVotesFromDb() {
   }
 }
 
-async function runScheduledLessonVotesTick() {
-  if (!bot || !supabaseAdmin) return;
-
-  try {
-    const nowKyiv = DateTime.now().setZone(KYIV_TZ);
-    const tickStartedAt = Date.now();
-    let finalizedCount = 0;
-    let createAttempts = 0;
-    let createdCount = 0;
-    let duplicateCount = 0;
-    let createFailedCount = 0;
-    console.log(`[lesson-vote-scheduler] tick start kyiv=${nowKyiv.toISO()}`);
-
-    const { data: openRows, error: openErr } = await supabaseAdmin
-      .from("lesson_vote_occurrences")
-      .select("*")
-      .eq("status", "open")
-      .eq("is_test", false);
-
-    if (openErr) {
-      console.error("scheduler open votes:", openErr.message);
-    } else {
-      for (const row of openRows || []) {
-        const occ = DateTime.fromISO(row.occurrence_at, { zone: "utc" }).setZone(KYIV_TZ);
-        const hoursUntil = occ.diff(nowKyiv, "hours").hours;
-        if (hoursUntil <= VOTE_SCHED_CLOSE_MAX_HOURS_BEFORE) {
-          await finalizeLessonVoteOccurrence(row);
-          finalizedCount++;
-        }
-      }
-    }
-
-    const { data: slots, error } = await supabaseAdmin
-      .from("lesson_times")
-      .select("id, place_id, day_of_week, start_time")
-      .not("place_id", "is", null);
-
-    if (error) {
-      console.error("scheduler lesson_times:", error.message);
-      return;
-    }
-
-    for (const row of slots || []) {
-      const next = computeNextOccurrenceKyiv(row);
-      if (!next) continue;
-      const inWindow = isOccurrenceInScheduledVoteWindow(next, nowKyiv);
-      if (!inWindow) {
-        const hasRecent = await hasRecentLessonVoteOccurrence(row.id, nowKyiv);
-        if (hasRecent) continue;
-      }
-
-      const occurrenceIso = next.toUTC().toISO();
-      if (!occurrenceIso) {
-        continue;
-      }
-      createAttempts++;
-      const exec = await executeLessonAttendanceVote({
-        lessonTimeId: row.id,
-        placeId: row.place_id,
-        defaultUsed: false,
-        occurredAt: null,
-        persistToDb: true,
-        occurrenceAtIso: occurrenceIso,
-      });
-
-      if (exec.duplicate) {
-        duplicateCount++;
-        continue;
-      }
-      if (!exec.success) {
-        createFailedCount++;
-        console.error("scheduler open vote failed:", exec.error);
-        continue;
-      }
-      createdCount++;
-    }
-    const elapsedMs = Date.now() - tickStartedAt;
-    console.log(
-      `[lesson-vote-scheduler] tick done finalized=${finalizedCount} createAttempts=${createAttempts} created=${createdCount} duplicates=${duplicateCount} failed=${createFailedCount} elapsedMs=${elapsedMs}`
-    );
-  } catch (e) {
-    console.error("runScheduledLessonVotesTick:", e?.message || e);
+async function closeOpenVotesForToday() {
+  if (!bot || !supabaseAdmin) {
+    return { attempted: 0, finalized: 0, failed: 0 };
   }
+
+  const nowKyiv = DateTime.now().setZone(KYIV_TZ);
+  const dayStartUtcIso = nowKyiv.startOf("day").toUTC().toISO();
+  const dayEndUtcIso = nowKyiv.endOf("day").toUTC().toISO();
+  if (!dayStartUtcIso || !dayEndUtcIso) {
+    return { attempted: 0, finalized: 0, failed: 0 };
+  }
+
+  const { data: openRows, error } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .select("*")
+    .eq("status", "open")
+    .eq("is_test", false)
+    .gte("occurrence_at", dayStartUtcIso)
+    .lte("occurrence_at", dayEndUtcIso)
+    .order("occurrence_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`closeOpenVotesForToday load failed: ${error.message}`);
+  }
+
+  let finalized = 0;
+  let failed = 0;
+  for (const row of openRows || []) {
+    try {
+      await finalizeLessonVoteOccurrence(row);
+      finalized++;
+    } catch (_e) {
+      failed++;
+    }
+  }
+  return { attempted: (openRows || []).length, finalized, failed };
 }
 
 /**
@@ -2002,11 +1973,12 @@ app.post("/api/signup", async (req, res) => {
       `🕐 Отримано: ${when}`,
     ].join("\n");
 
-    const targetChatIds = await resolveTargetChatIds();
+    const teacherTargets = await loadTeacherTargetsWithChatId();
+    const targetChatIds = teacherTargets.map((t) => t.chatId);
     if (!targetChatIds.length) {
       return res.status(500).json({
         ok: false,
-        error: "No chat IDs found. Send a message to bot first (private chat/group/channel).",
+        error: "No teacher chat IDs found. Fill `teachers.chat_id` for teachers in admin/Supabase.",
       });
     }
 
@@ -2158,14 +2130,8 @@ if (bot) {
     }
   });
 
-  console.log("[lesson-vote-scheduler] boot check: waiting for bot launch");
   const botLaunchStartedAtMs = Date.now();
   let botLaunchSettled = false;
-  const botLaunchWatchdog = setInterval(() => {
-    if (botLaunchSettled) return;
-    const elapsedSec = Math.floor((Date.now() - botLaunchStartedAtMs) / 1000);
-    console.warn(`[lesson-vote-scheduler] bot launch status=pending elapsed=${elapsedSec}s`);
-  }, 10_000);
   const botLaunchDiagnosticTimeout = setTimeout(() => {
     if (botLaunchSettled) return;
     console.error(
@@ -2176,7 +2142,6 @@ if (bot) {
     .launch()
     .then(() => {
       botLaunchSettled = true;
-      clearInterval(botLaunchWatchdog);
       clearTimeout(botLaunchDiagnosticTimeout);
       console.log("Telegram bot polling started");
       console.log("[lesson-vote-scheduler] bot launch status=ok");
@@ -2190,27 +2155,27 @@ if (bot) {
       }, SCHEDULER_TICK_MS);
       if (supabaseAdmin) {
         console.log("[lesson-vote-scheduler] init status=ok (supabase=connected, tick_interval_ms=60000)");
-        hydrateOpenLessonVotesFromDb()
-          .then(() =>
-            runScheduledLessonVotesTick().catch((e) => console.error("Initial lesson vote scheduler tick:", e))
-          )
-          .catch((e) => console.error("hydrateOpenLessonVotesFromDb:", e));
-        setInterval(() => {
-          runScheduledLessonVotesTick().catch((e) => console.error("Lesson vote scheduler tick:", e));
-        }, SCHEDULER_TICK_MS);
+        hydrateOpenLessonVotesFromDb().catch((e) => console.error("hydrateOpenLessonVotesFromDb:", e));
       } else {
         console.error("[lesson-vote-scheduler] init status=disabled (reason=supabase_not_configured)");
       }
     })
     .catch((error) => {
       botLaunchSettled = true;
-      clearInterval(botLaunchWatchdog);
       clearTimeout(botLaunchDiagnosticTimeout);
       const msg = error?.description || error?.message || String(error);
       console.error("Failed to launch Telegram bot polling:", msg);
       console.error(`[lesson-vote-scheduler] init status=disabled (reason=bot_launch_failed, error=${msg})`);
     });
 }
+
+startDailyLessonVoteCron({
+  createDailyTimeEnv: lessonVoteDailyCreateCronTime,
+  closeDailyTimeEnv: lessonVoteDailyCloseCronTime,
+  runBatchTeacherVotesInWindow,
+  closeOpenVotesForToday,
+  supabaseAdmin,
+});
 
 app.listen(port, () => {
   console.log(`Server is running at http://localhost:${port}`);
