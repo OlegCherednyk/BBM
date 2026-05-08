@@ -2158,10 +2158,28 @@ if (bot) {
     }
   });
 
+  console.log("[lesson-vote-scheduler] boot check: waiting for bot launch");
+  const botLaunchStartedAtMs = Date.now();
+  let botLaunchSettled = false;
+  const botLaunchWatchdog = setInterval(() => {
+    if (botLaunchSettled) return;
+    const elapsedSec = Math.floor((Date.now() - botLaunchStartedAtMs) / 1000);
+    console.warn(`[lesson-vote-scheduler] bot launch status=pending elapsed=${elapsedSec}s`);
+  }, 10_000);
+  const botLaunchDiagnosticTimeout = setTimeout(() => {
+    if (botLaunchSettled) return;
+    console.error(
+      "[lesson-vote-scheduler] bot launch diagnostic: pending >60s (possible reasons: blocked network to api.telegram.org, proxy/firewall, DNS issues, or another bot process causing long-poll contention)"
+    );
+  }, 60_000);
   bot
     .launch()
     .then(() => {
+      botLaunchSettled = true;
+      clearInterval(botLaunchWatchdog);
+      clearTimeout(botLaunchDiagnosticTimeout);
       console.log("Telegram bot polling started");
+      console.log("[lesson-vote-scheduler] bot launch status=ok");
       syncTelegramChatsFromUpdates().catch((e) =>
         console.error("Initial Telegram chat discovery:", e?.description || e?.message || e)
       );
@@ -2171,6 +2189,7 @@ if (bot) {
         );
       }, SCHEDULER_TICK_MS);
       if (supabaseAdmin) {
+        console.log("[lesson-vote-scheduler] init status=ok (supabase=connected, tick_interval_ms=60000)");
         hydrateOpenLessonVotesFromDb()
           .then(() =>
             runScheduledLessonVotesTick().catch((e) => console.error("Initial lesson vote scheduler tick:", e))
@@ -2179,10 +2198,17 @@ if (bot) {
         setInterval(() => {
           runScheduledLessonVotesTick().catch((e) => console.error("Lesson vote scheduler tick:", e));
         }, SCHEDULER_TICK_MS);
+      } else {
+        console.error("[lesson-vote-scheduler] init status=disabled (reason=supabase_not_configured)");
       }
     })
     .catch((error) => {
-      console.error("Failed to launch Telegram bot polling:", error?.description || error?.message || error);
+      botLaunchSettled = true;
+      clearInterval(botLaunchWatchdog);
+      clearTimeout(botLaunchDiagnosticTimeout);
+      const msg = error?.description || error?.message || String(error);
+      console.error("Failed to launch Telegram bot polling:", msg);
+      console.error(`[lesson-vote-scheduler] init status=disabled (reason=bot_launch_failed, error=${msg})`);
     });
 }
 
