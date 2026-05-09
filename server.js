@@ -271,9 +271,9 @@ function buildLessonVoteMessage({
   conductingDisplayName,
   audience = "dm",
 }) {
-  const abonVoters = [...(votesByKind.abon || new Map()).values()];
-  const singleVoters = [...(votesByKind.single || new Map()).values()];
-  const skipVoters = [...(votesByKind.skip || new Map()).values()];
+  const abonVoters = [...(votesByKind.abon || new Map()).values()].map(voteParticipantLabel).filter(Boolean);
+  const singleVoters = [...(votesByKind.single || new Map()).values()].map(voteParticipantLabel).filter(Boolean);
+  const skipVoters = [...(votesByKind.skip || new Map()).values()].map(voteParticipantLabel).filter(Boolean);
   const abonLine = abonVoters.length ? abonVoters.join(", ") : "поки немає";
   const singleLine = singleVoters.length ? singleVoters.join(", ") : "поки немає";
   const skipLine = skipVoters.length ? skipVoters.join(", ") : "поки немає";
@@ -312,10 +312,84 @@ function buildLessonVoteMessage({
 
 function buildDisplayNameFromUser(user) {
   if (!user) return "Невідомий";
-  if (typeof user.username === "string" && user.username.trim()) return `@${user.username.trim()}`;
-  const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+  const rawFirst = typeof user.first_name === "string" ? user.first_name.trim() : "";
+  const rawLast = typeof user.last_name === "string" ? user.last_name.trim() : "";
+  const fullName = [rawFirst, rawLast].filter(Boolean).join(" ").trim();
   if (fullName) return fullName;
-  return `id:${String(user.id || "unknown")}`;
+  if (typeof user.username === "string" && user.username.trim())
+    return `@${user.username.trim()}`;
+  return `id:${String(user.id ?? "unknown")}`;
+}
+
+/**
+ * Якщо в callback недоступні імʼя/нік — добираємо профіль учасника чату через getChatMember (частіше допомагає в групах).
+ * @param {{ getChatMember: (chatId: number | string, userId: number) => Promise<{ user?: { first_name?: string, last_name?: string, username?: string, id?: number } }> }} telegram
+ */
+async function resolveVoterDisplayName(telegram, chatId, fromUser) {
+  const label = buildDisplayNameFromUser(fromUser);
+  const uid = Number(fromUser?.id);
+  if (!telegram || chatId == null || !Number.isFinite(uid)) return label;
+  const weak =
+    label === "Невідомий" || /^id:\d+$/.test(label) || /^id:unknown$/i.test(label) || label.trim() === "";
+  if (!weak) return label;
+  try {
+    const member = await telegram.getChatMember(chatId, uid);
+    const u = member?.user;
+    if (u) {
+      const enriched = buildDisplayNameFromUser(u);
+      if (enriched !== "Невідомий" && !/^id:\d+$/.test(enriched) && enriched.trim() !== "") return enriched;
+    }
+  } catch (_e) {
+    // ignore (бот без прав на getChatMember, приватний чат тощо)
+  }
+  return label;
+}
+
+/** Підпис у тексті голосування (повідомлення Telegram). */
+function voteParticipantLabel(participant) {
+  if (participant == null) return "";
+  if (typeof participant === "string") return String(participant).trim();
+  if (typeof participant === "object") return String(participant.name ?? "").trim();
+  return "";
+}
+
+/** Розбір рядка або { n, u } з votes_snapshot після завантаження з БД. */
+function snapshotToVoteParticipant(uidStr, raw) {
+  const uid = String(uidStr ?? "").trim();
+  if (raw == null || raw === "")
+    return { name: uid ? `Telegram ${uid}` : "Telegram ?", telegram_username: null };
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    return { name: s || `Telegram ${uid}`, telegram_username: null };
+  }
+  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+    const name = String(raw.n ?? raw.name ?? "").trim();
+    let un = raw.u ?? raw.un ?? null;
+    if (un != null) {
+      un = String(un).trim().replace(/^@/, "");
+      un = un || null;
+    }
+    return { name: name || `Telegram ${uid}`, telegram_username: un };
+  }
+  return { name: `Telegram ${uid}`, telegram_username: null };
+}
+
+/** У JSON snapshots: або рядок (імʼя), або при наявності @ — { n, u }. */
+function voteParticipantToSnapshotStored(uidStr, participant) {
+  const uid = String(uidStr ?? "").trim();
+  if (participant == null || participant === "") return uid ? `Telegram ${uid}` : "";
+  if (typeof participant === "string") {
+    const s = participant.trim();
+    return s || (uid ? `Telegram ${uid}` : "");
+  }
+  const nameRaw = typeof participant?.name === "string" ? participant.name.trim() : "";
+  const name = nameRaw || (uid ? `Telegram ${uid}` : "");
+  const uRaw = participant?.telegram_username;
+  let u =
+    typeof uRaw === "string" && uRaw.trim() ? String(uRaw).trim().replace(/^@/, "") : "";
+  u = u || "";
+  if (u) return { n: name, u };
+  return name;
 }
 
 function buildLessonVoteKeyboard(voteId) {
@@ -499,7 +573,8 @@ function votesByKindToSnapshot(votesByKind) {
   for (const k of ["abon", "single", "skip"]) {
     const m = votesByKind?.[k];
     if (!(m instanceof Map)) continue;
-    for (const [uid, name] of m.entries()) out[k][String(uid)] = String(name);
+    for (const [uid, participant] of m.entries())
+      out[k][String(uid)] = voteParticipantToSnapshotStored(String(uid), participant);
   }
   return out;
 }
@@ -510,7 +585,8 @@ function snapshotToVotesByKind(snap) {
   for (const k of ["abon", "single", "skip"]) {
     const obj = snap[k];
     if (obj && typeof obj === "object") {
-      for (const [uid, name] of Object.entries(obj)) votesByKind[k].set(String(uid), String(name));
+      for (const [uid, raw] of Object.entries(obj))
+        votesByKind[k].set(String(uid), snapshotToVoteParticipant(String(uid), raw));
     }
   }
   return votesByKind;
@@ -2096,7 +2172,7 @@ if (bot) {
           return;
         }
 
-        const displayName = buildDisplayNameFromUser(ctx.from);
+        const displayName = await resolveVoterDisplayName(ctx.telegram, chatId, ctx.from);
         state.conductorDisplayName = displayName;
 
         const text = buildLessonConductMessage(state.lessonContext, state.conductorDisplayName);
@@ -2137,11 +2213,18 @@ if (bot) {
         return;
       }
 
-      const displayName = buildDisplayNameFromUser(ctx.from);
+      const displayName = await resolveVoterDisplayName(ctx.telegram, chatId, ctx.from);
+      const telegramUsername =
+        typeof ctx.from?.username === "string" && ctx.from.username.trim()
+          ? ctx.from.username.trim().replace(/^@/, "")
+          : null;
       voteState.votesByKind.abon.delete(userId);
       voteState.votesByKind.single.delete(userId);
       voteState.votesByKind.skip.delete(userId);
-      voteState.votesByKind[choice].set(userId, displayName);
+      voteState.votesByKind[choice].set(userId, {
+        name: displayName,
+        telegram_username: telegramUsername,
+      });
 
       const text = buildLessonVoteMessage({
         ...voteState.lessonContext,

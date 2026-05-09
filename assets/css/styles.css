@@ -461,9 +461,15 @@ img, svg { display: block; }
   box-shadow: 0 12px 28px rgba(69, 48, 29, 0.16);
   padding: 6px;
   display: none;
+  flex-direction: column;
+  gap: 3px;
+  box-sizing: border-box;
 }
-.custom-select.is-open .custom-select__menu { display: block; }
+.custom-select.is-open .custom-select__menu {
+  display: flex;
+}
 .custom-select__option {
+  flex: 0 0 auto;
   width: 100%;
   border: none;
   border-radius: 8px;

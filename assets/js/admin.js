@@ -311,16 +311,23 @@ function lessonTypeLabel(row) {
   );
 }
 
+/** @param {HTMLTableRowElement} lessonRow */
+function removeOccurrenceVisitPanel(lessonRow) {
+  const next = lessonRow.nextElementSibling;
+  if (!next || !next.dataset.visitPanelFor) return;
+  if (next.dataset.visitPanelFor === lessonRow.dataset.visitRowUid) {
+    next.remove();
+  }
+}
+
 /**
  * Панель відвідувань після фіналізації голосування (rollback через API).
+ * Показується лише в режимі редагування рядка заняття.
  * @param {HTMLTableRowElement} lessonRow
  * @param {{ id?: string, vote_finalized_at?: string | null, lesson_vote_occurrence_id?: string | null }} row
  */
 async function renderOccurrenceVisitControls(lessonRow, row) {
-  const prev = lessonRow.nextElementSibling;
-  if (prev && prev.dataset.visitPanelFor === lessonRow.dataset.visitRowUid) {
-    prev.remove();
-  }
+  removeOccurrenceVisitPanel(lessonRow);
   const occId = row.lesson_vote_occurrence_id ? String(row.lesson_vote_occurrence_id).trim() : "";
   if (!occId || !row.vote_finalized_at) return;
 
@@ -529,6 +536,8 @@ function renderLessonRowEdit(tr, row, onCancel, onSave) {
 
   actionsTd.append(saveBtn, cancelBtn);
   tr.appendChild(actionsTd);
+
+  if (tr.parentNode) void renderOccurrenceVisitControls(tr, row);
 }
 
 async function renderLessonsPanel() {
@@ -611,6 +620,7 @@ async function renderLessonsPanel() {
       const tr = document.createElement("tr");
 
       const enterView = () => {
+        removeOccurrenceVisitPanel(tr);
         renderLessonRowView(
           tr,
           row,
@@ -637,7 +647,6 @@ async function renderLessonsPanel() {
             showDashOk("Запис заняття (і пов'язане голосування) видалено.");
           },
         );
-        if (tr.parentNode) void renderOccurrenceVisitControls(tr, row);
       };
 
       const enterEdit = () => {
@@ -673,7 +682,6 @@ async function renderLessonsPanel() {
 
       enterView();
       tbody.appendChild(tr);
-      void renderOccurrenceVisitControls(tr, row);
     }
 
     const wrap = document.createElement("div");
@@ -2416,12 +2424,14 @@ if (signUpForm) {
 
 async function routeAfterAuth(user) {
   if (!user) {
+    lastSuccessfulDashBootstrapUserId = null;
     if (isLoginPage) showView("auth");
     else location.href = "./index.html";
     return;
   }
   const allowed = await isAdminUser(user.id);
   if (!allowed) {
+    lastSuccessfulDashBootstrapUserId = null;
     if (allowlistSnippet) {
       allowlistSnippet.textContent =
         `insert into public.admin_allowlist (user_id) values ('${user.id}');\n` +
@@ -2433,11 +2443,16 @@ async function routeAfterAuth(user) {
   clearDashMessages();
 
   if (isLoginPage) {
+    lastSuccessfulDashBootstrapUserId = null;
     location.href = "./places.html";
     return;
   }
 
   showView("dash");
+  if (lastSuccessfulDashBootstrapUserId === user.id) {
+    return;
+  }
+  lastSuccessfulDashBootstrapUserId = user.id;
   await refreshDashboard();
 }
 
@@ -2530,8 +2545,12 @@ function wireSignOut(btn) {
 wireSignOut(maybeEl("signOutBlocked"));
 wireSignOut(maybeEl("signOutDash"));
 
+/** Skip duplicate bootstrap when `getSession` and `onAuthStateChange` both report the same user. */
+let lastSuccessfulDashBootstrapUserId = null;
+
 async function applySession(session) {
   if (!session?.user) {
+    lastSuccessfulDashBootstrapUserId = null;
     if (isLoginPage) {
       showView("auth");
       clearAuthMessages();
@@ -2547,6 +2566,7 @@ supabase.auth.onAuthStateChange((event, session) => {
   if (event === "INITIAL_SESSION") return;
   if (event === "TOKEN_REFRESHED") return;
   if (event === "SIGNED_OUT") {
+    lastSuccessfulDashBootstrapUserId = null;
     if (isLoginPage) showView("auth");
     else location.href = "./index.html";
     return;

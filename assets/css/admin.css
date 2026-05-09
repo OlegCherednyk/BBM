@@ -292,6 +292,149 @@
   margin-bottom: 20px;
 }
 
+.admin-students-list {
+  min-height: 56px;
+  transition: opacity 0.18s ease;
+}
+
+.admin-students-list--loading {
+  opacity: 0.58;
+}
+
+.admin-students-card__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+  flex-wrap: wrap;
+}
+
+.admin-students-card__name {
+  font-weight: 600;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.admin-students-card__tail {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.admin-students-card__meta {
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--brown-light);
+  white-space: nowrap;
+}
+
+.admin-students-card__btn {
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  margin-bottom: 8px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--cream-mid);
+  background: var(--cream-pale);
+}
+
+.admin-students-abon-badge {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--cream-mid);
+  background: var(--cream-soft);
+  color: var(--ink-muted, #5c534c);
+}
+
+.admin-students-abon-badge--active {
+  border-color: rgba(46, 125, 50, 0.45);
+  background: rgba(46, 125, 50, 0.12);
+  color: #2e7d32;
+}
+
+.admin-students-abon-badge--pending {
+  border-color: rgba(183, 106, 40, 0.5);
+  background: rgba(183, 106, 40, 0.12);
+  color: #a35f1a;
+}
+
+.admin-students-abon-badge--exhausted {
+  opacity: 0.85;
+}
+
+.admin-subscription-card .admin-field label {
+  font-size: 0.82rem;
+}
+
+.admin-subscription-card__visits-row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.admin-subscription-card__visits-used-wrap {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--cream-mid);
+  border-radius: 10px;
+  background: rgba(241, 230, 221, 0.45);
+  color: var(--brown-dark);
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.25;
+  user-select: none;
+  cursor: default;
+}
+
+.admin-subscription-card__visits-used-num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.admin-subscription-card__visits-used-suf {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brown-light);
+}
+
+.admin-subscription-card__visits-row input[type="number"] {
+  width: auto;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.admin-subscription-card input[type="number"],
+.admin-subscription-card input[type="date"],
+.admin-subscription-card select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border: 1px solid var(--cream-mid);
+  border-radius: var(--radius-sm);
+  background: var(--cream-soft);
+  font: inherit;
+}
+
 .admin-place-create__head {
   display: flex;
   align-items: center;
@@ -318,6 +461,135 @@
   gap: 8px;
   align-items: center;
   justify-content: flex-end;
+}
+
+/* Students — search / filter / action one row, equal columns */
+.admin-students-toolbar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-items: stretch;
+  width: 100%;
+}
+
+.admin-students-toolbar__cell {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.admin-students-toolbar__search.admin-search__input {
+  width: 100%;
+  min-width: 0;
+  flex: 1;
+  box-sizing: border-box;
+}
+
+.admin-students-toolbar__filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-students-toolbar__filter > .custom-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-students-toolbar__filter > select.admin-students-toolbar__select {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1.5px solid var(--cream-mid);
+  border-radius: var(--radius-sm);
+  background: rgba(241, 230, 221, 0.68);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--brown-dark);
+}
+
+.admin-students-toolbar__filter .custom-select__trigger {
+  width: 100%;
+  justify-content: space-between;
+  min-height: 38px;
+  box-sizing: border-box;
+}
+
+.admin-students-toolbar__action.btn {
+  width: 100%;
+  min-height: 38px;
+  box-sizing: border-box;
+}
+
+.admin-price-create__head > .admin-students-toolbar {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 720px) {
+  .admin-students-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-search-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+  color: var(--brown-light);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.admin-search__input {
+  width: clamp(180px, 24vw, 260px);
+  min-height: 38px;
+  padding: 9px 14px 9px 38px;
+  border: 1.5px solid var(--cream-mid);
+  border-radius: 999px;
+  outline: none;
+  font-family: var(--ff-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--brown-dark);
+  background-color: rgba(241, 230, 221, 0.68);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none'%3E%3Ccircle cx='11' cy='11' r='6.5' stroke='%238b7258' stroke-width='1.8'/%3E%3Cpath d='M16 16l4 4' stroke='%238b7258' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 13px center;
+  background-size: 18px;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.6),
+    0 1px 0 rgba(255, 255, 255, 0.65);
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.admin-search__input::placeholder {
+  color: rgba(139, 114, 88, 0.72);
+  font-weight: 500;
+}
+
+.admin-search__input:hover {
+  border-color: var(--brown-light);
+  background-color: rgba(255, 255, 255, 0.76);
+}
+
+.admin-search__input:focus {
+  border-color: var(--olive);
+  background-color: rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 0 0 3px var(--admin-input-focus),
+    inset 0 1px 1px rgba(255, 255, 255, 0.8);
 }
 
 .btn--price-add {
@@ -519,7 +791,71 @@
   border-color: var(--brown-light);
 }
 .custom-select[data-variant="admin"] .custom-select__menu {
-  z-index: 120;
+  z-index: 230;
+}
+
+/* Картки абонемента — дропдаун не ховається під наступну картку */
+#studentSubscriptions {
+  position: relative;
+}
+
+#studentSubscriptions .admin-subscription-card {
+  position: relative;
+  z-index: 0;
+  margin-bottom: 10px;
+  padding: 14px 16px 14px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--admin-panel-border);
+  background: rgba(255, 255, 255, 0.72);
+  overflow: visible;
+}
+
+#studentSubscriptions .admin-subscription-card:has(.custom-select.is-open) {
+  z-index: 200;
+}
+
+.admin-subscription-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.admin-subscription-card__title {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--brown-dark);
+}
+
+.admin-subscription-card__status {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--brown-light);
+}
+
+#studentSubscriptions .admin-subscription-card .admin-grid {
+  margin-top: 12px;
+  gap: 12px 18px;
+  align-items: start;
+}
+
+#studentSubscriptions .admin-subscription-card .admin-field {
+  min-width: 0;
+}
+
+#studentSubscriptions .admin-subscription-card .admin-field input,
+#studentSubscriptions .admin-subscription-card .admin-field textarea {
+  min-height: 44px;
+}
+
+#studentSubscriptions .admin-subscription-card .custom-select[data-variant="admin"] .custom-select__trigger {
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+#studentSubscriptions .admin-subscription-card .admin-actions {
+  margin-top: 14px;
 }
 
 .admin-field textarea {

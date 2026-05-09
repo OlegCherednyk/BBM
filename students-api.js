@@ -126,6 +126,64 @@ function telegramUserIdForDb(big, uidStr) {
   return big.toString();
 }
 
+/** Не перезаписувати вже збережене імʼя (без @) значенням-нікнеймом із snapshot голосу. */
+function mergeStudentDisplayNameForUpsert(existingDisplayName, incomingFromVote) {
+  const incoming = String(incomingFromVote ?? "").trim();
+  if (!incoming) return incoming;
+  const old = String(existingDisplayName ?? "").trim();
+  if (old.length > 0 && incoming.startsWith("@") && !old.startsWith("@")) return old;
+  return incoming;
+}
+
+/**
+ * Значення з Map голосу: нормалізований обʼєкт після snapshotToVotesByKind або застарілий рядок.
+ * @param {unknown} raw
+ * @param {string} uidStr
+ */
+function participantFromVotesMap(raw, uidStr) {
+  if (raw != null && typeof raw === "object" && !Array.isArray(raw)) {
+    const name = typeof raw.name === "string" ? raw.name.trim() : "";
+    const unSrc = raw.telegram_username;
+    const telegram_username =
+      typeof unSrc === "string" && unSrc.trim() ? String(unSrc).trim().replace(/^@/, "") : null;
+    return { name: name || `Telegram ${uidStr}`, telegram_username };
+  }
+  const s = String(raw ?? "").trim();
+  return { name: s || `Telegram ${uidStr}`, telegram_username: null };
+}
+
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ */
+async function upsertStudentFromVote(
+  supabaseAdmin,
+  tid,
+  displayNameTrimmed,
+  uidStrForFallback,
+  telegramUsernameFromVote = null,
+) {
+  const dn = String(displayNameTrimmed ?? "").trim() || `Telegram ${uidStrForFallback}`;
+  const { data: existing } = await supabaseAdmin
+    .from("students")
+    .select("display_name")
+    .eq("telegram_user_id", tid)
+    .maybeSingle();
+  const nameToStore = mergeStudentDisplayNameForUpsert(existing?.display_name ?? "", dn);
+  /** @type {Record<string, unknown>} */
+  const upsertPayload = {
+    telegram_user_id: tid,
+    display_name: nameToStore,
+    updated_at: new Date().toISOString(),
+  };
+  if (telegramUsernameFromVote && String(telegramUsernameFromVote).trim())
+    upsertPayload.telegram_username = String(telegramUsernameFromVote).trim().replace(/^@/, "");
+  return await supabaseAdmin
+    .from("students")
+    .upsert(upsertPayload, { onConflict: "telegram_user_id" })
+    .select("id")
+    .single();
+}
+
 /**
  * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
  * @param {{ occurrenceRow: { id: string, lesson_time_id?: string | null, lesson_snapshot?: Record<string, unknown> | null }, votesByKind: { abon?: Map<string, string>, single?: Map<string, string>, skip?: Map<string, string> } }} args
@@ -174,7 +232,7 @@ export async function applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow, v
   const abonMap = votesByKind?.abon instanceof Map ? votesByKind.abon : new Map();
   const singleMap = votesByKind?.single instanceof Map ? votesByKind.single : new Map();
 
-  for (const [uidStr, displayName] of abonMap.entries()) {
+  for (const [uidStr, participantRaw] of abonMap.entries()) {
     try {
       let big;
       try {
@@ -184,18 +242,19 @@ export async function applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow, v
         continue;
       }
 
-      const displayNameTrimmed = String(displayName ?? "").trim();
-      const dn = displayNameTrimmed || `Telegram ${uidStr}`;
+      const { name: displayNameTrimmed, telegram_username: voteUsername } = participantFromVotesMap(
+        participantRaw,
+        uidStr,
+      );
       const tid = telegramUserIdForDb(big, uidStr);
 
-      const { data: student, error: stErr } = await supabaseAdmin
-        .from("students")
-        .upsert(
-          { telegram_user_id: tid, display_name: dn, updated_at: new Date().toISOString() },
-          { onConflict: "telegram_user_id" },
-        )
-        .select("id")
-        .single();
+      const { data: student, error: stErr } = await upsertStudentFromVote(
+        supabaseAdmin,
+        tid,
+        displayNameTrimmed,
+        uidStr,
+        voteUsername,
+      );
       if (stErr) {
         appendError("student_upsert_failed", stErr.message);
         continue;
@@ -285,7 +344,7 @@ export async function applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow, v
     }
   }
 
-  for (const [uidStr, displayName] of singleMap.entries()) {
+  for (const [uidStr, participantRaw] of singleMap.entries()) {
     try {
       let big;
       try {
@@ -295,18 +354,19 @@ export async function applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow, v
         continue;
       }
 
-      const displayNameTrimmed = String(displayName ?? "").trim();
-      const dn = displayNameTrimmed || `Telegram ${uidStr}`;
+      const { name: displayNameTrimmed, telegram_username: voteUsername } = participantFromVotesMap(
+        participantRaw,
+        uidStr,
+      );
       const tid = telegramUserIdForDb(big, uidStr);
 
-      const { data: student, error: stErr } = await supabaseAdmin
-        .from("students")
-        .upsert(
-          { telegram_user_id: tid, display_name: dn, updated_at: new Date().toISOString() },
-          { onConflict: "telegram_user_id" },
-        )
-        .select("id")
-        .single();
+      const { data: student, error: stErr } = await upsertStudentFromVote(
+        supabaseAdmin,
+        tid,
+        displayNameTrimmed,
+        uidStr,
+        voteUsername,
+      );
       if (stErr) {
         appendError("student_upsert_failed", stErr.message);
         continue;
@@ -366,23 +426,70 @@ async function subscriptionSummaryForStudents(supabaseAdmin, studentIds) {
   if (studentIds.length === 0) return new Map();
   const { data, error } = await supabaseAdmin
     .from("subscriptions")
-    .select("student_id, status")
+    .select("id, student_id, status, total_visits")
     .in("student_id", studentIds);
   if (error) throw new Error(error.message);
-  /** @type {Map<string, { pending: number, active: number, exhausted: number }>} */
+
+  /** @type {Map<string, { pending: number, active: number, exhausted: number, subscriptions_count: number, abon_visits_total: number, abon_visits_remaining: number }>} */
   const m = new Map();
   for (const id of studentIds) {
-    m.set(id, { pending: 0, active: 0, exhausted: 0 });
+    m.set(id, {
+      pending: 0,
+      active: 0,
+      exhausted: 0,
+      subscriptions_count: 0,
+      abon_visits_total: 0,
+      abon_visits_remaining: 0,
+    });
   }
+
+  /** @type {string[]} */
+  const subIdsForVisits = [];
   for (const row of data || []) {
     const sid = row.student_id;
     const bucket = m.get(sid);
     if (!bucket) continue;
+    bucket.subscriptions_count += 1;
     const st = String(row.status || "");
     if (st === "pending") bucket.pending += 1;
     else if (st === "active") bucket.active += 1;
     else if (st === "exhausted") bucket.exhausted += 1;
+
+    const tv = row.total_visits;
+    if (tv != null && Number.isFinite(Number(tv)) && Number(tv) > 0) {
+      subIdsForVisits.push(String(row.id));
+    }
   }
+
+  /** @type {Map<string, number>} */
+  const usedBySubscriptionId = new Map();
+  if (subIdsForVisits.length > 0) {
+    const { data: vRows, error: vErr } = await supabaseAdmin
+      .from("visits")
+      .select("subscription_id")
+      .in("subscription_id", subIdsForVisits)
+      .eq("visit_status", "attended");
+    if (vErr) throw new Error(vErr.message);
+    for (const v of vRows || []) {
+      const sid = v.subscription_id;
+      if (!sid) continue;
+      usedBySubscriptionId.set(String(sid), (usedBySubscriptionId.get(String(sid)) || 0) + 1);
+    }
+  }
+
+  for (const row of data || []) {
+    const bucket = m.get(row.student_id);
+    if (!bucket) continue;
+    const tvRaw = row.total_visits;
+    if (tvRaw == null || !Number.isFinite(Number(tvRaw))) continue;
+    const total = Math.max(0, Math.floor(Number(tvRaw)));
+    if (total <= 0) continue;
+    const used = Math.min(total, Number(usedBySubscriptionId.get(String(row.id)) || 0));
+    const rem = Math.max(0, total - used);
+    bucket.abon_visits_total += total;
+    bucket.abon_visits_remaining += rem;
+  }
+
   return m;
 }
 
@@ -431,7 +538,14 @@ export function registerStudentRoutes(app, supabaseAdmin) {
       const summaryMap = await subscriptionSummaryForStudents(supabaseAdmin, ids);
       const rows = (students || []).map((s) => ({
         ...s,
-        subscription_summary: summaryMap.get(s.id) || { pending: 0, active: 0, exhausted: 0 },
+        subscription_summary: summaryMap.get(s.id) || {
+          pending: 0,
+          active: 0,
+          exhausted: 0,
+          subscriptions_count: 0,
+          abon_visits_total: 0,
+          abon_visits_remaining: 0,
+        },
       }));
 
       return res.status(200).json({ ok: true, rows });

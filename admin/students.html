@@ -72,28 +72,47 @@
         <div class="admin-panel" id="section-students">
           <div class="admin-price-create__head admin-grid-span-2">
             <h2>Список учнів</h2>
-            <div class="admin-price-create__actions" style="flex-wrap: wrap; gap: 8px">
-              <label class="admin-muted" style="display: flex; align-items: center; gap: 6px">
-                Пошук
-                <input type="search" id="studentsSearch" placeholder="Імʼя, телефон, @…" class="admin-field" style="min-width: 180px" />
-              </label>
-              <label class="admin-muted" style="display: flex; align-items: center; gap: 6px">
-                Фільтр
-                <select id="studentsFilter">
-                  <option value="all">Усі</option>
-                  <option value="pending">Pending абонементи</option>
-                  <option value="active">Активні</option>
-                  <option value="exhausted">Вичерпані</option>
-                </select>
-              </label>
-              <button type="button" class="btn btn--primary btn--sm" id="studentsReload">Оновити</button>
+            <div class="admin-students-toolbar" role="search" aria-label="Пошук учнів">
+              <div class="admin-students-toolbar__cell">
+                <input
+                  type="search"
+                  id="studentsSearch"
+                  placeholder="Імʼя, телефон, @…"
+                  class="admin-search__input admin-students-toolbar__search"
+                  aria-label="Запит пошуку"
+                />
+              </div>
+              <div class="admin-students-toolbar__cell">
+                <div class="admin-students-toolbar__filter">
+                  <select
+                    id="studentsFilter"
+                    class="admin-students-toolbar__select"
+                    aria-label="Фільтр за абонементом"
+                  >
+                    <option value="all">Усі</option>
+                    <option value="pending">В обробці</option>
+                    <option value="active">Активні</option>
+                    <option value="exhausted">Вичерпані</option>
+                  </select>
+                </div>
+              </div>
+              <div class="admin-students-toolbar__cell">
+                <button type="button" class="btn btn--primary btn--sm admin-students-toolbar__action" id="studentsReload">
+                  Пошук
+                </button>
+              </div>
             </div>
           </div>
 
           <div id="studentsList"><p class="admin-muted">Завантаження…</p></div>
 
           <div id="studentDetail" class="admin-hide" style="margin-top: 1.5rem">
-            <h3 id="studentDetailTitle">Учень</h3>
+            <div class="admin-price-create__head">
+              <h3 id="studentDetailTitle" style="margin: 0">Учень</h3>
+              <button type="button" class="btn btn--ghost btn--sm" id="studentDetailClose" aria-label="Закрити картку учня">
+                Закрити
+              </button>
+            </div>
             <form id="studentEditForm" class="admin-grid admin-grid--2">
               <input type="hidden" id="studentDetailId" />
               <div class="admin-field">
@@ -133,7 +152,7 @@
               </div>
               <div class="admin-field">
                 <label for="subscriptionTotalVisits">Візитів у пакеті</label>
-                <input id="subscriptionTotalVisits" type="number" min="1" placeholder="порожньо = pending" />
+                <input id="subscriptionTotalVisits" type="number" min="1" placeholder="порожньо → «в обробці»" />
               </div>
               <div class="admin-field">
                 <label for="subscriptionAmount">Сума ₴</label>
@@ -144,7 +163,7 @@
                 <input id="subscriptionValidUntil" type="date" />
               </div>
               <div class="admin-actions admin-grid-span-2">
-                <button type="submit" class="btn btn--primary btn--sm">Додати / оновити pending</button>
+                <button type="submit" class="btn btn--primary btn--sm">Додати / оновити («в обробці»)</button>
               </div>
             </form>
             <button type="button" class="btn btn--ghost btn--sm" id="subscriptionFormToggle">+ Абонемент</button>
