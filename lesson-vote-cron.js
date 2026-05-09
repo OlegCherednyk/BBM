@@ -50,6 +50,7 @@ export function startDailyLessonVoteCron({
   runBatchTeacherVotesInWindow,
   closeOpenVotesForToday,
   supabaseAdmin,
+  expireOverdueSubscriptions,
 }) {
   const createDailyTime = normalizeDailyTime(createDailyTimeEnv);
   const closeDailyTime = normalizeDailyTime(closeDailyTimeEnv);
@@ -89,6 +90,15 @@ export function startDailyLessonVoteCron({
       }
 
       await logOpenLessonVotes({ supabaseAdmin });
+
+      if (typeof expireOverdueSubscriptions === "function") {
+        try {
+          await expireOverdueSubscriptions(supabaseAdmin);
+        } catch (error) {
+          console.error("[lesson-vote-daily-cron] expire subscriptions:", error?.message || error);
+        }
+      }
+
       console.log(`[lesson-vote-daily-cron] create run finished date=${dateKey}`);
     }
 

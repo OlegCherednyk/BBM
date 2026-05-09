@@ -2,15 +2,6 @@ import { DateTime } from "luxon";
 
 const KYIV_TZ = "Europe/Kyiv";
 
-/**
- * @param {import("express").Express} app
- * @param {import("@supabase/supabase-js").SupabaseClient | null} supabaseAdmin
- */
-export function registerStudentRoutes(app, supabaseAdmin) {
-  void app;
-  void supabaseAdmin;
-}
-
 /** @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin */
 export async function resolveLessonTypeIdForOccurrence(supabaseAdmin, row) {
   const snap = row?.lesson_snapshot;
@@ -70,6 +61,30 @@ export async function recomputeSubscriptionStatus(supabaseAdmin, subscriptionId)
     .update({ status: nextStatus, updated_at: new Date().toISOString() })
     .eq("id", subscriptionId);
   if (upErr) throw new Error(upErr.message);
+}
+
+/**
+ * Активні абонементи з простроченим valid_until → перерахунок статусу (exhausted).
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ */
+export async function expireOverdueSubscriptions(supabaseAdmin) {
+  if (!supabaseAdmin) return;
+  const todayKyiv = DateTime.now().setZone(KYIV_TZ).toISODate();
+  const { data: rows, error } = await supabaseAdmin
+    .from("subscriptions")
+    .select("id")
+    .eq("status", "active")
+    .not("valid_until", "is", null)
+    .lt("valid_until", todayKyiv);
+  if (error) throw new Error(error.message);
+  const list = rows || [];
+  if (list.length === 0) return;
+  for (const r of list) {
+    await recomputeSubscriptionStatus(supabaseAdmin, r.id);
+  }
+  console.log(
+    `[subscriptions] expireOverdueSubscriptions recomputed=${list.length} kyiv_date=${todayKyiv}`,
+  );
 }
 
 /** @param {unknown} raw */
@@ -333,4 +348,412 @@ export async function applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow, v
       console.error("mergeOccurrencePostFinalizeErrors:", occurrenceId, e?.message || e);
     }
   }
+}
+
+/** @param {string | undefined} s */
+function wildIlike(s) {
+  const t = String(s ?? "").trim();
+  if (!t) return null;
+  const esc = t.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+  return `%${esc}%`;
+}
+
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {string[]} studentIds
+ */
+async function subscriptionSummaryForStudents(supabaseAdmin, studentIds) {
+  if (studentIds.length === 0) return new Map();
+  const { data, error } = await supabaseAdmin
+    .from("subscriptions")
+    .select("student_id, status")
+    .in("student_id", studentIds);
+  if (error) throw new Error(error.message);
+  /** @type {Map<string, { pending: number, active: number, exhausted: number }>} */
+  const m = new Map();
+  for (const id of studentIds) {
+    m.set(id, { pending: 0, active: 0, exhausted: 0 });
+  }
+  for (const row of data || []) {
+    const sid = row.student_id;
+    const bucket = m.get(sid);
+    if (!bucket) continue;
+    const st = String(row.status || "");
+    if (st === "pending") bucket.pending += 1;
+    else if (st === "active") bucket.active += 1;
+    else if (st === "exhausted") bucket.exhausted += 1;
+  }
+  return m;
+}
+
+/**
+ * @param {import("express").Express} app
+ * @param {import("@supabase/supabase-js").SupabaseClient | null} supabaseAdmin
+ */
+export function registerStudentRoutes(app, supabaseAdmin) {
+  app.get("/api/admin/students", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+      }
+      const search = typeof req.query.search === "string" ? req.query.search : "";
+      const filterRaw = typeof req.query.filter === "string" ? req.query.filter : "all";
+      const filter =
+        filterRaw === "pending" || filterRaw === "active" || filterRaw === "exhausted" ? filterRaw : "all";
+
+      /** @type {string[] | null} */
+      let studentIdsFilter = null;
+      if (filter !== "all") {
+        const { data: subs, error: subErr } = await supabaseAdmin
+          .from("subscriptions")
+          .select("student_id")
+          .eq("status", filter);
+        if (subErr) return res.status(500).json({ ok: false, error: subErr.message });
+        const set = new Set((subs || []).map((r) => r.student_id).filter(Boolean));
+        studentIdsFilter = [...set];
+        if (studentIdsFilter.length === 0) {
+          return res.status(200).json({ ok: true, rows: [] });
+        }
+      }
+
+      let q = supabaseAdmin.from("students").select("*");
+      if (studentIdsFilter) q = q.in("id", studentIdsFilter);
+      const pattern = wildIlike(search);
+      if (pattern) {
+        q = q.or(
+          `display_name.ilike.${pattern},telegram_username.ilike.${pattern},phone.ilike.${pattern},instagram.ilike.${pattern}`,
+        );
+      }
+      const { data: students, error } = await q.order("created_at", { ascending: false });
+      if (error) return res.status(500).json({ ok: false, error: error.message });
+
+      const ids = (students || []).map((s) => s.id);
+      const summaryMap = await subscriptionSummaryForStudents(supabaseAdmin, ids);
+      const rows = (students || []).map((s) => ({
+        ...s,
+        subscription_summary: summaryMap.get(s.id) || { pending: 0, active: 0, exhausted: 0 },
+      }));
+
+      return res.status(200).json({ ok: true, rows });
+    } catch (e) {
+      console.error("GET /api/admin/students:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.get("/api/admin/students/:id", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+      }
+      const id = String(req.params.id || "").trim();
+      if (!id) return res.status(400).json({ ok: false, error: "Missing student id." });
+
+      const { data: student, error: stErr } = await supabaseAdmin
+        .from("students")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+      if (stErr) return res.status(500).json({ ok: false, error: stErr.message });
+      if (!student) return res.status(404).json({ ok: false, error: "Student not found." });
+
+      const { data: subscriptions, error: subErr } = await supabaseAdmin
+        .from("subscriptions")
+        .select(
+          "*, lesson_types ( id, name )",
+        )
+        .eq("student_id", id)
+        .order("created_at", { ascending: false });
+      if (subErr) return res.status(500).json({ ok: false, error: subErr.message });
+
+      const { data: visits, error: vErr } = await supabaseAdmin
+        .from("visits")
+        .select(
+          "id, vote_choice, subscription_id, visit_status, rolled_back_at, created_at, lesson_vote_occurrence_id, lesson_vote_occurrences ( id, occurrence_at, lesson_snapshot, place_id )",
+        )
+        .eq("student_id", id)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (vErr) return res.status(500).json({ ok: false, error: vErr.message });
+
+      return res.status(200).json({
+        ok: true,
+        student,
+        subscriptions: subscriptions || [],
+        visits: visits || [],
+      });
+    } catch (e) {
+      console.error("GET /api/admin/students/:id:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.post("/api/admin/students", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+      }
+      const telegramRaw = req.body?.telegram_user_id ?? req.body?.telegramUserId;
+      const displayName = String(req.body?.display_name ?? req.body?.displayName ?? "").trim();
+      if (telegramRaw === undefined || telegramRaw === null || String(telegramRaw).trim() === "") {
+        return res.status(400).json({ ok: false, error: "telegram_user_id is required." });
+      }
+      if (!displayName) {
+        return res.status(400).json({ ok: false, error: "display_name is required." });
+      }
+      let tid;
+      try {
+        tid = telegramUserIdForDb(BigInt(String(telegramRaw)), String(telegramRaw));
+      } catch {
+        return res.status(400).json({ ok: false, error: "Invalid telegram_user_id." });
+      }
+
+      const row = {
+        telegram_user_id: tid,
+        display_name: displayName,
+        telegram_username: req.body?.telegram_username ?? req.body?.telegramUsername ?? null,
+        instagram: req.body?.instagram ?? null,
+        phone: req.body?.phone ?? null,
+        admin_note: req.body?.admin_note ?? req.body?.adminNote ?? null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data: inserted, error } = await supabaseAdmin.from("students").insert(row).select("*").single();
+      if (error) return res.status(500).json({ ok: false, error: error.message });
+      return res.status(200).json({ ok: true, row: inserted });
+    } catch (e) {
+      console.error("POST /api/admin/students:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.patch("/api/admin/students/:id", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+      }
+      const id = String(req.params.id || "").trim();
+      if (!id) return res.status(400).json({ ok: false, error: "Missing student id." });
+
+      /** @type {Record<string, unknown>} */
+      const patch = {};
+      const fields = ["display_name", "telegram_username", "instagram", "phone", "admin_note"];
+      for (const f of fields) {
+        if (Object.prototype.hasOwnProperty.call(req.body, f)) patch[f] = req.body[f];
+      }
+      if (Object.keys(patch).length === 0) {
+        return res.status(400).json({ ok: false, error: "No updatable fields in body." });
+      }
+      patch.updated_at = new Date().toISOString();
+
+      const { data, error } = await supabaseAdmin.from("students").update(patch).eq("id", id).select("*").maybeSingle();
+      if (error) return res.status(500).json({ ok: false, error: error.message });
+      if (!data) return res.status(404).json({ ok: false, error: "Student not found." });
+      return res.status(200).json({ ok: true, row: data });
+    } catch (e) {
+      console.error("PATCH /api/admin/students/:id:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.delete("/api/admin/students/:id", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+      }
+      const id = String(req.params.id || "").trim();
+      if (!id) return res.status(400).json({ ok: false, error: "Missing student id." });
+
+      const { count, error: cErr } = await supabaseAdmin
+        .from("visits")
+        .select("id", { count: "exact", head: true })
+        .eq("student_id", id);
+      if (cErr) return res.status(500).json({ ok: false, error: cErr.message });
+      const visitCount = Number(count) || 0;
+
+      const { error: delErr } = await supabaseAdmin.from("students").delete().eq("id", id);
+      if (delErr) return res.status(500).json({ ok: false, error: delErr.message });
+      return res.status(200).json({ ok: true, deletedId: id, visitCount });
+    } catch (e) {
+      console.error("DELETE /api/admin/students/:id:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.post("/api/admin/subscriptions", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+      }
+      const student_id = req.body?.student_id ?? req.body?.studentId;
+      const lesson_type_id = req.body?.lesson_type_id ?? req.body?.lessonTypeId;
+      if (!student_id || !lesson_type_id) {
+        return res.status(400).json({ ok: false, error: "student_id and lesson_type_id are required." });
+      }
+
+      const payload = {
+        total_visits: req.body?.total_visits ?? req.body?.totalVisits ?? null,
+        amount_uah: req.body?.amount_uah ?? req.body?.amountUah ?? null,
+        purchased_at: req.body?.purchased_at ?? req.body?.purchasedAt ?? null,
+        valid_until: req.body?.valid_until ?? req.body?.validUntil ?? null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data: pendingExists, error: penErr } = await supabaseAdmin
+        .from("subscriptions")
+        .select("id")
+        .eq("student_id", student_id)
+        .eq("lesson_type_id", lesson_type_id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (penErr) return res.status(500).json({ ok: false, error: penErr.message });
+
+      let subId;
+      if (pendingExists?.id) {
+        const { data: updated, error: upErr } = await supabaseAdmin
+          .from("subscriptions")
+          .update(payload)
+          .eq("id", pendingExists.id)
+          .select("*")
+          .single();
+        if (upErr) return res.status(500).json({ ok: false, error: upErr.message });
+        subId = updated.id;
+      } else {
+        const { data: ins, error: insErr } = await supabaseAdmin
+          .from("subscriptions")
+          .insert({
+            student_id,
+            lesson_type_id,
+            status: "pending",
+            total_visits: payload.total_visits,
+            amount_uah: payload.amount_uah,
+            purchased_at: payload.purchased_at,
+            valid_until: payload.valid_until,
+            updated_at: payload.updated_at,
+          })
+          .select("*")
+          .single();
+        if (insErr) return res.status(500).json({ ok: false, error: insErr.message });
+        subId = ins.id;
+      }
+
+      if (payload.total_visits != null) {
+        await recomputeSubscriptionStatus(supabaseAdmin, subId);
+      }
+      const { data: row, error: rErr } = await supabaseAdmin.from("subscriptions").select("*").eq("id", subId).single();
+      if (rErr) return res.status(500).json({ ok: false, error: rErr.message });
+      return res.status(200).json({ ok: true, row });
+    } catch (e) {
+      console.error("POST /api/admin/subscriptions:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.patch("/api/admin/subscriptions/:id", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+      }
+      const id = String(req.params.id || "").trim();
+      if (!id) return res.status(400).json({ ok: false, error: "Missing subscription id." });
+
+      /** @type {Record<string, unknown>} */
+      const patch = {};
+      for (const f of ["total_visits", "amount_uah", "purchased_at", "valid_until", "status"]) {
+        if (Object.prototype.hasOwnProperty.call(req.body, f)) patch[f] = req.body[f];
+      }
+      if (Object.keys(patch).length === 0) {
+        return res.status(400).json({ ok: false, error: "No updatable fields." });
+      }
+      patch.updated_at = new Date().toISOString();
+
+      const { data, error } = await supabaseAdmin.from("subscriptions").update(patch).eq("id", id).select("*").maybeSingle();
+      if (error) return res.status(500).json({ ok: false, error: error.message });
+      if (!data) return res.status(404).json({ ok: false, error: "Subscription not found." });
+
+      await recomputeSubscriptionStatus(supabaseAdmin, id);
+      const { data: fresh, error: frErr } = await supabaseAdmin.from("subscriptions").select("*").eq("id", id).single();
+      if (frErr) return res.status(500).json({ ok: false, error: frErr.message });
+      return res.status(200).json({ ok: true, row: fresh });
+    } catch (e) {
+      console.error("PATCH /api/admin/subscriptions/:id:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.delete("/api/admin/subscriptions/:id", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+      }
+      const id = String(req.params.id || "").trim();
+      if (!id) return res.status(400).json({ ok: false, error: "Missing subscription id." });
+
+      const { error } = await supabaseAdmin.from("subscriptions").delete().eq("id", id);
+      if (error) return res.status(500).json({ ok: false, error: error.message });
+      return res.status(200).json({ ok: true, deletedId: id });
+    } catch (e) {
+      console.error("DELETE /api/admin/subscriptions/:id:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.post("/api/admin/visits/:id/rollback", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+      }
+      const id = String(req.params.id || "").trim();
+      if (!id) return res.status(400).json({ ok: false, error: "Missing visit id." });
+
+      const { data: v, error: vErr } = await supabaseAdmin.from("visits").select("*").eq("id", id).maybeSingle();
+      if (vErr) return res.status(500).json({ ok: false, error: vErr.message });
+      if (!v) return res.status(404).json({ ok: false, error: "Visit not found." });
+
+      const nextStatus = v.visit_status === "attended" ? "rolled_back" : "attended";
+      const rolled_back_at = nextStatus === "rolled_back" ? new Date().toISOString() : null;
+
+      const { error: upErr } = await supabaseAdmin
+        .from("visits")
+        .update({ visit_status: nextStatus, rolled_back_at })
+        .eq("id", id);
+      if (upErr) return res.status(500).json({ ok: false, error: upErr.message });
+
+      if (v.subscription_id) {
+        await recomputeSubscriptionStatus(supabaseAdmin, v.subscription_id);
+      }
+
+      const { data: fresh, error: frErr } = await supabaseAdmin.from("visits").select("*").eq("id", id).single();
+      if (frErr) return res.status(500).json({ ok: false, error: frErr.message });
+      return res.status(200).json({ ok: true, row: fresh });
+    } catch (e) {
+      console.error("POST /api/admin/visits/:id/rollback:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.get("/api/admin/lessons/:occurrenceId/visits", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+      }
+      const occurrenceId = String(req.params.occurrenceId || "").trim();
+      if (!occurrenceId) return res.status(400).json({ ok: false, error: "Missing occurrence id." });
+
+      const { data: rows, error } = await supabaseAdmin
+        .from("visits")
+        .select(
+          "id, student_id, vote_choice, subscription_id, visit_status, rolled_back_at, created_at, students ( display_name, telegram_user_id )",
+        )
+        .eq("lesson_vote_occurrence_id", occurrenceId)
+        .order("created_at", { ascending: true });
+      if (error) return res.status(500).json({ ok: false, error: error.message });
+      return res.status(200).json({ ok: true, rows: rows || [] });
+    } catch (e) {
+      console.error("GET /api/admin/lessons/:occurrenceId/visits:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
 }

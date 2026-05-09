@@ -6,7 +6,11 @@ import { Telegraf } from "telegraf";
 import { createClient } from "@supabase/supabase-js";
 import { DateTime } from "luxon";
 import { startDailyLessonVoteCron } from "./lesson-vote-cron.js";
-import { applyVisitsAfterFinalize, registerStudentRoutes } from "./students-api.js";
+import {
+  applyVisitsAfterFinalize,
+  expireOverdueSubscriptions,
+  registerStudentRoutes,
+} from "./students-api.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
@@ -2209,6 +2213,7 @@ startDailyLessonVoteCron({
   runBatchTeacherVotesInWindow,
   closeOpenVotesForToday,
   supabaseAdmin,
+  expireOverdueSubscriptions,
 });
 
 registerStudentRoutes(app, supabaseAdmin);
