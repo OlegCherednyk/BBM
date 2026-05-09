@@ -6,6 +6,7 @@ import { Telegraf } from "telegraf";
 import { createClient } from "@supabase/supabase-js";
 import { DateTime } from "luxon";
 import { startDailyLessonVoteCron } from "./lesson-vote-cron.js";
+import { applyVisitsAfterFinalize, registerStudentRoutes } from "./students-api.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
@@ -792,12 +793,14 @@ async function resolveLessonIdsForVote(body) {
 }
 
 async function loadLessonContext(lessonTimeId, placeId) {
+  let lessonTypeId = null;
   if (!supabaseAdmin) {
     return {
       lessonTimeLabel: "не вказано",
       placeLabel: "не вказано",
       lessonTypeLabel: "не вказано",
       riverBank: null,
+      lessonTypeId: null,
     };
   }
 
@@ -809,7 +812,7 @@ async function loadLessonContext(lessonTimeId, placeId) {
   if (lessonTimeId) {
     const { data, error } = await supabaseAdmin
       .from("lesson_times")
-      .select("day_of_week, start_time, lesson_types(name)")
+      .select("day_of_week, start_time, lesson_types(name, id)")
       .eq("id", lessonTimeId)
       .maybeSingle();
 
@@ -819,6 +822,7 @@ async function loadLessonContext(lessonTimeId, placeId) {
       const dayName = Number.isFinite(di) && di >= 0 && di <= 6 ? DAY_SHORT_UK[di] : `день ${data.day_of_week}`;
       lessonTimeLabel = `${dayName}, ${String(data.start_time || "").slice(0, 5)} (Київ)`;
       lessonTypeLabel = data.lesson_types?.name || lessonTypeLabel;
+      lessonTypeId = data.lesson_types?.id ?? null;
     }
   }
 
@@ -833,7 +837,7 @@ async function loadLessonContext(lessonTimeId, placeId) {
     if (typeof data?.river_bank === "string" && data.river_bank.trim()) riverBank = data.river_bank.trim();
   }
 
-  return { lessonTimeLabel, placeLabel, lessonTypeLabel, riverBank };
+  return { lessonTimeLabel, placeLabel, lessonTypeLabel, riverBank, lessonTypeId };
 }
 
 /**
@@ -879,6 +883,7 @@ async function executeLessonAttendanceVote(opts) {
     placeLabel: lessonContext.placeLabel,
     lessonTypeLabel: lessonContext.lessonTypeLabel,
     riverBank: lessonContext.riverBank,
+    lesson_type_id: lessonContext.lessonTypeId ?? null,
   };
 
   let voteOccurrenceId = null;
@@ -1417,6 +1422,12 @@ async function finalizeLessonVoteOccurrence(row) {
   if (!markResult.ok) {
     console.error("Failed to finalize lesson_vote_occurrences row:", markResult.error);
     return;
+  }
+
+  try {
+    await applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow: row, votesByKind });
+  } catch (e) {
+    console.error("applyVisitsAfterFinalize:", e?.message || e);
   }
 
   await persistFinalizedVotesToLessonRow(
@@ -2199,6 +2210,8 @@ startDailyLessonVoteCron({
   closeOpenVotesForToday,
   supabaseAdmin,
 });
+
+registerStudentRoutes(app, supabaseAdmin);
 
 app.listen(port, () => {
   console.log(`Server is running at http://localhost:${port}`);

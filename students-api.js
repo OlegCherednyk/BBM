@@ -2,6 +2,15 @@ import { DateTime } from "luxon";
 
 const KYIV_TZ = "Europe/Kyiv";
 
+/**
+ * @param {import("express").Express} app
+ * @param {import("@supabase/supabase-js").SupabaseClient | null} supabaseAdmin
+ */
+export function registerStudentRoutes(app, supabaseAdmin) {
+  void app;
+  void supabaseAdmin;
+}
+
 /** @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin */
 export async function resolveLessonTypeIdForOccurrence(supabaseAdmin, row) {
   const snap = row?.lesson_snapshot;
