@@ -131,8 +131,8 @@ export async function applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow, v
     appendError("resolve_lesson_type_failed", e instanceof Error ? e.message : String(e));
     try {
       await mergeOccurrencePostFinalizeErrors(supabaseAdmin, occurrenceId, errors);
-    } catch {
-      /* finalize already succeeded; swallow merge failure */
+    } catch (e) {
+      console.error("mergeOccurrencePostFinalizeErrors:", occurrenceId, e?.message || e);
     }
     return;
   }
@@ -141,8 +141,8 @@ export async function applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow, v
     appendError("missing_lesson_type_id");
     try {
       await mergeOccurrencePostFinalizeErrors(supabaseAdmin, occurrenceId, errors);
-    } catch {
-      /* swallow */
+    } catch (e) {
+      console.error("mergeOccurrencePostFinalizeErrors:", occurrenceId, e?.message || e);
     }
     return;
   }
@@ -320,8 +320,8 @@ export async function applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow, v
   if (errors.length > 0) {
     try {
       await mergeOccurrencePostFinalizeErrors(supabaseAdmin, occurrenceId, errors);
-    } catch {
-      /* swallow */
+    } catch (e) {
+      console.error("mergeOccurrencePostFinalizeErrors:", occurrenceId, e?.message || e);
     }
   }
 }
