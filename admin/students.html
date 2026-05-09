@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/png" href="../logo_bbm_circle.png" />
+    <title>Адмін — учні</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+    <link rel="stylesheet" href="../assets/css/admin.css" />
+  </head>
+  <body data-admin-page="students">
+    <nav class="nav nav--admin scrolled" aria-label="Адмін">
+      <div class="admin-nav__inner">
+        <div class="admin-nav__brand">
+          <a class="nav__logo" href="../index.html">mozok.tilo.ruh</a>
+          <span class="admin-nav__sep" aria-hidden="true">·</span>
+          <a class="admin-nav__site" href="../index.html">На сайт</a>
+        </div>
+        <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі за порядком">
+          <li><a href="prices.html">Ціни</a></li>
+          <li><a href="places.html">Місця</a></li>
+          <li><a href="teachers.html">Викладачі</a></li>
+          <li><a href="students.html" aria-current="page">Учні</a></li>
+          <li><a href="lessons.html">Заняття</a></li>
+          <li><a href="stats.html">Статистика</a></li>
+        </ol>
+        <div id="adminNavMeta" class="admin-nav__meta admin-hide">
+          <button type="button" class="btn btn--ghost btn--sm" id="signOutDash">Вийти</button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="admin-page">
+      <div id="authSection" class="admin-hide"></div>
+      <div id="blockedSection" class="admin-hide">
+        <div class="admin-top">
+          <h1 style="margin: 0">Немає прав</h1>
+          <button type="button" class="btn btn--ghost btn--sm" id="signOutBlocked">Вийти</button>
+        </div>
+        <p class="admin-muted">
+          Обліковий запис не у списку адміністраторів. Виконай у Supabase → SQL Editor (ідентифікатор користувача підставлено):
+        </p>
+        <pre
+          style="
+            font-size: 0.82rem;
+            background: var(--cream-soft);
+            border: 1px solid var(--cream-mid);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            overflow: auto;
+            line-height: 1.45;
+          "
+          id="allowlistSnippet"
+        ></pre>
+      </div>
+
+      <div id="dashSection" class="admin-hide">
+        <div class="admin-top admin-top--title-only">
+          <h1>Учні</h1>
+        </div>
+        <div id="dashError" class="admin-alert admin-alert--error admin-hide" role="status"></div>
+        <div id="dashOk" class="admin-alert admin-alert--ok admin-hide" role="status"></div>
+        <div id="studentsError" class="admin-alert admin-alert--error admin-hide" role="status"></div>
+
+        <div class="admin-panel" id="section-students">
+          <div class="admin-price-create__head admin-grid-span-2">
+            <h2>Список учнів</h2>
+            <div class="admin-price-create__actions" style="flex-wrap: wrap; gap: 8px">
+              <label class="admin-muted" style="display: flex; align-items: center; gap: 6px">
+                Пошук
+                <input type="search" id="studentsSearch" placeholder="Імʼя, телефон, @…" class="admin-field" style="min-width: 180px" />
+              </label>
+              <label class="admin-muted" style="display: flex; align-items: center; gap: 6px">
+                Фільтр
+                <select id="studentsFilter">
+                  <option value="all">Усі</option>
+                  <option value="pending">Pending абонементи</option>
+                  <option value="active">Активні</option>
+                  <option value="exhausted">Вичерпані</option>
+                </select>
+              </label>
+              <button type="button" class="btn btn--primary btn--sm" id="studentsReload">Оновити</button>
+            </div>
+          </div>
+
+          <div id="studentsList"><p class="admin-muted">Завантаження…</p></div>
+
+          <div id="studentDetail" class="admin-hide" style="margin-top: 1.5rem">
+            <h3 id="studentDetailTitle">Учень</h3>
+            <form id="studentEditForm" class="admin-grid admin-grid--2">
+              <input type="hidden" id="studentDetailId" />
+              <div class="admin-field">
+                <label for="studentDisplayName">Імʼя</label>
+                <input id="studentDisplayName" type="text" required />
+              </div>
+              <div class="admin-field">
+                <label for="studentTelegramUsername">Telegram @</label>
+                <input id="studentTelegramUsername" type="text" />
+              </div>
+              <div class="admin-field">
+                <label for="studentPhone">Телефон</label>
+                <input id="studentPhone" type="text" />
+              </div>
+              <div class="admin-field">
+                <label for="studentInstagram">Instagram</label>
+                <input id="studentInstagram" type="text" />
+              </div>
+              <div class="admin-field admin-grid-span-2">
+                <label for="studentAdminNote">Нотатка адміна</label>
+                <textarea id="studentAdminNote" rows="2"></textarea>
+              </div>
+              <div class="admin-actions admin-grid-span-2">
+                <button type="submit" class="btn btn--primary btn--sm">Зберегти контакти</button>
+                <button type="button" class="btn btn--ghost btn--sm admin-hide" id="studentDeleteBtn">Видалити учня</button>
+              </div>
+            </form>
+
+            <div class="admin-price-create__head" style="margin-top: 1.25rem">
+              <h3>Абонементи</h3>
+            </div>
+            <div id="studentSubscriptions" class="admin-muted"></div>
+            <form id="subscriptionAddForm" class="admin-grid admin-grid--2 admin-hide" style="margin-top: 0.75rem">
+              <div class="admin-field">
+                <label for="subscriptionLessonType">Тип заняття</label>
+                <select id="subscriptionLessonType" required></select>
+              </div>
+              <div class="admin-field">
+                <label for="subscriptionTotalVisits">Візитів у пакеті</label>
+                <input id="subscriptionTotalVisits" type="number" min="1" placeholder="порожньо = pending" />
+              </div>
+              <div class="admin-field">
+                <label for="subscriptionAmount">Сума ₴</label>
+                <input id="subscriptionAmount" type="number" min="0" />
+              </div>
+              <div class="admin-field">
+                <label for="subscriptionValidUntil">Діє до</label>
+                <input id="subscriptionValidUntil" type="date" />
+              </div>
+              <div class="admin-actions admin-grid-span-2">
+                <button type="submit" class="btn btn--primary btn--sm">Додати / оновити pending</button>
+              </div>
+            </form>
+            <button type="button" class="btn btn--ghost btn--sm" id="subscriptionFormToggle">+ Абонемент</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span>mozok.tilo.ruh — адмін</span>
+      <a href="../index.html">Сайт</a>
+    </footer>
+
+    <script src="../assets/js/custom-select.js"></script>
+    <script type="module" src="../assets/js/admin.js"></script>
+  </body>
+</html>

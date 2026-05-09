@@ -15,7 +15,7 @@ function syncCustomSelect(selectEl) {
   }
 }
 
-/** @type {"login"|"lesson-types"|"prices"|"places"|"teachers"|"lessons"|"stats"} */
+/** @type {"login"|"lesson-types"|"prices"|"places"|"teachers"|"students"|"lessons"|"stats"} */
 const ADMIN_PAGE = /** @type {any} */ (document.body?.dataset.adminPage ?? "lesson-types");
 
 const isLoginPage = ADMIN_PAGE === "login";
@@ -311,6 +311,90 @@ function lessonTypeLabel(row) {
   );
 }
 
+/**
+ * Панель відвідувань після фіналізації голосування (rollback через API).
+ * @param {HTMLTableRowElement} lessonRow
+ * @param {{ id?: string, vote_finalized_at?: string | null, lesson_vote_occurrence_id?: string | null }} row
+ */
+async function renderOccurrenceVisitControls(lessonRow, row) {
+  const prev = lessonRow.nextElementSibling;
+  if (prev && prev.dataset.visitPanelFor === lessonRow.dataset.visitRowUid) {
+    prev.remove();
+  }
+  const occId = row.lesson_vote_occurrence_id ? String(row.lesson_vote_occurrence_id).trim() : "";
+  if (!occId || !row.vote_finalized_at) return;
+
+  if (!lessonRow.dataset.visitRowUid) {
+    lessonRow.dataset.visitRowUid = `${row.id || "row"}-${occId}`;
+  }
+  const panelTr = document.createElement("tr");
+  panelTr.dataset.visitPanelFor = lessonRow.dataset.visitRowUid;
+  const td = document.createElement("td");
+  td.colSpan = 8;
+  td.className = "admin-muted";
+  td.innerHTML = `<p class="admin-muted" style="margin:0">Завантаження відвідувань…</p>`;
+  panelTr.appendChild(td);
+  lessonRow.parentNode?.insertBefore(panelTr, lessonRow.nextSibling);
+
+  try {
+    const res = await fetch(`/api/admin/lessons/${encodeURIComponent(occId)}/visits`);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    const visits = body.rows || [];
+    const wrap = document.createElement("div");
+    wrap.style.padding = "4px 0 10px";
+    wrap.style.fontSize = "0.9rem";
+    if (!visits.length) {
+      wrap.innerHTML = `<span class="admin-muted">Немає записів відвідувань для цього голосування.</span>`;
+    } else {
+      for (const v of visits) {
+        const st = v.students;
+        const name = st?.display_name || (st?.telegram_user_id != null ? `TG ${st.telegram_user_id}` : "—");
+        const line = document.createElement("div");
+        line.style.marginBottom = "6px";
+        line.style.display = "flex";
+        line.style.alignItems = "center";
+        line.style.gap = "10px";
+        line.style.flexWrap = "wrap";
+
+        const label = document.createElement("span");
+        const statusUk = v.visit_status === "rolled_back" ? "не був(ла)" : "відмічено відвідування";
+        label.textContent = `${name} — ${statusUk}`;
+        line.appendChild(label);
+
+        const rb = document.createElement("button");
+        rb.type = "button";
+        rb.className = "btn btn--ghost btn--sm";
+        rb.textContent = v.visit_status === "attended" ? "Не був(ла)" : "Був(ла)";
+        rb.addEventListener("click", async () => {
+          clearDashMessages();
+          try {
+            const r2 = await fetch(`/api/admin/visits/${encodeURIComponent(v.id)}/rollback`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+            });
+            const b2 = await r2.json().catch(() => ({}));
+            if (!r2.ok || b2.ok === false) {
+              showDashError(b2.error || `Помилка ${r2.status}`);
+              return;
+            }
+            await renderLessonsPanel();
+            showDashOk("Статус відвідування оновлено.");
+          } catch (err) {
+            showDashError(err?.message || String(err));
+          }
+        });
+        line.appendChild(rb);
+        wrap.appendChild(line);
+      }
+    }
+    td.innerHTML = "";
+    td.appendChild(wrap);
+  } catch (e) {
+    td.innerHTML = `<span class="admin-muted">${escapeHtml(e?.message || String(e))}</span>`;
+  }
+}
+
 function renderLessonRowView(tr, row, onEdit, onDelete) {
   tr.innerHTML = "";
   const cells = [
@@ -462,7 +546,7 @@ async function renderLessonsPanel() {
       .from("lessons")
       .select(
         `id, starts_at, abon_count, single_visitors_count, skip_visitors_count,
-         conducting_display_name, vote_finalized_at,
+         conducting_display_name, vote_finalized_at, lesson_vote_occurrence_id,
          teachers ( id, name ),
          places ( id, name, address ),
          lesson_times ( id, start_time, day_of_week, lesson_types ( id, name, slug ) )`,
@@ -553,6 +637,7 @@ async function renderLessonsPanel() {
             showDashOk("Запис заняття (і пов'язане голосування) видалено.");
           },
         );
+        if (tr.parentNode) void renderOccurrenceVisitControls(tr, row);
       };
 
       const enterEdit = () => {
@@ -568,7 +653,7 @@ async function renderLessonsPanel() {
               .eq("id", row.id)
               .select(
                 `id, starts_at, abon_count, single_visitors_count, skip_visitors_count,
-                 conducting_display_name, vote_finalized_at,
+                 conducting_display_name, vote_finalized_at, lesson_vote_occurrence_id,
                  teachers ( id, name ),
                  places ( id, name, address ),
                  lesson_times ( id, start_time, day_of_week, lesson_types ( id, name, slug ) )`,
@@ -588,6 +673,7 @@ async function renderLessonsPanel() {
 
       enterView();
       tbody.appendChild(tr);
+      void renderOccurrenceVisitControls(tr, row);
     }
 
     const wrap = document.createElement("div");
@@ -1513,6 +1599,11 @@ async function refreshDashboard() {
         resetTeacherForm();
         await renderTeachersPanel();
         break;
+      case "students": {
+        const mod = await import("./admin-students.js");
+        await mod.setupStudentsAdmin();
+        break;
+      }
       case "lessons":
         await renderLessonsPanel();
         break;
