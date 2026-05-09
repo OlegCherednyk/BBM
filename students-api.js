@@ -26,7 +26,7 @@ export async function resolveLessonTypeIdForOccurrence(supabaseAdmin, row) {
 export async function recomputeSubscriptionStatus(supabaseAdmin, subscriptionId) {
   const { data: sub, error: subErr } = await supabaseAdmin
     .from("subscriptions")
-    .select("id, total_visits, valid_until, status")
+    .select("id, total_visits, valid_until, status, used_visits_override")
     .eq("id", subscriptionId)
     .maybeSingle();
   if (subErr) throw new Error(subErr.message);
@@ -38,7 +38,12 @@ export async function recomputeSubscriptionStatus(supabaseAdmin, subscriptionId)
     .eq("subscription_id", subscriptionId)
     .eq("visit_status", "attended");
   if (cntErr) throw new Error(cntErr.message);
-  const attached = Number(count) || 0;
+  const fromVisits = Number(count) || 0;
+  const ovRaw = sub.used_visits_override;
+  const attached =
+    ovRaw != null && Number.isFinite(Number(ovRaw))
+      ? Math.max(0, Math.floor(Number(ovRaw)))
+      : fromVisits;
 
   let nextStatus = sub.status;
   if (sub.total_visits == null) {
@@ -426,7 +431,7 @@ async function subscriptionSummaryForStudents(supabaseAdmin, studentIds) {
   if (studentIds.length === 0) return new Map();
   const { data, error } = await supabaseAdmin
     .from("subscriptions")
-    .select("id, student_id, status, total_visits")
+    .select("id, student_id, status, total_visits, used_visits_override")
     .in("student_id", studentIds);
   if (error) throw new Error(error.message);
 
@@ -484,7 +489,12 @@ async function subscriptionSummaryForStudents(supabaseAdmin, studentIds) {
     if (tvRaw == null || !Number.isFinite(Number(tvRaw))) continue;
     const total = Math.max(0, Math.floor(Number(tvRaw)));
     if (total <= 0) continue;
-    const used = Math.min(total, Number(usedBySubscriptionId.get(String(row.id)) || 0));
+    const fromVisits = Math.min(total, Number(usedBySubscriptionId.get(String(row.id)) || 0));
+    const ovRaw = row.used_visits_override;
+    const used =
+      ovRaw != null && Number.isFinite(Number(ovRaw))
+        ? Math.min(total, Math.max(0, Math.floor(Number(ovRaw))))
+        : fromVisits;
     const rem = Math.max(0, total - used);
     bucket.abon_visits_total += total;
     bucket.abon_visits_remaining += rem;
@@ -775,8 +785,30 @@ export function registerStudentRoutes(app, supabaseAdmin) {
 
       /** @type {Record<string, unknown>} */
       const patch = {};
-      for (const f of ["total_visits", "amount_uah", "purchased_at", "valid_until", "status"]) {
+      for (const f of [
+        "total_visits",
+        "amount_uah",
+        "purchased_at",
+        "valid_until",
+        "status",
+        "used_visits_override",
+      ]) {
         if (Object.prototype.hasOwnProperty.call(req.body, f)) patch[f] = req.body[f];
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "used_visits_override")) {
+        const v = patch.used_visits_override;
+        if (v === null || v === "") {
+          patch.used_visits_override = null;
+        } else {
+          const n = Math.floor(Number(v));
+          if (!Number.isFinite(n) || n < 0) {
+            return res.status(400).json({
+              ok: false,
+              error: "used_visits_override must be null or an integer ≥ 0.",
+            });
+          }
+          patch.used_visits_override = n;
+        }
       }
       if (Object.keys(patch).length === 0) {
         return res.status(400).json({ ok: false, error: "No updatable fields." });

@@ -506,7 +506,7 @@ async function notifyConductingTeacherPayout({
     const payoutText = [
       `🧾 Твій заробіток: ${formatMoneyUah(payout)}`,
       "",
-      `👥 Кількість відвідувачів (абонемент + разове): ${peopleCount}`,
+      `👥 Кількість відвідувачів: ${peopleCount}`,
       smmLine,
     ].join("\n");
 

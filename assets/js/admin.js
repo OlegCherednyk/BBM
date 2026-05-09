@@ -311,97 +311,6 @@ function lessonTypeLabel(row) {
   );
 }
 
-/** @param {HTMLTableRowElement} lessonRow */
-function removeOccurrenceVisitPanel(lessonRow) {
-  const next = lessonRow.nextElementSibling;
-  if (!next || !next.dataset.visitPanelFor) return;
-  if (next.dataset.visitPanelFor === lessonRow.dataset.visitRowUid) {
-    next.remove();
-  }
-}
-
-/**
- * Панель відвідувань після фіналізації голосування (rollback через API).
- * Показується лише в режимі редагування рядка заняття.
- * @param {HTMLTableRowElement} lessonRow
- * @param {{ id?: string, vote_finalized_at?: string | null, lesson_vote_occurrence_id?: string | null }} row
- */
-async function renderOccurrenceVisitControls(lessonRow, row) {
-  removeOccurrenceVisitPanel(lessonRow);
-  const occId = row.lesson_vote_occurrence_id ? String(row.lesson_vote_occurrence_id).trim() : "";
-  if (!occId || !row.vote_finalized_at) return;
-
-  if (!lessonRow.dataset.visitRowUid) {
-    lessonRow.dataset.visitRowUid = `${row.id || "row"}-${occId}`;
-  }
-  const panelTr = document.createElement("tr");
-  panelTr.dataset.visitPanelFor = lessonRow.dataset.visitRowUid;
-  const td = document.createElement("td");
-  td.colSpan = 8;
-  td.className = "admin-muted";
-  td.innerHTML = `<p class="admin-muted" style="margin:0">Завантаження відвідувань…</p>`;
-  panelTr.appendChild(td);
-  lessonRow.parentNode?.insertBefore(panelTr, lessonRow.nextSibling);
-
-  try {
-    const res = await fetch(`/api/admin/lessons/${encodeURIComponent(occId)}/visits`);
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok || !body.ok) throw new Error(body.error || `HTTP ${res.status}`);
-    const visits = body.rows || [];
-    const wrap = document.createElement("div");
-    wrap.style.padding = "4px 0 10px";
-    wrap.style.fontSize = "0.9rem";
-    if (!visits.length) {
-      wrap.innerHTML = `<span class="admin-muted">Немає записів відвідувань для цього голосування.</span>`;
-    } else {
-      for (const v of visits) {
-        const st = v.students;
-        const name = st?.display_name || (st?.telegram_user_id != null ? `TG ${st.telegram_user_id}` : "—");
-        const line = document.createElement("div");
-        line.style.marginBottom = "6px";
-        line.style.display = "flex";
-        line.style.alignItems = "center";
-        line.style.gap = "10px";
-        line.style.flexWrap = "wrap";
-
-        const label = document.createElement("span");
-        const statusUk = v.visit_status === "rolled_back" ? "не був(ла)" : "відмічено відвідування";
-        label.textContent = `${name} — ${statusUk}`;
-        line.appendChild(label);
-
-        const rb = document.createElement("button");
-        rb.type = "button";
-        rb.className = "btn btn--ghost btn--sm";
-        rb.textContent = v.visit_status === "attended" ? "Не був(ла)" : "Був(ла)";
-        rb.addEventListener("click", async () => {
-          clearDashMessages();
-          try {
-            const r2 = await fetch(`/api/admin/visits/${encodeURIComponent(v.id)}/rollback`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-            });
-            const b2 = await r2.json().catch(() => ({}));
-            if (!r2.ok || b2.ok === false) {
-              showDashError(b2.error || `Помилка ${r2.status}`);
-              return;
-            }
-            await renderLessonsPanel();
-            showDashOk("Статус відвідування оновлено.");
-          } catch (err) {
-            showDashError(err?.message || String(err));
-          }
-        });
-        line.appendChild(rb);
-        wrap.appendChild(line);
-      }
-    }
-    td.innerHTML = "";
-    td.appendChild(wrap);
-  } catch (e) {
-    td.innerHTML = `<span class="admin-muted">${escapeHtml(e?.message || String(e))}</span>`;
-  }
-}
-
 function renderLessonRowView(tr, row, onEdit, onDelete) {
   tr.innerHTML = "";
   const cells = [
@@ -536,8 +445,6 @@ function renderLessonRowEdit(tr, row, onCancel, onSave) {
 
   actionsTd.append(saveBtn, cancelBtn);
   tr.appendChild(actionsTd);
-
-  if (tr.parentNode) void renderOccurrenceVisitControls(tr, row);
 }
 
 async function renderLessonsPanel() {
@@ -620,7 +527,6 @@ async function renderLessonsPanel() {
       const tr = document.createElement("tr");
 
       const enterView = () => {
-        removeOccurrenceVisitPanel(tr);
         renderLessonRowView(
           tr,
           row,

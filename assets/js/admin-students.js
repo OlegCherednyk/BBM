@@ -206,29 +206,31 @@ export async function setupStudentsAdmin() {
       visitsIn.step = "1";
       visitsIn.value = sub.total_visits != null ? String(sub.total_visits) : "";
 
-      const usedCount = countAttendedVisitsForSubscription(visits, sub.id);
+      const attendedCount = countAttendedVisitsForSubscription(visits, sub.id);
+      const fromJournalOnly =
+        sub.used_visits_override == null || sub.used_visits_override === "";
+
+      const usedIn = document.createElement("input");
+      usedIn.type = "number";
+      usedIn.min = "0";
+      usedIn.step = "1";
+      usedIn.className = "admin-subscription-card__visits-used-input";
+      usedIn.id = `visit-used-${sub.id}`;
+      usedIn.value = String(
+        fromJournalOnly ? attendedCount : Math.max(0, Math.floor(Number(sub.used_visits_override))),
+      );
+      usedIn.title =
+        "Використані візити. Якщо зберегти те саме число, що й «відвідав» у журналі, підрахунок лишається автоматичним із журналу; інше значення задає ручне перевизначення.";
 
       const visitsField = document.createElement("div");
       visitsField.className = "admin-field";
       const visitsLab = document.createElement("label");
-      visitsLab.textContent = "Пакет візитів";
+      visitsLab.textContent = "Використано · пакет";
       const visitsRow = document.createElement("div");
       visitsRow.className = "admin-subscription-card__visits-row";
-      const visitsUsedWrap = document.createElement("span");
-      visitsUsedWrap.className = "admin-subscription-card__visits-used-wrap";
-      visitsUsedWrap.title = "Скільки вже списано візитів за цим абонементом (лише для перегляду).";
-      visitsUsedWrap.setAttribute("aria-label", `Вже використано візитів: ${usedCount}`);
-      visitsUsedWrap.setAttribute("tabindex", "0");
-      const visitsUsedNum = document.createElement("strong");
-      visitsUsedNum.className = "admin-subscription-card__visits-used-num";
-      visitsUsedNum.textContent = String(usedCount);
-      const visitsUsedSuf = document.createElement("span");
-      visitsUsedSuf.className = "admin-subscription-card__visits-used-suf";
-      visitsUsedSuf.textContent = "викор.";
-      visitsUsedWrap.append(visitsUsedNum, visitsUsedSuf);
       visitsLab.setAttribute("for", `visit-pkg-${sub.id}`);
       visitsIn.id = `visit-pkg-${sub.id}`;
-      visitsRow.append(visitsUsedWrap, visitsIn);
+      visitsRow.append(usedIn, visitsIn);
       visitsField.append(visitsLab, visitsRow);
 
       const validUntil = document.createElement("input");
@@ -290,6 +292,16 @@ export async function setupStudentsAdmin() {
           showStudentsLocalError("Некоректна сума.");
           return;
         }
+
+        const attendedNow = countAttendedVisitsForSubscription(visits, sub.id);
+        const u = Number.parseInt(String(usedIn.value).trim(), 10);
+        if (!Number.isFinite(u) || u < 0) {
+          showStudentsLocalError("Некоректна кількість використаних візитів.");
+          return;
+        }
+        /** Авто з журналу — якщо лишили число як у підрахунку «відвідав». Інакше зберігається ручний override. */
+        const used_visits_override = u === attendedNow ? null : u;
+
         saveBtn.disabled = true;
         delBtn.disabled = true;
         try {
@@ -300,6 +312,7 @@ export async function setupStudentsAdmin() {
               valid_until,
               amount_uah,
               status: statusSel.value,
+              used_visits_override,
             }),
           });
           await reloadSubs();
