@@ -31,3 +31,4 @@ dist/
 build/
 .cache/
 .parcel-cache/
+nginx/
