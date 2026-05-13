@@ -54,6 +54,16 @@ function endOfDayIso(dateInput) {
 }
 
 const { url: supabaseUrl, anonKey: supabaseAnonKey } = await getSupabaseConfig();
+if (!supabaseUrl || !supabaseAnonKey) {
+  const msg =
+    "Немає налаштувань Supabase з сервера. Додайте PUBLIC_SUPABASE_URL і PUBLIC_SUPABASE_ANON_KEY у .env і перезапустіть node server.js.";
+  const errEl = maybeEl("authError");
+  if (errEl) {
+    errEl.textContent = msg;
+    errEl.classList.remove("admin-hide");
+  }
+  throw new Error("supabase_public_config_missing");
+}
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const authSection = maybeEl("authSection");

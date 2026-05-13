@@ -30,6 +30,11 @@ const telegramGroupChatIdLeftBank = process.env.TELEGRAM_GROUP_CHAT_ID_LEFT_BANK
 const telegramGroupChatIdRightBank = process.env.TELEGRAM_GROUP_CHAT_ID_RIGHT_BANK || "";
 const publicSupabaseUrl = process.env.PUBLIC_SUPABASE_URL || "";
 const publicSupabaseAnonKey = process.env.PUBLIC_SUPABASE_ANON_KEY || "";
+if (!publicSupabaseUrl || !publicSupabaseAnonKey) {
+  console.warn(
+    "[env] PUBLIC_SUPABASE_URL або PUBLIC_SUPABASE_ANON_KEY не задані — клієнтські сторінки не зможуть отримати Supabase з /api/public-config.",
+  );
+}
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 const bot = botToken ? new Telegraf(botToken) : null;

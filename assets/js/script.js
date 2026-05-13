@@ -95,7 +95,8 @@ let scheduleSlots = [
 ];
 
 const { url: supabaseUrl, anonKey: supabaseAnonKey } = await getSupabaseConfig();
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase =
+  supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 function normalizeBank(riverBank) {
   const v = String(riverBank || "").toLowerCase();
@@ -117,6 +118,7 @@ function formatTimeToHm(value) {
 }
 
 async function loadScheduleSlotsFromSupabase() {
+  if (!supabase) return;
   const { data, error } = await supabase
     .from("lesson_times")
     .select("day_of_week, start_time, lesson_types(name,duration_minutes), places(name,address,river_bank)");
@@ -157,6 +159,7 @@ function lessonKey(lessonType) {
 }
 
 async function loadPricesFromSupabase() {
+  if (!supabase) return;
   const { data, error } = await supabase.from("prices").select("price_kind,visits_count,amount_uah,lesson_types(slug,name)");
   if (error) {
     console.error("Cannot load prices from Supabase:", error.message);

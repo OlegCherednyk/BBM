@@ -369,6 +369,12 @@ export async function setupStudentsAdmin() {
   }
 
   const { url, anonKey } = await getSupabaseConfig();
+  if (!url || !anonKey) {
+    showStudentsLocalError(
+      "Немає PUBLIC_SUPABASE_URL / PUBLIC_SUPABASE_ANON_KEY з сервера (.env). Перезапустіть node server.js.",
+    );
+    return;
+  }
   const supabase = createClient(url, anonKey);
 
   async function loadLessonTypeOptions() {
