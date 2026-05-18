@@ -52,7 +52,7 @@ const activeConductVotes = new Map();
 const DAY_SHORT_UK = ["Нд", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
 const KYIV_TZ = "Europe/Kyiv";
 /** Вікно автоголосування: відправка не раніше ніж за 3×24 год і не пізніше ніж за 24 год до початку заняття (Київ) */
-const VOTE_SCHED_OPEN_MAX_HOURS_BEFORE = 3 * 24;
+const VOTE_SCHED_OPEN_MAX_HOURS_BEFORE = 4 * 24;
 const VOTE_SCHED_CLOSE_MAX_HOURS_BEFORE = 1;
 const SCHEDULER_TICK_MS = 60 * 1000;
 const lessonVoteDailyCreateCronTime = process.env.LESSON_VOTE_DAILY_CREATE_CRON_TIME;
@@ -354,7 +354,14 @@ async function resolveVoterDisplayName(telegram, chatId, fromUser) {
 function voteParticipantLabel(participant) {
   if (participant == null) return "";
   if (typeof participant === "string") return String(participant).trim();
-  if (typeof participant === "object") return String(participant.name ?? "").trim();
+  if (typeof participant === "object") {
+    const rawU = participant.telegram_username ?? participant.username;
+    if (typeof rawU === "string" && rawU.trim()) {
+      const nick = String(rawU).trim().replace(/^@/, "");
+      if (nick) return `@${nick}`;
+    }
+    return String(participant.name ?? "").trim();
+  }
   return "";
 }
 
