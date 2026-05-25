@@ -64,6 +64,42 @@ function isOccurrenceInScheduledVoteWindow(occurrenceKyiv, nowKyiv) {
   return hoursUntil > VOTE_SCHED_CLOSE_MAX_HOURS_BEFORE && hoursUntil <= VOTE_SCHED_OPEN_MAX_HOURS_BEFORE;
 }
 
+function normalizeOccurrenceAtIso(raw) {
+  if (raw == null || raw === "") return "";
+  const dt = DateTime.fromISO(String(raw), { zone: "utc" });
+  return dt.isValid ? dt.toUTC().toISO() : String(raw).trim();
+}
+
+function isTelegramMessageNotModifiedError(err) {
+  const msg = String(err?.description || err?.message || err || "");
+  return /message is not modified/i.test(msg);
+}
+
+/** Уже існуючі (lesson_time_id → Set occurrence_at ISO) для бойових голосувань. */
+async function loadOccupiedOccurrenceAtByLessonTimeId() {
+  const map = new Map();
+  if (!supabaseAdmin) return map;
+
+  const { data, error } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .select("lesson_time_id, occurrence_at")
+    .eq("is_test", false);
+
+  if (error) {
+    console.warn("loadOccupiedOccurrenceAtByLessonTimeId:", error.message);
+    return map;
+  }
+
+  for (const row of data || []) {
+    const lessonTimeId = String(row.lesson_time_id || "").trim();
+    const iso = normalizeOccurrenceAtIso(row.occurrence_at);
+    if (!lessonTimeId || !iso) continue;
+    if (!map.has(lessonTimeId)) map.set(lessonTimeId, new Set());
+    map.get(lessonTimeId).add(iso);
+  }
+  return map;
+}
+
 function resolveGroupVoteChatId() {
   const dedicated = String(telegramGroupChatId || "").trim();
   if (dedicated) return dedicated;
@@ -326,41 +362,91 @@ function buildDisplayNameFromUser(user) {
   return `id:${String(user.id ?? "unknown")}`;
 }
 
+function normalizeTelegramUsername(raw) {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const nick = raw.trim().replace(/^@/, "");
+  return nick || null;
+}
+
+async function lookupStudentTelegramUsernameByUserId(userIdRaw) {
+  if (!supabaseAdmin || userIdRaw == null || userIdRaw === "") return null;
+  try {
+    const tid = Number(userIdRaw);
+    if (!Number.isFinite(tid)) return null;
+    const { data: student, error: stErr } = await supabaseAdmin
+      .from("students")
+      .select("telegram_username")
+      .eq("telegram_user_id", tid)
+      .maybeSingle();
+    if (stErr) {
+      console.warn("lookupStudentTelegramUsernameByUserId:", stErr.message);
+      return null;
+    }
+    return normalizeTelegramUsername(student?.telegram_username);
+  } catch (e) {
+    console.warn("lookupStudentTelegramUsernameByUserId:", e?.message || e);
+    return null;
+  }
+}
+
+/**
+ * Імʼя + @нік для збереження в голосуванні.
+ * @нік: callback → getChatMember → students.telegram_username (fallback для вже відомих учнів).
+ */
+async function resolveVoterIdentity(telegram, chatId, fromUser) {
+  const uid = Number(fromUser?.id);
+  const uidStr = Number.isFinite(uid) ? String(uid) : "";
+  let telegramUsername = normalizeTelegramUsername(fromUser?.username);
+  let name = buildDisplayNameFromUser(fromUser);
+
+  if (!telegramUsername && telegram && chatId != null && Number.isFinite(uid)) {
+    try {
+      const member = await telegram.getChatMember(chatId, uid);
+      const u = member?.user;
+      if (u) {
+        telegramUsername = normalizeTelegramUsername(u.username) || telegramUsername;
+        const enriched = buildDisplayNameFromUser(u);
+        if (enriched !== "Невідомий" && !/^id:\d+$/.test(enriched) && enriched.trim()) {
+          name = enriched;
+        }
+      }
+    } catch (_e) {
+      // ignore (немає прав getChatMember тощо)
+    }
+  }
+
+  if (!telegramUsername && uidStr) {
+    telegramUsername = await lookupStudentTelegramUsernameByUserId(uidStr);
+  }
+
+  return { name, telegram_username: telegramUsername };
+}
+
 /**
  * Якщо в callback недоступні імʼя/нік — добираємо профіль учасника чату через getChatMember (частіше допомагає в групах).
  * @param {{ getChatMember: (chatId: number | string, userId: number) => Promise<{ user?: { first_name?: string, last_name?: string, username?: string, id?: number } }> }} telegram
  */
 async function resolveVoterDisplayName(telegram, chatId, fromUser) {
-  const label = buildDisplayNameFromUser(fromUser);
-  const uid = Number(fromUser?.id);
-  if (!telegram || chatId == null || !Number.isFinite(uid)) return label;
-  const weak =
-    label === "Невідомий" || /^id:\d+$/.test(label) || /^id:unknown$/i.test(label) || label.trim() === "";
-  if (!weak) return label;
-  try {
-    const member = await telegram.getChatMember(chatId, uid);
-    const u = member?.user;
-    if (u) {
-      const enriched = buildDisplayNameFromUser(u);
-      if (enriched !== "Невідомий" && !/^id:\d+$/.test(enriched) && enriched.trim() !== "") return enriched;
-    }
-  } catch (_e) {
-    // ignore (бот без прав на getChatMember, приватний чат тощо)
-  }
-  return label;
+  const { name } = await resolveVoterIdentity(telegram, chatId, fromUser);
+  return name;
 }
 
-/** Підпис у тексті голосування (повідомлення Telegram). */
+/** Підпис у тексті групового голосування — переважно @нік. */
 function voteParticipantLabel(participant) {
   if (participant == null) return "";
-  if (typeof participant === "string") return String(participant).trim();
+  if (typeof participant === "string") {
+    const s = String(participant).trim();
+    if (!s) return "";
+    if (s.startsWith("@")) return s;
+    return s;
+  }
   if (typeof participant === "object") {
     const rawU = participant.telegram_username ?? participant.username;
-    if (typeof rawU === "string" && rawU.trim()) {
-      const nick = String(rawU).trim().replace(/^@/, "");
-      if (nick) return `@${nick}`;
-    }
-    return String(participant.name ?? "").trim();
+    const nick = normalizeTelegramUsername(rawU);
+    if (nick) return `@${nick}`;
+    const name = String(participant.name ?? "").trim();
+    if (name.startsWith("@")) return name;
+    return name;
   }
   return "";
 }
@@ -372,6 +458,9 @@ function snapshotToVoteParticipant(uidStr, raw) {
     return { name: uid ? `Telegram ${uid}` : "Telegram ?", telegram_username: null };
   if (typeof raw === "string") {
     const s = raw.trim();
+    if (s.startsWith("@")) {
+      return { name: s, telegram_username: s.replace(/^@/, "") };
+    }
     return { name: s || `Telegram ${uid}`, telegram_username: null };
   }
   if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
@@ -454,6 +543,301 @@ function formatMoneyUah(amount) {
   return `${rounded.toLocaleString("uk-UA", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} грн`;
 }
 
+/** @param {bigint} big @param {string} uidStr */
+function telegramUserIdForDb(big, uidStr) {
+  const n = Number(uidStr);
+  if (Number.isSafeInteger(n)) return n;
+  return big.toString();
+}
+
+/** @param {{ amount_uah?: number | null, total_visits?: number | null }} sub */
+function subscriptionVisitUnitPrice(sub) {
+  const amount = Number(sub?.amount_uah) || 0;
+  const visits = Number(sub?.total_visits) || 0;
+  if (amount <= 0 || visits <= 0) return 0;
+  return amount / visits;
+}
+
+/** @param {Array<{ status?: string, created_at?: string }>} subs */
+function pickOpenSubscriptionForStudent(subs) {
+  const list = subs || [];
+  const active = list
+    .filter((s) => s.status === "active")
+    .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+  if (active.length > 0) return active[0];
+  const pending = list
+    .filter((s) => s.status === "pending")
+    .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+  return pending[0] || null;
+}
+
+/**
+ * Абонементна виручка: частка з відкритого абонементу учня; якщо немає — статична з таблиці prices.
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {{ lessonTypeId: string, votesByKind: { abon?: Map<string, unknown>, single?: Map<string, unknown> }, priceByType: Map<string, { single: number, abonUnit: number }> }} args
+ */
+async function computeLessonRevenueFromVotes(supabaseAdmin, { lessonTypeId, votesByKind, priceByType }) {
+  const singleMap = votesByKind?.single instanceof Map ? votesByKind.single : new Map();
+  const abonMap = votesByKind?.abon instanceof Map ? votesByKind.abon : new Map();
+  const singleCount = singleMap.size;
+  const abonCount = abonMap.size;
+  const prices = priceByType.get(lessonTypeId) || { single: 0, abonUnit: 0 };
+  const singleRevenue = singleCount * prices.single;
+  const staticAbonUnit = prices.abonUnit;
+
+  /** @type {Map<string, number | string>} */
+  const uidToTid = new Map();
+  for (const uidStr of abonMap.keys()) {
+    try {
+      uidToTid.set(String(uidStr), telegramUserIdForDb(BigInt(String(uidStr)), String(uidStr)));
+    } catch {
+      // ignore invalid telegram id
+    }
+  }
+
+  /** @type {Map<string, string>} */
+  const studentIdByTid = new Map();
+  /** @type {Map<string, Array<{ status?: string, created_at?: string, amount_uah?: number | null, total_visits?: number | null }>>} */
+  const subsByStudent = new Map();
+
+  const tidValues = [...new Set([...uidToTid.values()])];
+  if (tidValues.length > 0) {
+    const { data: students, error: stErr } = await supabaseAdmin
+      .from("students")
+      .select("id, telegram_user_id")
+      .in("telegram_user_id", tidValues);
+    if (stErr) throw new Error(stErr.message);
+
+    for (const st of students || []) {
+      studentIdByTid.set(String(st.telegram_user_id), String(st.id));
+    }
+
+    const studentIds = [...new Set((students || []).map((st) => String(st.id)))];
+    if (studentIds.length > 0) {
+      const { data: subs, error: subErr } = await supabaseAdmin
+        .from("subscriptions")
+        .select("id, student_id, status, amount_uah, total_visits, created_at")
+        .in("student_id", studentIds)
+        .eq("lesson_type_id", lessonTypeId)
+        .in("status", ["active", "pending"]);
+      if (subErr) throw new Error(subErr.message);
+
+      for (const sub of subs || []) {
+        const sid = String(sub.student_id);
+        if (!subsByStudent.has(sid)) subsByStudent.set(sid, []);
+        subsByStudent.get(sid).push(sub);
+      }
+    }
+  }
+
+  let abonRevenue = 0;
+  for (const uidStr of abonMap.keys()) {
+    let unitPrice = 0;
+    const tid = uidToTid.get(String(uidStr));
+    if (tid != null) {
+      const studentId = studentIdByTid.get(String(tid));
+      if (studentId) {
+        const sub = pickOpenSubscriptionForStudent(subsByStudent.get(studentId));
+        if (sub) unitPrice = subscriptionVisitUnitPrice(sub);
+      }
+    }
+    if (unitPrice <= 0) unitPrice = staticAbonUnit;
+    abonRevenue += unitPrice;
+  }
+
+  abonRevenue = Math.round(abonRevenue * 100) / 100;
+  const totalRevenue = Math.round((abonRevenue + singleRevenue) * 100) / 100;
+
+  return { abonRevenue, singleRevenue, totalRevenue, abonCount, singleCount };
+}
+
+function statsDateToStartIso(dateInput) {
+  if (!dateInput || typeof dateInput !== "string") return null;
+  const d = new Date(`${dateInput.trim()}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function statsDateToEndIso(dateInput) {
+  if (!dateInput || typeof dateInput !== "string") return null;
+  const d = new Date(`${dateInput.trim()}T23:59:59.999`);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+/**
+ * Абонементна виручка: спочатку фактичні візити з subscriptions; інакше голоси; інакше статичний прайс.
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ */
+async function computeLessonAbonRevenueForStats(supabaseAdmin, {
+  lessonRow,
+  lessonTypeId,
+  votesByKind,
+  priceByType,
+  visitsByOccurrence,
+}) {
+  const prices = priceByType.get(lessonTypeId) || { single: 0, abonUnit: 0 };
+  const staticAbonUnit = prices.abonUnit;
+  const occurrenceId = String(lessonRow?.lesson_vote_occurrence_id || "").trim();
+  const abonVisits = (occurrenceId ? visitsByOccurrence.get(occurrenceId) : null) || [];
+
+  if (abonVisits.length > 0) {
+    let abonRevenue = 0;
+    for (const visit of abonVisits) {
+      let unitPrice = subscriptionVisitUnitPrice(visit.subscriptions);
+      if (unitPrice <= 0) unitPrice = staticAbonUnit;
+      abonRevenue += unitPrice;
+    }
+    return Math.round(abonRevenue * 100) / 100;
+  }
+
+  const abonMap = votesByKind?.abon instanceof Map ? votesByKind.abon : new Map();
+  if (abonMap.size > 0) {
+    const { abonRevenue } = await computeLessonRevenueFromVotes(supabaseAdmin, {
+      lessonTypeId,
+      votesByKind,
+      priceByType,
+    });
+    return abonRevenue;
+  }
+
+  const abonCount = Math.max(0, Number(lessonRow?.abon_count) || 0);
+  return Math.round(abonCount * staticAbonUnit * 100) / 100;
+}
+
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {{ fromIso?: string | null, toIso?: string | null }} range
+ */
+async function computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso }) {
+  let lessonsQuery = supabaseAdmin
+    .from("lessons")
+    .select(
+      `id, starts_at, abon_count, single_visitors_count, conducting_display_name, place_id,
+       vote_snapshot, lesson_vote_occurrence_id,
+       teachers(id, name),
+       lesson_times(lesson_types(id, duration_minutes))`,
+    );
+  if (fromIso) lessonsQuery = lessonsQuery.gte("starts_at", fromIso);
+  if (toIso) lessonsQuery = lessonsQuery.lte("starts_at", toIso);
+
+  const [lessonsRes, pricesRes, smmRes, placePricesRes] = await Promise.all([
+    lessonsQuery,
+    supabaseAdmin.from("prices").select("lesson_type_id, price_kind, visits_count, amount_uah"),
+    supabaseAdmin.from("smm_prices").select("people_from, people_to, amount_uah").order("people_from", { ascending: true }),
+    supabaseAdmin.from("places_prices").select("place_id, duration_minutes, amount_uah"),
+  ]);
+
+  if (lessonsRes.error) throw new Error(lessonsRes.error.message);
+  if (pricesRes.error) throw new Error(pricesRes.error.message);
+  if (smmRes.error) throw new Error(smmRes.error.message);
+  if (placePricesRes.error) throw new Error(placePricesRes.error.message);
+
+  const priceByType = buildPriceByType(pricesRes.data || []);
+  const smmRows = smmRes.data || [];
+  const placePriceMap = new Map(
+    (placePricesRes.data || []).map((row) => [`${row.place_id}:${row.duration_minutes}`, Number(row.amount_uah) || 0]),
+  );
+
+  const occurrenceIds = [
+    ...new Set(
+      (lessonsRes.data || [])
+        .map((row) => String(row.lesson_vote_occurrence_id || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+
+  /** @type {Map<string, Array<{ subscriptions?: { amount_uah?: number | null, total_visits?: number | null } | null }>>} */
+  const visitsByOccurrence = new Map();
+  if (occurrenceIds.length > 0) {
+    const { data: visitRows, error: visitErr } = await supabaseAdmin
+      .from("visits")
+      .select("lesson_vote_occurrence_id, vote_choice, visit_status, subscriptions(amount_uah, total_visits)")
+      .in("lesson_vote_occurrence_id", occurrenceIds)
+      .eq("visit_status", "attended")
+      .eq("vote_choice", "abon");
+    if (visitErr) throw new Error(visitErr.message);
+    for (const visit of visitRows || []) {
+      const oid = String(visit.lesson_vote_occurrence_id);
+      if (!visitsByOccurrence.has(oid)) visitsByOccurrence.set(oid, []);
+      visitsByOccurrence.get(oid).push(visit);
+    }
+  }
+
+  /** @type {Map<string, { name: string, lessonsCount: number, peopleCount: number, revenue: number, rent: number, smm: number, payout: number }>} */
+  const byTeacher = new Map();
+
+  for (const row of lessonsRes.data || []) {
+    const lessonType = row.lesson_times?.lesson_types || null;
+    const lessonTypeId = String(lessonType?.id || "");
+    const duration = Number(lessonType?.duration_minutes) || 60;
+    const prices = priceByType.get(lessonTypeId) || { single: 0, abonUnit: 0 };
+
+    const votesByKind = snapshotToVotesByKind(row.vote_snapshot);
+    const hasSnapshot =
+      votesByKind.abon.size + votesByKind.single.size + votesByKind.skip.size > 0;
+    const singleCount = hasSnapshot
+      ? votesByKind.single.size
+      : Math.max(0, Number(row.single_visitors_count) || 0);
+    const abonPeopleCount = hasSnapshot ? votesByKind.abon.size : Math.max(0, Number(row.abon_count) || 0);
+    const peopleCount = singleCount + abonPeopleCount;
+
+    const singleRevenue = singleCount * prices.single;
+    const abonRevenue = await computeLessonAbonRevenueForStats(supabaseAdmin, {
+      lessonRow: row,
+      lessonTypeId,
+      votesByKind,
+      priceByType,
+      visitsByOccurrence,
+    });
+    const revenue = Math.round((singleRevenue + abonRevenue) * 100) / 100;
+
+    const placeId = String(row.place_id || "");
+    const rent = placePriceMap.get(`${placeId}:${duration}`) ?? placePriceMap.get(`${placeId}:60`) ?? 0;
+    const smm = pickSmmAmount(smmRows, peopleCount);
+    const payout = revenue - rent - smm;
+
+    const teacherName =
+      row.teachers?.name?.trim() ||
+      String(row.conducting_display_name || "").trim() ||
+      "Без викладача";
+    const teacherKey = String(row.teachers?.id || teacherName);
+    const agg = byTeacher.get(teacherKey) || {
+      name: teacherName,
+      lessonsCount: 0,
+      peopleCount: 0,
+      revenue: 0,
+      rent: 0,
+      smm: 0,
+      payout: 0,
+    };
+    agg.lessonsCount += 1;
+    agg.peopleCount += peopleCount;
+    agg.revenue += revenue;
+    agg.rent += rent;
+    agg.smm += smm;
+    agg.payout += payout;
+    byTeacher.set(teacherKey, agg);
+  }
+
+  const teachers = [...byTeacher.values()].sort((a, b) => b.payout - a.payout);
+  const totalLessons = teachers.reduce((sum, row) => sum + row.lessonsCount, 0);
+  const totalPeople = teachers.reduce((sum, row) => sum + row.peopleCount, 0);
+  const totalRevenue = teachers.reduce((sum, row) => sum + row.revenue, 0);
+  const totalRent = teachers.reduce((sum, row) => sum + row.rent, 0);
+  const totalSmm = teachers.reduce((sum, row) => sum + row.smm, 0);
+
+  return {
+    summary: {
+      totalLessons,
+      totalPeople,
+      totalNetAfterRent: totalRevenue - totalRent,
+      totalSmm,
+    },
+    teachers,
+  };
+}
+
 async function notifyConductingTeacherPayout({
   row,
   lessonContext,
@@ -504,22 +888,26 @@ async function notifyConductingTeacherPayout({
     }
 
     const priceByType = buildPriceByType(pricesRes.data || []);
-    const prices = priceByType.get(lessonTypeId) || { single: 0, abonUnit: 0 };
-    const revenue = singleCount * prices.single + abonCount * prices.abonUnit;
+    const revenueBreakdown = await computeLessonRevenueFromVotes(supabaseAdmin, {
+      lessonTypeId,
+      votesByKind,
+      priceByType,
+    });
+    const { abonRevenue, singleRevenue, totalRevenue } = revenueBreakdown;
     const placePriceMap = new Map(
       (placePricesRes.data || []).map((pp) => [`${pp.place_id}:${pp.duration_minutes}`, Number(pp.amount_uah) || 0])
     );
     const placeId = String(row.place_id || "");
     const rent = placePriceMap.get(`${placeId}:${lessonDuration}`) ?? placePriceMap.get(`${placeId}:60`) ?? 0;
     const smm = pickSmmAmount(smmRes.data || [], peopleCount);
-    const payout = revenue - rent - smm;
+    const netIncome = totalRevenue - rent - smm;
 
-    const smmLine = `📣 Оплата SMM: ${formatMoneyUah(smm)}`;
     const payoutText = [
-      `🧾 Твій заробіток: ${formatMoneyUah(payout)}`,
-      "",
-      `👥 Кількість відвідувачів: ${peopleCount}`,
-      smmLine,
+      `📘 Абонемент: ${formatMoneyUah(abonRevenue)}`,
+      `🎟️ Разове: ${formatMoneyUah(singleRevenue)}`,
+      `📣 Оплата SMM: - ${formatMoneyUah(smm)}`,
+      `🏠 Оплата оренди: - ${formatMoneyUah(rent)}`,
+      `🧾 Чистий дохід: ${formatMoneyUah(netIncome)}`,
     ].join("\n");
 
     await bot.telegram.sendMessage(teacherChatId, payoutText);
@@ -590,6 +978,50 @@ function snapshotToVotesByKind(snap) {
     }
   }
   return votesByKind;
+}
+
+/** Добирає @нік з students для голосів, збережених без username. */
+async function enrichVotesByKindUsernames(votesByKind) {
+  if (!supabaseAdmin || !votesByKind) return;
+  const uids = new Set();
+  for (const k of ["abon", "single", "skip"]) {
+    const m = votesByKind[k];
+    if (!(m instanceof Map)) continue;
+    for (const [uid, participant] of m.entries()) {
+      if (normalizeTelegramUsername(participant?.telegram_username)) continue;
+      uids.add(String(uid));
+    }
+  }
+  if (!uids.size) return;
+
+  const numericUids = [...uids].map((x) => Number(x)).filter((n) => Number.isFinite(n));
+  if (!numericUids.length) return;
+
+  const { data: students, error: stErr } = await supabaseAdmin
+    .from("students")
+    .select("telegram_user_id, telegram_username")
+    .in("telegram_user_id", numericUids);
+  if (stErr) {
+    console.warn("enrichVotesByKindUsernames:", stErr.message);
+    return;
+  }
+
+  const byUid = new Map();
+  for (const row of students || []) {
+    const un = normalizeTelegramUsername(row.telegram_username);
+    if (un) byUid.set(String(row.telegram_user_id), un);
+  }
+  if (!byUid.size) return;
+
+  for (const k of ["abon", "single", "skip"]) {
+    const m = votesByKind[k];
+    if (!(m instanceof Map)) continue;
+    for (const [uid, participant] of m.entries()) {
+      if (normalizeTelegramUsername(participant?.telegram_username)) continue;
+      const un = byUid.get(String(uid));
+      if (un) m.set(uid, { ...participant, telegram_username: un });
+    }
+  }
 }
 
 async function persistOccurrenceVotesOnly(voteOccurrenceId, votesByKind) {
@@ -665,7 +1097,9 @@ async function refreshGroupAttendanceAfterConduct(
       reply_markup: buildLessonVoteKeyboard(groupState.voteId),
     });
   } catch (err) {
-    console.error("Failed to refresh group attendance message:", err?.description || err?.message || err);
+    if (!isTelegramMessageNotModifiedError(err)) {
+      console.error("Failed to refresh group attendance message:", err?.description || err?.message || err);
+    }
   }
 
   // Sync "Я провожу" state across all teachers' private chats for this same group vote.
@@ -682,7 +1116,9 @@ async function refreshGroupAttendanceAfterConduct(
       });
       cState.conductorDisplayName = groupState.conductingDisplayName;
     } catch (err) {
-      console.error("Failed to refresh teacher conduct message:", err?.description || err?.message || err);
+      if (!isTelegramMessageNotModifiedError(err)) {
+        console.error("Failed to refresh teacher conduct message:", err?.description || err?.message || err);
+      }
     }
   }
 
@@ -700,7 +1136,9 @@ async function refreshGroupAttendanceAfterConduct(
         reply_markup: buildLessonConductKeyboard(String(conductId)),
       });
     } catch (err) {
-      console.error("Failed to refresh teacher conduct message (from row):", err?.description || err?.message || err);
+      if (!isTelegramMessageNotModifiedError(err)) {
+        console.error("Failed to refresh teacher conduct message (from row):", err?.description || err?.message || err);
+      }
     }
   }
 
@@ -772,21 +1210,33 @@ function parseTimeHms(timeStr) {
   };
 }
 
-/** Найближчий майбутній початок слоту за київським часом */
-function computeNextOccurrenceKyiv(row) {
-  const nowKyiv = DateTime.now().setZone(KYIV_TZ);
+/** Найближчий майбутній початок слоту за київським часом (без урахування БД). */
+function computeFirstFutureOccurrenceKyiv(row, nowKyiv = DateTime.now().setZone(KYIV_TZ)) {
   const luxWd = dbDayToLuxonWeekday(row.day_of_week);
   const { hour, minute, second } = parseTimeHms(row.start_time);
-  let best = null;
-  for (let d = 0; d <= 28; d++) {
-    const day = nowKyiv.plus({ days: d });
-    if (day.weekday !== luxWd) continue;
-    const slotDt = day.set({ hour, minute, second, millisecond: 0 });
-    if (slotDt > nowKyiv) {
-      if (!best || slotDt < best) best = slotDt;
-    }
+  let daysUntil = (luxWd - nowKyiv.weekday + 7) % 7;
+  if (daysUntil === 0) {
+    const todaySlot = nowKyiv.set({ hour, minute, second, millisecond: 0 });
+    if (todaySlot <= nowKyiv) daysUntil = 7;
   }
-  return best;
+  return nowKyiv.plus({ days: daysUntil }).set({ hour, minute, second, millisecond: 0 });
+}
+
+/**
+ * Наступний проведення слота, для якого ще немає рядка в lesson_vote_occurrences.
+ * Для щотижневих слотів крокає +1 тиждень — без обмеження «8 тижнів уперед».
+ */
+function computeNextSchedulableOccurrenceKyiv(row, nowKyiv, occupiedIsoSet = null) {
+  const first = computeFirstFutureOccurrenceKyiv(row, nowKyiv);
+  if (!occupiedIsoSet?.size) return first;
+
+  let candidate = first;
+  for (let w = 0; w < 104; w++) {
+    const iso = normalizeOccurrenceAtIso(candidate.toUTC().toISO());
+    if (!occupiedIsoSet.has(iso)) return candidate;
+    candidate = candidate.plus({ weeks: 1 });
+  }
+  return null;
 }
 
 /**
@@ -1147,6 +1597,7 @@ async function executeLessonAttendanceVote(opts) {
 /**
  * Тестові голосування для кожного слоту розкладу, чия найближча подія потрапляє у вікно автопланувальника.
  * Дублікати з існуючим рядком (lesson_time_id + occurrence_at) пропускаються без помилки.
+ * Для щотижневих слотів пропускає зайняті дати (+1 тиждень) — працює необмежено довго.
  */
 async function runBatchTeacherVotesInWindow({ isTest = false } = {}) {
   if (!bot) {
@@ -1157,6 +1608,7 @@ async function runBatchTeacherVotesInWindow({ isTest = false } = {}) {
   }
 
   const nowKyiv = DateTime.now().setZone(KYIV_TZ);
+  const occupiedByLessonTime = isTest ? new Map() : await loadOccupiedOccurrenceAtByLessonTimeId();
   const { data: slots, error } = await supabaseAdmin
     .from("lesson_times")
     .select("id, place_id, day_of_week, start_time")
@@ -1171,7 +1623,9 @@ async function runBatchTeacherVotesInWindow({ isTest = false } = {}) {
   let skippedOutOfWindow = 0;
 
   for (const row of slots || []) {
-    const next = computeNextOccurrenceKyiv(row);
+    const lessonTimeKey = String(row.id || "").trim();
+    const occupied = occupiedByLessonTime.get(lessonTimeKey) || null;
+    const next = computeNextSchedulableOccurrenceKyiv(row, nowKyiv, occupied);
     if (!next) {
       skippedNoNext++;
       continue;
@@ -1254,6 +1708,31 @@ function findActiveLessonVoteByVoteId(voteIdRaw) {
   return null;
 }
 
+async function ensureActiveLessonVoteByVoteId(voteIdRaw) {
+  const found = findActiveLessonVoteByVoteId(voteIdRaw);
+  if (found) return found;
+  if (!supabaseAdmin) return null;
+
+  const voteId = String(voteIdRaw || "").trim();
+  if (!voteId) return null;
+
+  const { data: row, error } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .select("*")
+    .eq("status", "open")
+    .eq("vote_id", voteId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("ensureActiveLessonVoteByVoteId:", error.message);
+    return null;
+  }
+  if (!row) return null;
+
+  await hydrateLessonVoteOccurrenceRow(row);
+  return findActiveLessonVoteByVoteId(voteId);
+}
+
 /**
  * Збирає приватні повідомлення «хто проводить»: з пам’яті за прив’язкою або з запису occurrences.
  * @returns {{ chat_id: string, message_id: number }[]}
@@ -1314,9 +1793,13 @@ async function closeAttendanceVotesInTelegramAndMemory({
       { reply_markup: { inline_keyboard: [] } },
     );
   } catch (e) {
-    groupTelegramOk = false;
-    lastError = e?.description || e?.message || "Не вдалося оновити повідомлення в групі.";
-    console.error("close group vote message:", lastError);
+    if (isTelegramMessageNotModifiedError(e)) {
+      // Повідомлення вже в потрібному стані.
+    } else {
+      groupTelegramOk = false;
+      lastError = e?.description || e?.message || "Не вдалося оновити повідомлення в групі.";
+      console.error("close group vote message:", lastError);
+    }
   }
 
   const whoConduct = conductingDisplayName;
@@ -1521,9 +2004,142 @@ async function finalizeLessonVoteOccurrence(row) {
   });
 }
 
+function lessonContextFromOccurrenceRow(row) {
+  const snap = row.lesson_snapshot || {};
+  return {
+    lessonTimeLabel: snap.lessonTimeLabel || "не вказано",
+    placeLabel: snap.placeLabel || "не вказано",
+    lessonTypeLabel: snap.lessonTypeLabel || "не вказано",
+    riverBank: snap.riverBank ?? null,
+  };
+}
+
+/** Один рядок open → in-memory Maps; повертає groupKey або null. */
+async function hydrateLessonVoteOccurrenceRow(row, { refreshTelegramMessage = false } = {}) {
+  const chatId = row.telegram_group_chat_id;
+  const messageId = row.telegram_group_message_id;
+  if (!chatId || !Number.isFinite(Number(messageId))) return null;
+
+  const lessonContext = lessonContextFromOccurrenceRow(row);
+  const votesByKind = snapshotToVotesByKind(row.votes_snapshot);
+  await enrichVotesByKindUsernames(votesByKind);
+  const groupKey = attendanceGroupMemoryKey(chatId, messageId);
+  activeLessonVotes.set(groupKey, {
+    voteId: row.vote_id,
+    lessonContext,
+    teacherName: null,
+    conductingDisplayName: row.conducting_display_name ?? null,
+    conductingTelegramChatId:
+      row.conducting_telegram_chat_id != null && String(row.conducting_telegram_chat_id).trim() !== ""
+        ? String(row.conducting_telegram_chat_id).trim()
+        : null,
+    audience: "group",
+    votesByKind,
+    voteOccurrenceId: row.id,
+    isTestOccurrence: Boolean(row.is_test),
+    conductMessages: Array.isArray(row.conduct_messages) ? row.conduct_messages : [],
+  });
+
+  if (refreshTelegramMessage && bot && votesByKind.abon.size + votesByKind.single.size + votesByKind.skip.size > 0) {
+    const text = buildLessonVoteMessage({
+      ...lessonContext,
+      votesByKind,
+      teacherName: null,
+      conductingDisplayName: row.conducting_display_name ?? null,
+      audience: "group",
+    });
+    try {
+      await bot.telegram.editMessageText(String(chatId), Number(messageId), undefined, text, {
+        reply_markup: buildLessonVoteKeyboard(row.vote_id),
+      });
+    } catch (err) {
+      if (!isTelegramMessageNotModifiedError(err)) {
+        console.warn("hydrateLessonVoteOccurrenceRow refresh group message:", err?.description || err?.message || err);
+      }
+    }
+    await persistOccurrenceVotesOnly(row.id, votesByKind);
+  }
+
+  const conducts = Array.isArray(row.conduct_messages) ? row.conduct_messages : [];
+  for (const c of conducts) {
+    const cid = c?.chat_id;
+    const mid = c?.message_id;
+    const cCond = c?.conduct_id;
+    if (!cid || !Number.isFinite(Number(mid)) || !cCond) continue;
+    const cKey = attendanceGroupMemoryKey(cid, mid);
+    activeConductVotes.set(cKey, {
+      conductId: String(cCond),
+      lessonContext,
+      conductorDisplayName: null,
+      linkedGroupVoteKey: groupKey,
+      voteOccurrenceId: row.id,
+    });
+  }
+
+  return groupKey;
+}
+
+/** Якщо голосування немає в RAM — підвантажує open-рядок з БД за chat_id + message_id. */
+async function ensureActiveLessonVote(chatId, messageId, voteId) {
+  const stateKey = attendanceGroupMemoryKey(chatId, messageId);
+  const cached = activeLessonVotes.get(stateKey);
+  if (cached && cached.voteId === voteId) return cached;
+  if (!supabaseAdmin) return null;
+
+  const { data: row, error } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .select("*")
+    .eq("status", "open")
+    .eq("telegram_group_chat_id", String(chatId))
+    .eq("telegram_group_message_id", Number(messageId))
+    .maybeSingle();
+
+  if (error) {
+    console.warn("ensureActiveLessonVote:", error.message);
+    return null;
+  }
+  if (!row || row.vote_id !== voteId) return null;
+
+  await hydrateLessonVoteOccurrenceRow(row);
+  return activeLessonVotes.get(stateKey) || null;
+}
+
+/** Якщо «Я провожу» немає в RAM — шукає open-occurrence з conduct_messages. */
+async function ensureActiveConductVote(chatId, messageId, conductId) {
+  const stateKey = attendanceGroupMemoryKey(chatId, messageId);
+  const cached = activeConductVotes.get(stateKey);
+  if (cached && cached.conductId === conductId) return cached;
+  if (!supabaseAdmin) return null;
+
+  const { data: rows, error } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .select("*")
+    .eq("status", "open");
+
+  if (error) {
+    console.warn("ensureActiveConductVote:", error.message);
+    return null;
+  }
+
+  for (const row of rows || []) {
+    const conducts = Array.isArray(row.conduct_messages) ? row.conduct_messages : [];
+    const hit = conducts.some(
+      (c) =>
+        String(c?.chat_id) === String(chatId) &&
+        Number(c?.message_id) === Number(messageId) &&
+        String(c?.conduct_id) === String(conductId),
+    );
+    if (!hit) continue;
+    await hydrateLessonVoteOccurrenceRow(row);
+    const restored = activeConductVotes.get(stateKey);
+    if (restored && restored.conductId === conductId) return restored;
+  }
+  return null;
+}
+
 /** Після рестарту відновлює in-memory стан для відкритих голосувань (callback-и знову працюють). */
 async function hydrateOpenLessonVotesFromDb() {
-  if (!supabaseAdmin) return;
+  if (!supabaseAdmin) return { lesson: 0, conduct: 0 };
   try {
     const { data: rows, error } = await supabaseAdmin
       .from("lesson_vote_occurrences")
@@ -1532,58 +2148,19 @@ async function hydrateOpenLessonVotesFromDb() {
 
     if (error) {
       console.error("hydrateOpenLessonVotesFromDb:", error.message);
-      return;
+      return { lesson: 0, conduct: 0 };
     }
 
     for (const row of rows || []) {
-      const chatId = row.telegram_group_chat_id;
-      const messageId = row.telegram_group_message_id;
-      if (!chatId || !Number.isFinite(Number(messageId))) continue;
-
-      const snap = row.lesson_snapshot || {};
-      const lessonContext = {
-        lessonTimeLabel: snap.lessonTimeLabel || "не вказано",
-        placeLabel: snap.placeLabel || "не вказано",
-        lessonTypeLabel: snap.lessonTypeLabel || "не вказано",
-        riverBank: snap.riverBank ?? null,
-      };
-
       const votesByKind = snapshotToVotesByKind(row.votes_snapshot);
-      const groupKey = attendanceGroupMemoryKey(chatId, messageId);
-      activeLessonVotes.set(groupKey, {
-        voteId: row.vote_id,
-        lessonContext,
-        teacherName: null,
-        conductingDisplayName: row.conducting_display_name ?? null,
-        conductingTelegramChatId:
-          row.conducting_telegram_chat_id != null && String(row.conducting_telegram_chat_id).trim() !== ""
-            ? String(row.conducting_telegram_chat_id).trim()
-            : null,
-        audience: "group",
-        votesByKind,
-        voteOccurrenceId: row.id,
-        isTestOccurrence: Boolean(row.is_test),
-        conductMessages: Array.isArray(row.conduct_messages) ? row.conduct_messages : [],
-      });
-
-      const conducts = Array.isArray(row.conduct_messages) ? row.conduct_messages : [];
-      for (const c of conducts) {
-        const cid = c?.chat_id;
-        const mid = c?.message_id;
-        const cCond = c?.conduct_id;
-        if (!cid || !Number.isFinite(Number(mid)) || !cCond) continue;
-        const cKey = attendanceGroupMemoryKey(cid, mid);
-        activeConductVotes.set(cKey, {
-          conductId: String(cCond),
-          lessonContext,
-          conductorDisplayName: null,
-          linkedGroupVoteKey: groupKey,
-          voteOccurrenceId: row.id,
-        });
-      }
+      const hasVotes = votesByKind.abon.size + votesByKind.single.size + votesByKind.skip.size > 0;
+      await hydrateLessonVoteOccurrenceRow(row, { refreshTelegramMessage: hasVotes });
     }
+
+    return { lesson: activeLessonVotes.size, conduct: activeConductVotes.size };
   } catch (e) {
     console.error("hydrateOpenLessonVotesFromDb:", e?.message || e);
+    return { lesson: activeLessonVotes.size, conduct: activeConductVotes.size };
   }
 }
 
@@ -1638,7 +2215,7 @@ async function closeSingleTeacherTestVote(voteIdRaw) {
     return { ok: false, voteId, error: "TELEGRAM_BOT_TOKEN is not configured." };
   }
 
-  const found = findActiveLessonVoteByVoteId(voteId);
+  const found = await ensureActiveLessonVoteByVoteId(voteId);
   if (!found) {
     return {
       ok: false,
@@ -1895,6 +2472,35 @@ app.post("/api/telegram/lesson-votes/close", async (req, res) => {
   }
 });
 
+app.get("/api/admin/stats", async (req, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+    }
+
+    const fromRaw = typeof req.query.from === "string" ? req.query.from.trim() : "";
+    const toRaw = typeof req.query.to === "string" ? req.query.to.trim() : "";
+    const fromIso = statsDateToStartIso(fromRaw);
+    const toIso = statsDateToEndIso(toRaw);
+
+    if (fromRaw && !fromIso) {
+      return res.status(400).json({ ok: false, error: "Некоректна дата «від»." });
+    }
+    if (toRaw && !toIso) {
+      return res.status(400).json({ ok: false, error: "Некоректна дата «до»." });
+    }
+    if (fromRaw && toRaw && fromRaw > toRaw) {
+      return res.status(400).json({ ok: false, error: "Дата «від» має бути не пізніше за «до»." });
+    }
+
+    const payload = await computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso });
+    return res.status(200).json({ ok: true, ...payload });
+  } catch (error) {
+    console.error("admin stats failed:", error);
+    return res.status(500).json({ ok: false, error: error?.message || "Failed to load stats." });
+  }
+});
+
 app.get("/api/admin/lesson-votes/open", async (_req, res) => {
   try {
     if (!supabaseAdmin) {
@@ -2128,6 +2734,25 @@ app.use((err, req, res, next) => {
 });
 
 if (bot) {
+  /** Callback-и чекають завершення hydrate після рестарту; fallback з БД — у handler. */
+  let voteHydrationPromise = Promise.resolve();
+  if (supabaseAdmin) {
+    voteHydrationPromise = hydrateOpenLessonVotesFromDb()
+      .then((counts) => {
+        console.log(
+          `[lesson-vote-scheduler] hydrated open votes: lesson=${counts.lesson} conduct=${counts.conduct}`,
+        );
+      })
+      .catch((e) => {
+        console.error("hydrateOpenLessonVotesFromDb:", e);
+      });
+  }
+
+  bot.use(async (ctx, next) => {
+    if (ctx.callbackQuery) await voteHydrationPromise;
+    return next();
+  });
+
   /** Поки працює long-polling Telegraf, додатковий getUpdates може не бачити ті самі апдейти — зберігаємо чат із кожного вхідного оновлення. */
   bot.use((ctx, next) => {
     const chat = ctx.chat;
@@ -2161,7 +2786,10 @@ if (bot) {
         }
 
         const stateKey = attendanceGroupMemoryKey(chatId, messageId);
-        const state = activeConductVotes.get(stateKey);
+        let state = activeConductVotes.get(stateKey);
+        if (!state || state.conductId !== conductId) {
+          state = await ensureActiveConductVote(chatId, messageId, conductId);
+        }
         if (!state || state.conductId !== conductId) {
           await ctx.answerCbQuery("Оновлення вже неактивне.");
           return;
@@ -2196,7 +2824,10 @@ if (bot) {
       }
 
       const stateKey = attendanceGroupMemoryKey(chatId, messageId);
-      const voteState = activeLessonVotes.get(stateKey);
+      let voteState = activeLessonVotes.get(stateKey);
+      if (!voteState || voteState.voteId !== voteId) {
+        voteState = await ensureActiveLessonVote(chatId, messageId, voteId);
+      }
       if (!voteState || voteState.voteId !== voteId) {
         await ctx.answerCbQuery("Голосування вже неактивне.");
         return;
@@ -2208,18 +2839,15 @@ if (bot) {
         return;
       }
 
-      const displayName = await resolveVoterDisplayName(ctx.telegram, chatId, ctx.from);
-      const telegramUsername =
-        typeof ctx.from?.username === "string" && ctx.from.username.trim()
-          ? ctx.from.username.trim().replace(/^@/, "")
-          : null;
+      const voter = await resolveVoterIdentity(ctx.telegram, chatId, ctx.from);
       voteState.votesByKind.abon.delete(userId);
       voteState.votesByKind.single.delete(userId);
       voteState.votesByKind.skip.delete(userId);
-      voteState.votesByKind[choice].set(userId, {
-        name: displayName,
-        telegram_username: telegramUsername,
-      });
+      voteState.votesByKind[choice].set(userId, voter);
+
+      if (voteState.voteOccurrenceId) {
+        await persistOccurrenceVotesOnly(voteState.voteOccurrenceId, voteState.votesByKind);
+      }
 
       const text = buildLessonVoteMessage({
         ...voteState.lessonContext,
@@ -2229,9 +2857,12 @@ if (bot) {
         audience: voteState.audience || "dm",
       });
 
-      await ctx.editMessageText(text, { reply_markup: buildLessonVoteKeyboard(voteId) });
-      if (voteState.voteOccurrenceId) {
-        await persistOccurrenceVotesOnly(voteState.voteOccurrenceId, voteState.votesByKind);
+      try {
+        await ctx.editMessageText(text, { reply_markup: buildLessonVoteKeyboard(voteId) });
+      } catch (err) {
+        if (!isTelegramMessageNotModifiedError(err)) {
+          console.warn("lesson vote callback editMessageText:", err?.description || err?.message || err);
+        }
       }
       const feedback =
         choice === "abon"
@@ -2271,7 +2902,7 @@ if (bot) {
       }, SCHEDULER_TICK_MS);
       if (supabaseAdmin) {
         console.log("[lesson-vote-scheduler] init status=ok (supabase=connected, tick_interval_ms=60000)");
-        hydrateOpenLessonVotesFromDb().catch((e) => console.error("hydrateOpenLessonVotesFromDb:", e));
+        voteHydrationPromise.catch((e) => console.error("hydrateOpenLessonVotesFromDb:", e));
       } else {
         console.error("[lesson-vote-scheduler] init status=disabled (reason=supabase_not_configured)");
       }

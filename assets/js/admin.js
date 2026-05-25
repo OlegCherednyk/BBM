@@ -1586,38 +1586,6 @@ function clearDashMessages() {
   dashOk?.classList.add("admin-hide");
 }
 
-function pickSmmAmount(rows, peopleCount) {
-  const people = Math.max(0, Number(peopleCount) || 0);
-  for (const row of rows) {
-    const from = Number(row.people_from) || 0;
-    const to = row.people_to == null ? null : Number(row.people_to) || 0;
-    if (people < from) continue;
-    if (to != null && people > to) continue;
-    return Number(row.amount_uah) || 0;
-  }
-  return 0;
-}
-
-function buildPriceByType(pricesRows) {
-  /** @type {Map<string, {single: number, abonUnit: number}>} */
-  const map = new Map();
-  for (const row of pricesRows || []) {
-    const lessonTypeId = String(row.lesson_type_id || "");
-    if (!lessonTypeId) continue;
-    const amount = Number(row.amount_uah) || 0;
-    const visits = Math.max(1, Number(row.visits_count) || 1);
-    const current = map.get(lessonTypeId) || { single: 0, abonUnit: 0 };
-    if (row.price_kind === "single") {
-      current.single = amount;
-    } else if (row.price_kind === "abon") {
-      const unit = amount / visits;
-      if (!current.abonUnit || unit < current.abonUnit) current.abonUnit = unit;
-    }
-    map.set(lessonTypeId, current);
-  }
-  return map;
-}
-
 async function renderStatsDashboard() {
   const cardsRoot = maybeEl("statsSummaryCards");
   const chartRoot = maybeEl("statsChart");
@@ -1629,13 +1597,11 @@ async function renderStatsDashboard() {
 
   const fromInput = maybeEl("statsDateFrom")?.value?.trim() || "";
   const toInput = maybeEl("statsDateTo")?.value?.trim() || "";
-  const fromIso = startOfDayIso(fromInput);
-  const toIso = endOfDayIso(toInput);
-  if (fromInput && !fromIso) {
+  if (fromInput && !startOfDayIso(fromInput)) {
     showDashError("Некоректна дата «від».");
     return;
   }
-  if (toInput && !toIso) {
+  if (toInput && !endOfDayIso(toInput)) {
     showDashError("Некоректна дата «до».");
     return;
   }
@@ -1644,92 +1610,38 @@ async function renderStatsDashboard() {
     return;
   }
 
-  let lessonsQuery = supabase
-    .from("lessons")
-    .select(
-      "id, starts_at, abon_count, single_visitors_count, conducting_display_name, place_id, teachers(id, name), lesson_times(lesson_types(id, name, slug))",
-    );
-  if (fromIso) lessonsQuery = lessonsQuery.gte("starts_at", fromIso);
-  if (toIso) lessonsQuery = lessonsQuery.lte("starts_at", toIso);
+  const params = new URLSearchParams();
+  if (fromInput) params.set("from", fromInput);
+  if (toInput) params.set("to", toInput);
 
-  const [lessonsRes, pricesRes, smmRes, placePricesRes, lessonTypesRes] = await Promise.all([
-    lessonsQuery,
-    supabase.from("prices").select("lesson_type_id, price_kind, visits_count, amount_uah"),
-    supabase.from("smm_prices").select("people_from, people_to, amount_uah").order("people_from", { ascending: true }),
-    supabase.from("places_prices").select("place_id, duration_minutes, amount_uah"),
-    supabase.from("lesson_types").select("id, duration_minutes, name, slug"),
-  ]);
-
-  if (lessonsRes.error || pricesRes.error || smmRes.error || placePricesRes.error || lessonTypesRes.error) {
-    const msg =
-      lessonsRes.error?.message ||
-      pricesRes.error?.message ||
-      smmRes.error?.message ||
-      placePricesRes.error?.message ||
-      lessonTypesRes.error?.message ||
-      "Не вдалося завантажити статистику.";
+  /** @type {{ ok?: boolean, error?: string, summary?: { totalLessons: number, totalPeople: number, totalNetAfterRent: number, totalSmm: number }, teachers?: Array<{ name: string, lessonsCount: number, peopleCount: number, revenue: number, rent: number, smm: number, payout: number }> }} */
+  let json;
+  try {
+    const res = await fetch(`/api/admin/stats?${params.toString()}`);
+    json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.ok) {
+      const msg = json.error || `Помилка ${res.status}`;
+      cardsRoot.innerHTML = `<p class="admin-muted">${escapeHtml(msg)}</p>`;
+      chartRoot.innerHTML = "";
+      tableRoot.innerHTML = "";
+      return;
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     cardsRoot.innerHTML = `<p class="admin-muted">${escapeHtml(msg)}</p>`;
     chartRoot.innerHTML = "";
     tableRoot.innerHTML = "";
     return;
   }
 
-  const priceByType = buildPriceByType(pricesRes.data || []);
-  const smmRows = smmRes.data || [];
-  const placePriceMap = new Map((placePricesRes.data || []).map((row) => [`${row.place_id}:${row.duration_minutes}`, Number(row.amount_uah) || 0]));
-  const lessonTypeById = new Map((lessonTypesRes.data || []).map((row) => [String(row.id), row]));
-
-  /** @type {Map<string, {name: string, lessonsCount: number, peopleCount: number, revenue: number, rent: number, smm: number, payout: number}>} */
-  const byTeacher = new Map();
-
-  for (const row of lessonsRes.data || []) {
-    const lessonType = row.lesson_times?.lesson_types || null;
-    const lessonTypeId = String(lessonType?.id || "");
-    const singleCount = Math.max(0, Number(row.single_visitors_count) || 0);
-    const abonCount = Math.max(0, Number(row.abon_count) || 0);
-    const peopleCount = singleCount + abonCount;
-
-    const prices = priceByType.get(lessonTypeId) || { single: 0, abonUnit: 0 };
-    const revenue = singleCount * prices.single + abonCount * prices.abonUnit;
-
-    const lessonTypeCfg = lessonTypeById.get(lessonTypeId);
-    const duration = Number(lessonTypeCfg?.duration_minutes) || 60;
-    const placeId = String(row.place_id || "");
-    const rent = placePriceMap.get(`${placeId}:${duration}`) ?? placePriceMap.get(`${placeId}:60`) ?? 0;
-    const smm = pickSmmAmount(smmRows, peopleCount);
-    const payout = revenue - rent - smm;
-
-    const teacherName =
-      row.teachers?.name?.trim() ||
-      String(row.conducting_display_name || "").trim() ||
-      "Без викладача";
-    const teacherKey = String(row.teachers?.id || teacherName);
-    const agg = byTeacher.get(teacherKey) || {
-      name: teacherName,
-      lessonsCount: 0,
-      peopleCount: 0,
-      revenue: 0,
-      rent: 0,
-      smm: 0,
-      payout: 0,
-    };
-    agg.lessonsCount += 1;
-    agg.peopleCount += peopleCount;
-    agg.revenue += revenue;
-    agg.rent += rent;
-    agg.smm += smm;
-    agg.payout += payout;
-    byTeacher.set(teacherKey, agg);
-  }
-
-  const rows = [...byTeacher.values()].sort((a, b) => b.payout - a.payout);
-  const totalLessons = rows.reduce((sum, row) => sum + row.lessonsCount, 0);
-  const totalPayout = rows.reduce((sum, row) => sum + row.payout, 0);
-  const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
-  const totalRent = rows.reduce((sum, row) => sum + row.rent, 0);
-  const totalSmm = rows.reduce((sum, row) => sum + row.smm, 0);
-  const totalPeople = rows.reduce((sum, row) => sum + row.peopleCount, 0);
-  const totalNetAfterRent = totalRevenue - totalRent;
+  const summary = json.summary || {
+    totalLessons: 0,
+    totalPeople: 0,
+    totalNetAfterRent: 0,
+    totalSmm: 0,
+  };
+  const rows = json.teachers || [];
+  const { totalLessons, totalPeople, totalNetAfterRent, totalSmm } = summary;
 
   cardsRoot.innerHTML = `
     <div class="admin-stats-card"><div class="admin-stats-card__label">Проведено занять</div><div class="admin-stats-card__value">${totalLessons}</div></div>
