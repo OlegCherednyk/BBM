@@ -550,9 +550,9 @@ export async function setupStudentsAdmin() {
 
         const tail = document.createElement("div");
         tail.className = "admin-students-card__tail";
-        appendAttendedVisitsDot(tail, s.attended_visits_count);
         appendAbonBadgeIfAny(tail, s.subscription_summary);
         appendStudentCardMetaNums(tail, s.subscription_summary);
+        appendAttendedVisitsDot(tail, s.attended_visits_count);
 
         const actions = document.createElement("div");
         actions.className = "admin-students-card__actions";
