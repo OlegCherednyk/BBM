@@ -358,6 +358,14 @@
   flex-shrink: 0;
 }
 
+.admin-students-card__edit-btn {
+  min-width: 38px;
+  padding-left: 10px;
+  padding-right: 10px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
 .admin-students-card__name-btn {
   font: inherit;
   font-weight: 600;
@@ -738,7 +746,7 @@ body.admin-modal-open {
 /* Students — search / filter / action one row, equal columns */
 .admin-students-toolbar {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: stretch;
   width: 100%;

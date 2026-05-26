@@ -94,40 +94,18 @@ function computeUsedVisitsDisplay(sub, visits) {
   return used;
 }
 
-function subscriptionsCountFallback(summary) {
-  const raw = Number(summary?.subscriptions_count);
-  if (Number.isFinite(raw) && raw >= 0) return Math.floor(raw);
-  const p = Number(summary?.pending) || 0;
-  const a = Number(summary?.active) || 0;
-  const x = Number(summary?.exhausted) || 0;
-  return p + a + x;
-}
-
 function appendStudentCardMetaNums(tail, summary) {
-  const nSubs = subscriptionsCountFallback(summary);
   const totalPkg = Number(summary?.abon_visits_total);
   let remPkg = Number(summary?.abon_visits_remaining);
+  if (!Number.isFinite(totalPkg) || totalPkg <= 0) return;
 
-  /** @type {string[]} */
-  const parts = [];
-  if (nSubs > 0) parts.push(String(nSubs));
-
-  let visitsTitle = "";
-  if (Number.isFinite(totalPkg) && totalPkg > 0) {
-    if (!Number.isFinite(remPkg) || remPkg < 0) remPkg = 0;
-    parts.push(`${Math.floor(remPkg)}/${Math.floor(totalPkg)}`);
-    visitsTitle = ` Візити: ${Math.floor(remPkg)} із ${Math.floor(totalPkg)} (усі абонементи з пакетом).`;
-  }
-
-  if (!parts.length) return;
+  if (!Number.isFinite(remPkg) || remPkg < 0) remPkg = 0;
+  const usedPkg = Math.max(0, Math.floor(totalPkg) - Math.floor(remPkg));
 
   const meta = document.createElement("span");
   meta.className = "admin-students-card__meta";
-  meta.textContent = parts.join("\u2003·\u2003");
-  const titleBits = [];
-  if (nSubs > 0) titleBits.push(`Абонементів: ${nSubs}.`);
-  if (visitsTitle.trim()) titleBits.push(visitsTitle.trim());
-  meta.title = titleBits.join(" ").trim() || "Зведення по абонементах учня.";
+  meta.textContent = `${usedPkg}/${Math.floor(totalPkg)}`;
+  meta.title = `Використано ${usedPkg} із ${Math.floor(totalPkg)} візитів абонемента.`;
   tail.appendChild(meta);
 }
 
@@ -237,8 +215,6 @@ let studentsAdminWired = false;
 export async function setupStudentsAdmin() {
   const listEl = el("studentsList");
   const searchEl = el("studentsSearch");
-  const filterEl = el("studentsFilter");
-  const abonFilterEl = el("studentsAbonFilter");
   const reloadBtn = el("studentsReload");
   const editModal = el("studentEditModal");
   const visitsModal = el("studentVisitsModal");
@@ -503,16 +479,6 @@ export async function setupStudentsAdmin() {
 
   listEl?.classList.add("admin-students-list");
 
-  const params = new URLSearchParams(window.location.search);
-  const qFilter = params.get("filter");
-  if (filterEl && qFilter && ["all", "pending", "active", "exhausted"].includes(qFilter)) {
-    filterEl.value = qFilter;
-  }
-  const qAbon = params.get("abon");
-  if (abonFilterEl && qAbon && ["all", "has_abon", "no_abon"].includes(qAbon)) {
-    abonFilterEl.value = qAbon;
-  }
-
   const { url, anonKey } = await getSupabaseConfig();
   if (!url || !anonKey) {
     showStudentsLocalError(
@@ -555,12 +521,8 @@ export async function setupStudentsAdmin() {
       listEl.innerHTML = `<p class="admin-muted">Завантаження…</p>`;
     }
     const search = searchEl?.value.trim() || "";
-    const filter = filterEl?.value || "all";
-    const abonFilter = abonFilterEl?.value || "all";
     const q = new URLSearchParams();
     if (search) q.set("search", search);
-    if (filter !== "all") q.set("filter", filter);
-    if (abonFilter !== "all") q.set("abon", abonFilter);
     const query = q.toString();
     try {
       const json = await fetchJson(`/api/admin/students${query ? `?${query}` : ""}`);
@@ -588,9 +550,9 @@ export async function setupStudentsAdmin() {
 
         const tail = document.createElement("div");
         tail.className = "admin-students-card__tail";
+        appendAttendedVisitsDot(tail, s.attended_visits_count);
         appendAbonBadgeIfAny(tail, s.subscription_summary);
         appendStudentCardMetaNums(tail, s.subscription_summary);
-        appendAttendedVisitsDot(tail, s.attended_visits_count);
 
         const actions = document.createElement("div");
         actions.className = "admin-students-card__actions";
@@ -607,8 +569,10 @@ export async function setupStudentsAdmin() {
 
         const editBtn = document.createElement("button");
         editBtn.type = "button";
-        editBtn.className = "btn btn--primary btn--sm";
-        editBtn.textContent = "Редагувати";
+        editBtn.className = "btn btn--ghost btn--sm admin-students-card__edit-btn";
+        editBtn.textContent = "✏️";
+        editBtn.title = "Редагувати";
+        editBtn.setAttribute("aria-label", "Редагувати");
         editBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();
           void openDetail(String(s.id));

@@ -642,26 +642,6 @@ async function attendedVisitsCountForStudents(supabaseAdmin, studentIds) {
 }
 
 /**
- * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
- */
-async function studentIdsWithAnySubscription(supabaseAdmin) {
-  const { data, error } = await supabaseAdmin.from("subscriptions").select("student_id");
-  if (error) throw new Error(error.message);
-  return new Set((data || []).map((r) => String(r.student_id || "")).filter(Boolean));
-}
-
-/**
- * @param {Set<string> | null} allowed
- * @param {string[]} nextIds
- * @returns {Set<string>}
- */
-function intersectStudentIds(allowed, nextIds) {
-  const nextSet = new Set(nextIds.filter(Boolean));
-  if (allowed === null) return nextSet;
-  return new Set([...allowed].filter((id) => nextSet.has(id)));
-}
-
-/**
  * @param {import("express").Express} app
  * @param {import("@supabase/supabase-js").SupabaseClient | null} supabaseAdmin
  */
@@ -672,49 +652,8 @@ export function registerStudentRoutes(app, supabaseAdmin) {
         return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
       }
       const search = typeof req.query.search === "string" ? req.query.search : "";
-      const filterRaw = typeof req.query.filter === "string" ? req.query.filter : "all";
-      const filter =
-        filterRaw === "pending" || filterRaw === "active" || filterRaw === "exhausted" ? filterRaw : "all";
-      const abonRaw = typeof req.query.abon === "string" ? req.query.abon : "all";
-      const abonFilter = abonRaw === "has_abon" || abonRaw === "no_abon" ? abonRaw : "all";
-
-      /** @type {Set<string> | null} */
-      let allowedStudentIds = null;
-
-      if (filter !== "all") {
-        const { data: subs, error: subErr } = await supabaseAdmin
-          .from("subscriptions")
-          .select("student_id")
-          .eq("status", filter);
-        if (subErr) return res.status(500).json({ ok: false, error: subErr.message });
-        allowedStudentIds = intersectStudentIds(
-          allowedStudentIds,
-          (subs || []).map((r) => String(r.student_id || "")).filter(Boolean),
-        );
-        if (allowedStudentIds.size === 0) {
-          return res.status(200).json({ ok: true, rows: [] });
-        }
-      }
-
-      if (abonFilter !== "all") {
-        const withAbon = await studentIdsWithAnySubscription(supabaseAdmin);
-        if (abonFilter === "has_abon") {
-          allowedStudentIds = intersectStudentIds(allowedStudentIds, [...withAbon]);
-        } else {
-          const { data: allStudents, error: allErr } = await supabaseAdmin.from("students").select("id");
-          if (allErr) return res.status(500).json({ ok: false, error: allErr.message });
-          const noAbonIds = (allStudents || [])
-            .map((s) => String(s.id || ""))
-            .filter((id) => id && !withAbon.has(id));
-          allowedStudentIds = intersectStudentIds(allowedStudentIds, noAbonIds);
-        }
-        if (allowedStudentIds.size === 0) {
-          return res.status(200).json({ ok: true, rows: [] });
-        }
-      }
 
       let q = supabaseAdmin.from("students").select("*");
-      if (allowedStudentIds) q = q.in("id", [...allowedStudentIds]);
       const pattern = wildIlike(search);
       if (pattern) {
         q = q.or(
@@ -739,6 +678,12 @@ export function registerStudentRoutes(app, supabaseAdmin) {
         },
         attended_visits_count: attendedMap.get(String(s.id)) || 0,
       }));
+
+      rows.sort((a, b) => {
+        const diff = (Number(b.attended_visits_count) || 0) - (Number(a.attended_visits_count) || 0);
+        if (diff !== 0) return diff;
+        return String(a.display_name || "").localeCompare(String(b.display_name || ""), "uk");
+      });
 
       return res.status(200).json({ ok: true, rows });
     } catch (e) {
