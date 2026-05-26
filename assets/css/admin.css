@@ -342,6 +342,252 @@
   background: var(--cream-pale);
 }
 
+.admin-students-card {
+  margin-bottom: 8px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--cream-mid);
+  background: var(--cream-pale);
+}
+
+.admin-students-card__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.admin-students-card__name-btn {
+  font: inherit;
+  font-weight: 600;
+  color: var(--brown-dark);
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.admin-students-card__name-btn:hover {
+  color: var(--olive, #74862f);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Admin modals (students page) */
+body.admin-modal-open {
+  overflow: hidden;
+}
+
+.admin-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px;
+  overflow-y: auto;
+}
+
+.admin-modal.admin-hide {
+  display: none;
+}
+
+.admin-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(45, 36, 32, 0.42);
+  backdrop-filter: blur(3px);
+}
+
+.admin-modal__dialog {
+  position: relative;
+  z-index: 1;
+  width: min(560px, 100%);
+  margin: auto;
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-md, 16px);
+  border: 1px solid var(--admin-panel-border);
+  background: var(--cream-pale, #faf6f2);
+  box-shadow: 0 24px 64px rgba(45, 36, 32, 0.18);
+}
+
+.admin-modal__dialog--wide {
+  width: min(720px, 100%);
+}
+
+.admin-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--admin-panel-border);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.admin-modal__title {
+  margin: 0;
+  font-family: var(--font-display, "Space Grotesk", sans-serif);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--brown-dark);
+}
+
+.admin-modal__close {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--cream-mid);
+  border-radius: 999px;
+  background: var(--cream-soft);
+  color: var(--brown-mid);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.admin-modal__close:hover {
+  background: var(--cream-soft);
+  color: var(--brown-dark);
+}
+
+.admin-modal__body {
+  padding: 18px 20px 22px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
+.admin-modal__sub {
+  margin: 0 0 14px;
+  font-size: 0.9rem;
+}
+
+.admin-modal__section-head {
+  margin-top: 1.25rem;
+  margin-bottom: 0.65rem;
+}
+
+.admin-modal__section-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--brown-dark);
+}
+
+.admin-modal__sub-form {
+  margin-top: 0.75rem;
+}
+
+/* Visit journal */
+.admin-visit-journal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-visit-journal__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--admin-panel-border);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.admin-visit-journal__item--rolled-back {
+  opacity: 0.72;
+  background: rgba(241, 230, 221, 0.35);
+}
+
+.admin-visit-journal__kind {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.5rem;
+  height: 1.75rem;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.admin-visit-journal__kind--abon {
+  color: #2e7d32;
+  background: rgba(46, 125, 50, 0.12);
+  border-color: rgba(46, 125, 50, 0.35);
+}
+
+.admin-visit-journal__kind--single {
+  color: #1565c0;
+  background: rgba(21, 101, 192, 0.1);
+  border-color: rgba(21, 101, 192, 0.28);
+}
+
+.admin-visit-journal__main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.admin-visit-journal__label {
+  font-weight: 600;
+  color: var(--brown-dark);
+  line-height: 1.35;
+}
+
+.admin-visit-journal__meta {
+  margin-top: 4px;
+  font-size: 0.82rem;
+  color: var(--brown-light);
+}
+
+.admin-visit-journal__status {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #a35f1a;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 640px) {
+  .admin-students-card__row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-students-card__tail {
+    justify-content: flex-start;
+  }
+
+  .admin-students-card__actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .admin-modal {
+    padding: 12px 8px;
+  }
+
+  .admin-modal__body {
+    padding: 14px 16px 18px;
+  }
+}
+
 .admin-students-abon-badge {
   flex-shrink: 0;
   font-size: 0.72rem;
@@ -798,7 +1044,7 @@
   border-color: var(--brown-light);
 }
 .custom-select[data-variant="admin"] .custom-select__menu {
-  z-index: 230;
+  z-index: 600;
 }
 
 /* Картки абонемента — дропдаун не ховається під наступну картку */

@@ -105,68 +105,97 @@
           </div>
 
           <div id="studentsList"><p class="admin-muted">Завантаження…</p></div>
+        </div>
 
-          <div id="studentDetail" class="admin-hide" style="margin-top: 1.5rem">
-            <div class="admin-price-create__head">
-              <h3 id="studentDetailTitle" style="margin: 0">Учень</h3>
-              <button type="button" class="btn btn--ghost btn--sm" id="studentDetailClose" aria-label="Закрити картку учня">
-                Закрити
-              </button>
+        <div id="studentEditModal" class="admin-modal admin-hide" aria-hidden="true">
+          <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+          <div
+            class="admin-modal__dialog admin-modal__dialog--wide"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="studentDetailTitle"
+          >
+            <div class="admin-modal__head">
+              <h3 id="studentDetailTitle" class="admin-modal__title">Учень</h3>
+              <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
             </div>
-            <form id="studentEditForm" class="admin-grid admin-grid--2">
-              <input type="hidden" id="studentDetailId" />
-              <div class="admin-field">
-                <label for="studentDisplayName">Імʼя</label>
-                <input id="studentDisplayName" type="text" required />
-              </div>
-              <div class="admin-field">
-                <label for="studentTelegramUsername">Telegram @</label>
-                <input id="studentTelegramUsername" type="text" />
-              </div>
-              <div class="admin-field">
-                <label for="studentPhone">Телефон</label>
-                <input id="studentPhone" type="text" />
-              </div>
-              <div class="admin-field">
-                <label for="studentInstagram">Instagram</label>
-                <input id="studentInstagram" type="text" />
-              </div>
-              <div class="admin-field admin-grid-span-2">
-                <label for="studentAdminNote">Нотатка адміна</label>
-                <textarea id="studentAdminNote" rows="2"></textarea>
-              </div>
-              <div class="admin-actions admin-grid-span-2">
-                <button type="submit" class="btn btn--primary btn--sm">Зберегти контакти</button>
-                <button type="button" class="btn btn--ghost btn--sm admin-hide" id="studentDeleteBtn">Видалити учня</button>
-              </div>
-            </form>
+            <div class="admin-modal__body">
+              <form id="studentEditForm" class="admin-grid admin-grid--2">
+                <input type="hidden" id="studentDetailId" />
+                <div class="admin-field">
+                  <label for="studentDisplayName">Імʼя</label>
+                  <input id="studentDisplayName" type="text" required />
+                </div>
+                <div class="admin-field">
+                  <label for="studentTelegramUsername">Telegram @</label>
+                  <input id="studentTelegramUsername" type="text" />
+                </div>
+                <div class="admin-field">
+                  <label for="studentPhone">Телефон</label>
+                  <input id="studentPhone" type="text" />
+                </div>
+                <div class="admin-field">
+                  <label for="studentInstagram">Instagram</label>
+                  <input id="studentInstagram" type="text" />
+                </div>
+                <div class="admin-field admin-grid-span-2">
+                  <label for="studentAdminNote">Нотатка адміна</label>
+                  <textarea id="studentAdminNote" rows="2"></textarea>
+                </div>
+                <div class="admin-actions admin-grid-span-2">
+                  <button type="submit" class="btn btn--primary btn--sm">Зберегти контакти</button>
+                  <button type="button" class="btn btn--ghost btn--sm admin-hide" id="studentDeleteBtn">Видалити учня</button>
+                </div>
+              </form>
 
-            <div class="admin-price-create__head" style="margin-top: 1.25rem">
-              <h3>Абонементи</h3>
+              <div class="admin-price-create__head admin-modal__section-head">
+                <h4 class="admin-modal__section-title">Абонементи</h4>
+              </div>
+              <div id="studentSubscriptions" class="admin-muted"></div>
+              <form id="subscriptionAddForm" class="admin-grid admin-grid--2 admin-hide admin-modal__sub-form">
+                <div class="admin-field">
+                  <label for="subscriptionLessonType">Тип заняття</label>
+                  <select id="subscriptionLessonType" required></select>
+                </div>
+                <div class="admin-field">
+                  <label for="subscriptionTotalVisits">Візитів у пакеті</label>
+                  <input id="subscriptionTotalVisits" type="number" min="1" placeholder="порожньо → «в обробці»" />
+                </div>
+                <div class="admin-field">
+                  <label for="subscriptionAmount">Сума ₴</label>
+                  <input id="subscriptionAmount" type="number" min="0" />
+                </div>
+                <div class="admin-field">
+                  <label for="subscriptionValidUntil">Діє до</label>
+                  <input id="subscriptionValidUntil" type="date" />
+                </div>
+                <div class="admin-actions admin-grid-span-2">
+                  <button type="submit" class="btn btn--primary btn--sm">Додати / оновити («в обробці»)</button>
+                </div>
+              </form>
+              <button type="button" class="btn btn--ghost btn--sm" id="subscriptionFormToggle">+ Абонемент</button>
             </div>
-            <div id="studentSubscriptions" class="admin-muted"></div>
-            <form id="subscriptionAddForm" class="admin-grid admin-grid--2 admin-hide" style="margin-top: 0.75rem">
-              <div class="admin-field">
-                <label for="subscriptionLessonType">Тип заняття</label>
-                <select id="subscriptionLessonType" required></select>
+          </div>
+        </div>
+
+        <div id="studentVisitsModal" class="admin-modal admin-hide" aria-hidden="true">
+          <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+          <div
+            class="admin-modal__dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="studentVisitsModalTitle"
+          >
+            <div class="admin-modal__head">
+              <h3 id="studentVisitsModalTitle" class="admin-modal__title">Журнал відвідування</h3>
+              <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
+            </div>
+            <div class="admin-modal__body">
+              <p id="studentVisitsModalSub" class="admin-muted admin-modal__sub"></p>
+              <div id="studentVisitsList" class="admin-visit-journal" aria-live="polite">
+                <p class="admin-muted">Завантаження…</p>
               </div>
-              <div class="admin-field">
-                <label for="subscriptionTotalVisits">Візитів у пакеті</label>
-                <input id="subscriptionTotalVisits" type="number" min="1" placeholder="порожньо → «в обробці»" />
-              </div>
-              <div class="admin-field">
-                <label for="subscriptionAmount">Сума ₴</label>
-                <input id="subscriptionAmount" type="number" min="0" />
-              </div>
-              <div class="admin-field">
-                <label for="subscriptionValidUntil">Діє до</label>
-                <input id="subscriptionValidUntil" type="date" />
-              </div>
-              <div class="admin-actions admin-grid-span-2">
-                <button type="submit" class="btn btn--primary btn--sm">Додати / оновити («в обробці»)</button>
-              </div>
-            </form>
-            <button type="button" class="btn btn--ghost btn--sm" id="subscriptionFormToggle">+ Абонемент</button>
+            </div>
           </div>
         </div>
       </div>

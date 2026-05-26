@@ -65,6 +65,21 @@ function countAttendedVisitsForSubscription(visits, subscriptionId) {
   return n;
 }
 
+/** Узгоджено з computeSubscriptionUsedVisits у students-api.js */
+function computeUsedVisitsDisplay(sub, visits) {
+  const fromJournal = countAttendedVisitsForSubscription(visits, sub.id);
+  const ovRaw = sub.used_visits_override;
+  if (ovRaw == null || ovRaw === "" || !Number.isFinite(Number(ovRaw))) return fromJournal;
+  const opening = Math.max(0, Math.floor(Number(ovRaw)));
+  const total =
+    sub.total_visits != null && Number.isFinite(Number(sub.total_visits))
+      ? Math.max(0, Math.floor(Number(sub.total_visits)))
+      : null;
+  const used = opening + fromJournal;
+  if (total != null) return Math.min(total, used);
+  return used;
+}
+
 function subscriptionsCountFallback(summary) {
   const raw = Number(summary?.subscriptions_count);
   if (Number.isFinite(raw) && raw >= 0) return Math.floor(raw);
@@ -121,6 +136,75 @@ async function fetchJson(path, opts = {}) {
   return json;
 }
 
+function formatVisitDateTime(isoLike) {
+  if (isoLike == null || isoLike === "") return "—";
+  try {
+    return new Date(isoLike).toLocaleString("uk-UA", {
+      timeZone: "Europe/Kyiv",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return String(isoLike).slice(0, 16);
+  }
+}
+
+function visitOccurrenceLabel(visit) {
+  const snap = visit?.lesson_vote_occurrences?.lesson_snapshot || {};
+  const parts = [snap.lessonTypeLabel, snap.placeLabel, snap.lessonTimeLabel].filter(
+    (p) => typeof p === "string" && p.trim(),
+  );
+  return parts.join(" · ") || "Заняття";
+}
+
+/** @param {HTMLElement} container */
+function mountVisitJournal(container, visits) {
+  container.innerHTML = "";
+  const attended = (visits || []).filter((v) => v && String(v.vote_choice || "") !== "skip");
+  if (!attended.length) {
+    container.innerHTML = `<p class="admin-muted" style="margin:0">Поки немає відвіданих занять у журналі.</p>`;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const visit of attended) {
+    const isAbon = String(visit.vote_choice || "") === "abon";
+    const rolledBack = String(visit.visit_status || "") === "rolled_back";
+    const item = document.createElement("div");
+    item.className = `admin-visit-journal__item${rolledBack ? " admin-visit-journal__item--rolled-back" : ""}`;
+
+    const kind = document.createElement("span");
+    kind.className = `admin-visit-journal__kind admin-visit-journal__kind--${isAbon ? "abon" : "single"}`;
+    kind.textContent = isAbon ? "Абон" : "Раз";
+    kind.title = isAbon ? "Абонемент" : "Разове";
+
+    const main = document.createElement("div");
+    main.className = "admin-visit-journal__main";
+    const label = document.createElement("div");
+    label.className = "admin-visit-journal__label";
+    label.textContent = visitOccurrenceLabel(visit);
+    const meta = document.createElement("div");
+    meta.className = "admin-visit-journal__meta";
+    const when =
+      visit.lesson_vote_occurrences?.occurrence_at || visit.created_at || null;
+    meta.textContent = formatVisitDateTime(when);
+    main.append(label, meta);
+
+    item.append(kind, main);
+    if (rolledBack) {
+      const st = document.createElement("span");
+      st.className = "admin-visit-journal__status";
+      st.textContent = "Не був";
+      item.appendChild(st);
+    }
+    frag.appendChild(item);
+  }
+  container.appendChild(frag);
+}
+
 /** @type {string | null} */
 let selectedId = null;
 
@@ -131,15 +215,50 @@ export async function setupStudentsAdmin() {
   const searchEl = el("studentsSearch");
   const filterEl = el("studentsFilter");
   const reloadBtn = el("studentsReload");
-  const detailWrap = el("studentDetail");
+  const editModal = el("studentEditModal");
+  const visitsModal = el("studentVisitsModal");
   const subFormToggle = el("subscriptionFormToggle");
   const subForm = el("subscriptionAddForm");
-  const detailCloseBtn = el("studentDetailClose");
   let listRequestSeq = 0;
 
-  function closeStudentDetail() {
+  /** @type {HTMLElement[]} */
+  const modals = [editModal, visitsModal].filter(Boolean);
+
+  function anyModalOpen() {
+    return modals.some((m) => m && !m.classList.contains("admin-hide"));
+  }
+
+  function syncBodyModalLock() {
+    document.body.classList.toggle("admin-modal-open", anyModalOpen());
+  }
+
+  /** @param {HTMLElement | null} modalEl */
+  function openModal(modalEl) {
+    if (!modalEl) return;
+    for (const m of modals) {
+      if (m && m !== modalEl) {
+        m.classList.add("admin-hide");
+        m.setAttribute("aria-hidden", "true");
+      }
+    }
+    modalEl.classList.remove("admin-hide");
+    modalEl.setAttribute("aria-hidden", "false");
+    syncBodyModalLock();
+    const closeBtn = modalEl.querySelector(".admin-modal__close");
+    if (closeBtn instanceof HTMLElement) closeBtn.focus();
+  }
+
+  /** @param {HTMLElement | null} modalEl */
+  function closeModal(modalEl) {
+    if (!modalEl) return;
+    modalEl.classList.add("admin-hide");
+    modalEl.setAttribute("aria-hidden", "true");
+    syncBodyModalLock();
+  }
+
+  function closeAllModals() {
+    for (const m of modals) closeModal(m);
     selectedId = null;
-    detailWrap?.classList.add("admin-hide");
     subForm?.classList.add("admin-hide");
     el("studentDeleteBtn")?.classList.add("admin-hide");
   }
@@ -207,8 +326,7 @@ export async function setupStudentsAdmin() {
       visitsIn.value = sub.total_visits != null ? String(sub.total_visits) : "";
 
       const attendedCount = countAttendedVisitsForSubscription(visits, sub.id);
-      const fromJournalOnly =
-        sub.used_visits_override == null || sub.used_visits_override === "";
+      const displayedUsed = computeUsedVisitsDisplay(sub, visits);
 
       const usedIn = document.createElement("input");
       usedIn.type = "number";
@@ -216,11 +334,9 @@ export async function setupStudentsAdmin() {
       usedIn.step = "1";
       usedIn.className = "admin-subscription-card__visits-used-input";
       usedIn.id = `visit-used-${sub.id}`;
-      usedIn.value = String(
-        fromJournalOnly ? attendedCount : Math.max(0, Math.floor(Number(sub.used_visits_override))),
-      );
+      usedIn.value = String(displayedUsed);
       usedIn.title =
-        "Використані візити. Якщо зберегти те саме число, що й «відвідав» у журналі, підрахунок лишається автоматичним із журналу; інше значення задає ручне перевизначення.";
+        "Використані візити (разом). Якщо зберегти число як у журналі — лише авто-списання; більше значення задає «вже використано до журналу», і нові finalize додаються зверху.";
 
       const visitsField = document.createElement("div");
       visitsField.className = "admin-field";
@@ -299,8 +415,8 @@ export async function setupStudentsAdmin() {
           showStudentsLocalError("Некоректна кількість використаних візитів.");
           return;
         }
-        /** Авто з журналу — якщо лишили число як у підрахунку «відвідав». Інакше зберігається ручний override. */
-        const used_visits_override = u === attendedNow ? null : u;
+        /** Авто з журналу — якщо лишили число як у журналі. Інакше override = «використано до журналу» (u − journal). */
+        const used_visits_override = u === attendedNow ? null : Math.max(0, u - attendedNow);
 
         saveBtn.disabled = true;
         delBtn.disabled = true;
@@ -426,23 +542,49 @@ export async function setupStudentsAdmin() {
       }
       const frag = document.createDocumentFragment();
       for (const s of rows) {
-        const card = document.createElement("button");
-        card.type = "button";
-        card.className = "admin-panel admin-students-card__btn";
+        const card = document.createElement("div");
+        card.className = "admin-panel admin-students-card";
         const row = document.createElement("div");
         row.className = "admin-students-card__row";
-        const nameEl = document.createElement("div");
-        nameEl.className = "admin-students-card__name";
-        nameEl.textContent = s.display_name || "";
+
+        const nameBtn = document.createElement("button");
+        nameBtn.type = "button";
+        nameBtn.className = "admin-students-card__name-btn";
+        nameBtn.textContent = s.display_name || "—";
+        nameBtn.addEventListener("click", () => {
+          void openDetail(String(s.id));
+        });
+
         const tail = document.createElement("div");
         tail.className = "admin-students-card__tail";
         appendAbonBadgeIfAny(tail, s.subscription_summary);
         appendStudentCardMetaNums(tail, s.subscription_summary);
-        row.append(nameEl, tail);
-        card.appendChild(row);
-        card.addEventListener("click", () => {
+
+        const actions = document.createElement("div");
+        actions.className = "admin-students-card__actions";
+
+        const journalBtn = document.createElement("button");
+        journalBtn.type = "button";
+        journalBtn.className = "btn btn--ghost btn--sm";
+        journalBtn.textContent = "Журнал відвідування";
+        journalBtn.title = "Усі заняття учня";
+        journalBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          void openVisitsJournal(String(s.id), s.display_name || "");
+        });
+
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "btn btn--primary btn--sm";
+        editBtn.textContent = "Редагувати";
+        editBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
           void openDetail(String(s.id));
         });
+
+        actions.append(journalBtn, editBtn);
+        row.append(nameBtn, tail, actions);
+        card.appendChild(row);
         frag.appendChild(card);
       }
       listEl.innerHTML = "";
@@ -464,8 +606,7 @@ export async function setupStudentsAdmin() {
   async function openDetail(id) {
     selectedId = id;
     showStudentsLocalError("");
-    if (!detailWrap) return;
-    detailWrap.classList.remove("admin-hide");
+    openModal(editModal);
     const title = el("studentDetailTitle");
     if (title) title.textContent = "Завантаження…";
     try {
@@ -496,15 +637,49 @@ export async function setupStudentsAdmin() {
     }
   }
 
+  async function openVisitsJournal(id, displayName) {
+    showStudentsLocalError("");
+    openModal(visitsModal);
+    const title = el("studentVisitsModalTitle");
+    const sub = el("studentVisitsModalSub");
+    const listBox = el("studentVisitsList");
+    if (title) title.textContent = "Журнал відвідування";
+    if (sub) sub.textContent = displayName ? `Учень: ${displayName}` : "";
+    if (listBox) listBox.innerHTML = `<p class="admin-muted">Завантаження…</p>`;
+    try {
+      const json = await fetchJson(`/api/admin/students/${encodeURIComponent(id)}`);
+      const st = json.student;
+      if (sub) {
+        const bits = [st.display_name || displayName || ""];
+        if (st.telegram_username) bits.push(`@${st.telegram_username}`);
+        sub.textContent = bits.filter(Boolean).join(" · ");
+      }
+      if (listBox) mountVisitJournal(listBox, json.visits || []);
+    } catch (e) {
+      if (listBox) listBox.innerHTML = "";
+      showStudentsLocalError(e?.message || String(e));
+    }
+  }
+
   const wireOnce = !studentsAdminWired;
   if (wireOnce) studentsAdminWired = true;
 
   if (wireOnce) {
-    detailCloseBtn?.addEventListener("click", closeStudentDetail);
+    for (const modal of modals) {
+      modal?.querySelectorAll("[data-admin-modal-close]").forEach((node) => {
+        node.addEventListener("click", () => closeModal(modal));
+      });
+    }
+
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
-      if (!detailWrap || detailWrap.classList.contains("admin-hide")) return;
-      closeStudentDetail();
+      if (visitsModal && !visitsModal.classList.contains("admin-hide")) {
+        closeModal(visitsModal);
+        return;
+      }
+      if (editModal && !editModal.classList.contains("admin-hide")) {
+        closeAllModals();
+      }
     });
 
     reloadBtn?.addEventListener("click", () => void refreshList());
@@ -562,7 +737,7 @@ export async function setupStudentsAdmin() {
         const json = await fetchJson(`/api/admin/students/${encodeURIComponent(id)}`, { method: "DELETE" });
         const n = json.visitCount ?? 0;
         alert(`Видалено. Було візитів у записі: ${n}.`);
-        closeStudentDetail();
+        closeAllModals();
         await refreshList();
       } catch (err) {
         showStudentsLocalError(err?.message || String(err));
@@ -605,12 +780,3 @@ export async function setupStudentsAdmin() {
   await refreshList();
   if (selectedId) await openDetail(selectedId);
 }
-
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-

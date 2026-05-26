@@ -2,6 +2,24 @@ import { DateTime } from "luxon";
 
 const KYIV_TZ = "Europe/Kyiv";
 
+/**
+ * Скільки візитів уже використано по абонементу.
+ * Без override — лише журнал. З override — вже використані до журналу + attended у журналі.
+ * @param {number} fromVisits
+ * @param {unknown} ovRaw
+ * @param {number | null | undefined} totalVisits
+ */
+export function computeSubscriptionUsedVisits(fromVisits, ovRaw, totalVisits) {
+  const journal = Math.max(0, Math.floor(Number(fromVisits) || 0));
+  if (ovRaw == null || ovRaw === "" || !Number.isFinite(Number(ovRaw))) return journal;
+  const opening = Math.max(0, Math.floor(Number(ovRaw)));
+  const used = opening + journal;
+  if (totalVisits != null && Number.isFinite(Number(totalVisits))) {
+    return Math.min(Math.max(0, Math.floor(Number(totalVisits))), used);
+  }
+  return used;
+}
+
 /** @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin */
 export async function resolveLessonTypeIdForOccurrence(supabaseAdmin, row) {
   const snap = row?.lesson_snapshot;
@@ -39,11 +57,7 @@ export async function recomputeSubscriptionStatus(supabaseAdmin, subscriptionId)
     .eq("visit_status", "attended");
   if (cntErr) throw new Error(cntErr.message);
   const fromVisits = Number(count) || 0;
-  const ovRaw = sub.used_visits_override;
-  const attached =
-    ovRaw != null && Number.isFinite(Number(ovRaw))
-      ? Math.max(0, Math.floor(Number(ovRaw)))
-      : fromVisits;
+  const attached = computeSubscriptionUsedVisits(fromVisits, sub.used_visits_override, sub.total_visits);
 
   let nextStatus = sub.status;
   if (sub.total_visits == null) {
@@ -191,6 +205,79 @@ async function upsertStudentFromVote(
 
 /**
  * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {string} uidStr
+ * @param {unknown} participantRaw
+ * @param {(code: string, detail?: string) => void} [appendError]
+ */
+async function upsertStudentFromVoteParticipant(supabaseAdmin, uidStr, participantRaw, appendError) {
+  let big;
+  try {
+    big = BigInt(uidStr);
+  } catch {
+    appendError?.("invalid_telegram_user_id", uidStr);
+    return { ok: false, studentId: null };
+  }
+
+  const { name: displayNameTrimmed, telegram_username: voteUsername } = participantFromVotesMap(
+    participantRaw,
+    uidStr,
+  );
+  const tid = telegramUserIdForDb(big, uidStr);
+
+  const { data: student, error: stErr } = await upsertStudentFromVote(
+    supabaseAdmin,
+    tid,
+    displayNameTrimmed,
+    uidStr,
+    voteUsername,
+  );
+  if (stErr) {
+    appendError?.("student_upsert_failed", stErr.message);
+    return { ok: false, studentId: null };
+  }
+  return { ok: true, studentId: student.id };
+}
+
+/**
+ * Учні з «Пропускаю» у вже finalized голосуваннях (одноразовий backfill при старті).
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ */
+export async function backfillStudentsFromSkipVotes(supabaseAdmin) {
+  if (!supabaseAdmin) return { total: 0, upserted: 0, errors: 0 };
+
+  const { data: occs, error } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .select("votes_snapshot")
+    .eq("status", "finalized");
+  if (error) throw new Error(error.message);
+
+  /** @type {Map<string, unknown>} */
+  const skipByUid = new Map();
+  for (const row of occs || []) {
+    const skip = row?.votes_snapshot?.skip;
+    if (!skip || typeof skip !== "object" || Array.isArray(skip)) continue;
+    for (const [uidStr, raw] of Object.entries(skip)) {
+      if (!skipByUid.has(uidStr)) skipByUid.set(uidStr, raw);
+    }
+  }
+
+  let upserted = 0;
+  let errors = 0;
+  for (const [uidStr, participantRaw] of skipByUid.entries()) {
+    try {
+      const result = await upsertStudentFromVoteParticipant(supabaseAdmin, uidStr, participantRaw);
+      if (result.ok) upserted++;
+      else errors++;
+    } catch {
+      errors++;
+    }
+  }
+
+  return { total: skipByUid.size, upserted, errors };
+}
+
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
  * @param {{ occurrenceRow: { id: string, lesson_time_id?: string | null, lesson_snapshot?: Record<string, unknown> | null }, votesByKind: { abon?: Map<string, string>, single?: Map<string, string>, skip?: Map<string, string> } }} args
  */
 export async function applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow, votesByKind }) {
@@ -236,6 +323,7 @@ export async function applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow, v
 
   const abonMap = votesByKind?.abon instanceof Map ? votesByKind.abon : new Map();
   const singleMap = votesByKind?.single instanceof Map ? votesByKind.single : new Map();
+  const skipMap = votesByKind?.skip instanceof Map ? votesByKind.skip : new Map();
 
   for (const [uidStr, participantRaw] of abonMap.entries()) {
     try {
@@ -406,6 +494,14 @@ export async function applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow, v
     }
   }
 
+  for (const [uidStr, participantRaw] of skipMap.entries()) {
+    try {
+      await upsertStudentFromVoteParticipant(supabaseAdmin, uidStr, participantRaw, appendError);
+    } catch (e) {
+      appendError("apply_skip_student_failed", e instanceof Error ? e.message : String(e));
+    }
+  }
+
   if (errors.length > 0) {
     try {
       await mergeOccurrencePostFinalizeErrors(supabaseAdmin, occurrenceId, errors);
@@ -490,11 +586,7 @@ async function subscriptionSummaryForStudents(supabaseAdmin, studentIds) {
     const total = Math.max(0, Math.floor(Number(tvRaw)));
     if (total <= 0) continue;
     const fromVisits = Math.min(total, Number(usedBySubscriptionId.get(String(row.id)) || 0));
-    const ovRaw = row.used_visits_override;
-    const used =
-      ovRaw != null && Number.isFinite(Number(ovRaw))
-        ? Math.min(total, Math.max(0, Math.floor(Number(ovRaw))))
-        : fromVisits;
+    const used = computeSubscriptionUsedVisits(fromVisits, row.used_visits_override, total);
     const rem = Math.max(0, total - used);
     bucket.abon_visits_total += total;
     bucket.abon_visits_remaining += rem;

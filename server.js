@@ -8,6 +8,7 @@ import { DateTime } from "luxon";
 import { startDailyLessonVoteCron } from "./lesson-vote-cron.js";
 import {
   applyVisitsAfterFinalize,
+  backfillStudentsFromSkipVotes,
   expireOverdueSubscriptions,
   registerStudentRoutes,
 } from "./students-api.js";
@@ -2274,6 +2275,11 @@ async function closeSingleTeacherTestVote(voteIdRaw) {
       if (occFetchErr) {
         console.warn("test-vote/close load occurrence for lessons:", occFetchErr.message);
       } else if (occRow) {
+        try {
+          await applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow: occRow, votesByKind: votesSnap });
+        } catch (e) {
+          console.error("applyVisitsAfterFinalize (test-vote close):", e?.message || e);
+        }
         await persistFinalizedVotesToLessonRow(
           occRow,
           votesSnap,
@@ -2926,6 +2932,20 @@ startDailyLessonVoteCron({
 });
 
 registerStudentRoutes(app, supabaseAdmin);
+
+if (supabaseAdmin) {
+  backfillStudentsFromSkipVotes(supabaseAdmin)
+    .then((result) => {
+      if (result.total > 0) {
+        console.log(
+          `[students] skip-voters backfill total=${result.total} upserted=${result.upserted} errors=${result.errors}`,
+        );
+      }
+    })
+    .catch((error) => {
+      console.error("[students] skip-voters backfill failed:", error?.message || error);
+    });
+}
 
 app.listen(port, () => {
   console.log(`Server is running at http://localhost:${port}`);
