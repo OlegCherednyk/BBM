@@ -83,16 +83,31 @@
                 />
               </div>
               <div class="admin-students-toolbar__cell">
-                <div class="admin-students-toolbar__filter">
+                <div class="admin-students-toolbar__filter admin-students-toolbar__filter--labeled">
+                  <span class="admin-students-toolbar__filter-tag" id="studentsFilterLabel" title="Статус абонемента">Статус</span>
                   <select
                     id="studentsFilter"
                     class="admin-students-toolbar__select"
-                    aria-label="Фільтр за абонементом"
+                    aria-labelledby="studentsFilterLabel"
                   >
-                    <option value="all">Усі</option>
+                    <option value="all">Усі статуси</option>
                     <option value="pending">В обробці</option>
                     <option value="active">Активні</option>
                     <option value="exhausted">Вичерпані</option>
+                  </select>
+                </div>
+              </div>
+              <div class="admin-students-toolbar__cell">
+                <div class="admin-students-toolbar__filter admin-students-toolbar__filter--labeled">
+                  <span class="admin-students-toolbar__filter-tag" id="studentsAbonFilterLabel" title="Абонемент">Абон</span>
+                  <select
+                    id="studentsAbonFilter"
+                    class="admin-students-toolbar__select"
+                    aria-labelledby="studentsAbonFilterLabel"
+                  >
+                    <option value="all">Усі</option>
+                    <option value="has_abon">Абон</option>
+                    <option value="no_abon">Не абон</option>
                   </select>
                 </div>
               </div>

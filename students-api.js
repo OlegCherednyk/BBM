@@ -145,30 +145,48 @@ function telegramUserIdForDb(big, uidStr) {
   return big.toString();
 }
 
+function isTelegramIdPlaceholder(name) {
+  return /^Telegram \d+$/.test(String(name ?? "").trim());
+}
+
 /** Не перезаписувати вже збережене імʼя (без @) значенням-нікнеймом із snapshot голосу. */
 function mergeStudentDisplayNameForUpsert(existingDisplayName, incomingFromVote) {
   const incoming = String(incomingFromVote ?? "").trim();
-  if (!incoming) return incoming;
   const old = String(existingDisplayName ?? "").trim();
+  if (!incoming) return old;
   if (old.length > 0 && incoming.startsWith("@") && !old.startsWith("@")) return old;
+  if (old.length > 0 && isTelegramIdPlaceholder(incoming) && !isTelegramIdPlaceholder(old)) return old;
+  if (isTelegramIdPlaceholder(old) && !isTelegramIdPlaceholder(incoming)) return incoming;
   return incoming;
 }
 
 /**
- * Значення з Map голосу: нормалізований обʼєкт після snapshotToVotesByKind або застарілий рядок.
+ * Значення з Map голосу або votes_snapshot (рядок, { name, telegram_username } або { n, u }).
  * @param {unknown} raw
  * @param {string} uidStr
  */
 function participantFromVotesMap(raw, uidStr) {
-  if (raw != null && typeof raw === "object" && !Array.isArray(raw)) {
-    const name = typeof raw.name === "string" ? raw.name.trim() : "";
-    const unSrc = raw.telegram_username;
-    const telegram_username =
-      typeof unSrc === "string" && unSrc.trim() ? String(unSrc).trim().replace(/^@/, "") : null;
-    return { name: name || `Telegram ${uidStr}`, telegram_username };
+  const uid = String(uidStr ?? "").trim();
+  if (raw == null || raw === "") {
+    return { name: uid ? `Telegram ${uid}` : "Telegram ?", telegram_username: null };
   }
-  const s = String(raw ?? "").trim();
-  return { name: s || `Telegram ${uidStr}`, telegram_username: null };
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    if (s.startsWith("@")) {
+      return { name: s, telegram_username: s.replace(/^@/, "") };
+    }
+    return { name: s || (uid ? `Telegram ${uid}` : ""), telegram_username: null };
+  }
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    const name = String(raw.n ?? raw.name ?? "").trim();
+    let un = raw.u ?? raw.un ?? raw.telegram_username ?? null;
+    if (un != null) {
+      un = String(un).trim().replace(/^@/, "");
+      un = un || null;
+    }
+    return { name: name || (uid ? `Telegram ${uid}` : ""), telegram_username: un };
+  }
+  return { name: uid ? `Telegram ${uid}` : "", telegram_username: null };
 }
 
 /**
@@ -239,7 +257,7 @@ async function upsertStudentFromVoteParticipant(supabaseAdmin, uidStr, participa
 }
 
 /**
- * Учні з «Пропускаю» у вже finalized голосуваннях (одноразовий backfill при старті).
+ * Синхронізація учнів з votes_snapshot finalized голосувань (backfill / repair імен і @ніків).
  * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
  */
 export async function backfillStudentsFromSkipVotes(supabaseAdmin) {
@@ -252,18 +270,22 @@ export async function backfillStudentsFromSkipVotes(supabaseAdmin) {
   if (error) throw new Error(error.message);
 
   /** @type {Map<string, unknown>} */
-  const skipByUid = new Map();
+  const participantsByUid = new Map();
   for (const row of occs || []) {
-    const skip = row?.votes_snapshot?.skip;
-    if (!skip || typeof skip !== "object" || Array.isArray(skip)) continue;
-    for (const [uidStr, raw] of Object.entries(skip)) {
-      if (!skipByUid.has(uidStr)) skipByUid.set(uidStr, raw);
+    const snap = row?.votes_snapshot;
+    if (!snap || typeof snap !== "object" || Array.isArray(snap)) continue;
+    for (const kind of ["abon", "single", "skip"]) {
+      const bucket = snap[kind];
+      if (!bucket || typeof bucket !== "object" || Array.isArray(bucket)) continue;
+      for (const [uidStr, raw] of Object.entries(bucket)) {
+        if (!participantsByUid.has(uidStr)) participantsByUid.set(uidStr, raw);
+      }
     }
   }
 
   let upserted = 0;
   let errors = 0;
-  for (const [uidStr, participantRaw] of skipByUid.entries()) {
+  for (const [uidStr, participantRaw] of participantsByUid.entries()) {
     try {
       const result = await upsertStudentFromVoteParticipant(supabaseAdmin, uidStr, participantRaw);
       if (result.ok) upserted++;
@@ -273,7 +295,7 @@ export async function backfillStudentsFromSkipVotes(supabaseAdmin) {
     }
   }
 
-  return { total: skipByUid.size, upserted, errors };
+  return { total: participantsByUid.size, upserted, errors };
 }
 
 /**
@@ -596,6 +618,50 @@ async function subscriptionSummaryForStudents(supabaseAdmin, studentIds) {
 }
 
 /**
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {string[]} studentIds
+ */
+async function attendedVisitsCountForStudents(supabaseAdmin, studentIds) {
+  if (studentIds.length === 0) return new Map();
+  const { data, error } = await supabaseAdmin
+    .from("visits")
+    .select("student_id")
+    .in("student_id", studentIds)
+    .eq("visit_status", "attended");
+  if (error) throw new Error(error.message);
+
+  /** @type {Map<string, number>} */
+  const m = new Map();
+  for (const id of studentIds) m.set(String(id), 0);
+  for (const row of data || []) {
+    const sid = row.student_id;
+    if (!sid) continue;
+    m.set(String(sid), (m.get(String(sid)) || 0) + 1);
+  }
+  return m;
+}
+
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ */
+async function studentIdsWithAnySubscription(supabaseAdmin) {
+  const { data, error } = await supabaseAdmin.from("subscriptions").select("student_id");
+  if (error) throw new Error(error.message);
+  return new Set((data || []).map((r) => String(r.student_id || "")).filter(Boolean));
+}
+
+/**
+ * @param {Set<string> | null} allowed
+ * @param {string[]} nextIds
+ * @returns {Set<string>}
+ */
+function intersectStudentIds(allowed, nextIds) {
+  const nextSet = new Set(nextIds.filter(Boolean));
+  if (allowed === null) return nextSet;
+  return new Set([...allowed].filter((id) => nextSet.has(id)));
+}
+
+/**
  * @param {import("express").Express} app
  * @param {import("@supabase/supabase-js").SupabaseClient | null} supabaseAdmin
  */
@@ -609,24 +675,46 @@ export function registerStudentRoutes(app, supabaseAdmin) {
       const filterRaw = typeof req.query.filter === "string" ? req.query.filter : "all";
       const filter =
         filterRaw === "pending" || filterRaw === "active" || filterRaw === "exhausted" ? filterRaw : "all";
+      const abonRaw = typeof req.query.abon === "string" ? req.query.abon : "all";
+      const abonFilter = abonRaw === "has_abon" || abonRaw === "no_abon" ? abonRaw : "all";
 
-      /** @type {string[] | null} */
-      let studentIdsFilter = null;
+      /** @type {Set<string> | null} */
+      let allowedStudentIds = null;
+
       if (filter !== "all") {
         const { data: subs, error: subErr } = await supabaseAdmin
           .from("subscriptions")
           .select("student_id")
           .eq("status", filter);
         if (subErr) return res.status(500).json({ ok: false, error: subErr.message });
-        const set = new Set((subs || []).map((r) => r.student_id).filter(Boolean));
-        studentIdsFilter = [...set];
-        if (studentIdsFilter.length === 0) {
+        allowedStudentIds = intersectStudentIds(
+          allowedStudentIds,
+          (subs || []).map((r) => String(r.student_id || "")).filter(Boolean),
+        );
+        if (allowedStudentIds.size === 0) {
+          return res.status(200).json({ ok: true, rows: [] });
+        }
+      }
+
+      if (abonFilter !== "all") {
+        const withAbon = await studentIdsWithAnySubscription(supabaseAdmin);
+        if (abonFilter === "has_abon") {
+          allowedStudentIds = intersectStudentIds(allowedStudentIds, [...withAbon]);
+        } else {
+          const { data: allStudents, error: allErr } = await supabaseAdmin.from("students").select("id");
+          if (allErr) return res.status(500).json({ ok: false, error: allErr.message });
+          const noAbonIds = (allStudents || [])
+            .map((s) => String(s.id || ""))
+            .filter((id) => id && !withAbon.has(id));
+          allowedStudentIds = intersectStudentIds(allowedStudentIds, noAbonIds);
+        }
+        if (allowedStudentIds.size === 0) {
           return res.status(200).json({ ok: true, rows: [] });
         }
       }
 
       let q = supabaseAdmin.from("students").select("*");
-      if (studentIdsFilter) q = q.in("id", studentIdsFilter);
+      if (allowedStudentIds) q = q.in("id", [...allowedStudentIds]);
       const pattern = wildIlike(search);
       if (pattern) {
         q = q.or(
@@ -638,6 +726,7 @@ export function registerStudentRoutes(app, supabaseAdmin) {
 
       const ids = (students || []).map((s) => s.id);
       const summaryMap = await subscriptionSummaryForStudents(supabaseAdmin, ids);
+      const attendedMap = await attendedVisitsCountForStudents(supabaseAdmin, ids);
       const rows = (students || []).map((s) => ({
         ...s,
         subscription_summary: summaryMap.get(s.id) || {
@@ -648,6 +737,7 @@ export function registerStudentRoutes(app, supabaseAdmin) {
           abon_visits_total: 0,
           abon_visits_remaining: 0,
         },
+        attended_visits_count: attendedMap.get(String(s.id)) || 0,
       }));
 
       return res.status(200).json({ ok: true, rows });

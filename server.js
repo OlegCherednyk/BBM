@@ -2938,7 +2938,7 @@ if (supabaseAdmin) {
     .then((result) => {
       if (result.total > 0) {
         console.log(
-          `[students] skip-voters backfill total=${result.total} upserted=${result.upserted} errors=${result.errors}`,
+          `[students] vote-snapshot reconcile total=${result.total} upserted=${result.upserted} errors=${result.errors}`,
         );
       }
     })

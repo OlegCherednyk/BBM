@@ -17,6 +17,20 @@ function apiBase() {
 }
 
 /** Людський підпис статусу абонемента (у БД лишаються pending / active / exhausted). */
+function isTelegramIdPlaceholder(name) {
+  return /^Telegram \d+$/.test(String(name ?? "").trim());
+}
+
+/** Імʼя + @нік для списку та заголовків (не дублює @ у display_name). */
+function formatStudentListLabel(student) {
+  const name = String(student?.display_name ?? "").trim();
+  const nickRaw = String(student?.telegram_username ?? "").trim().replace(/^@/, "");
+  const nick = nickRaw ? `@${nickRaw}` : "";
+  if (nick && (isTelegramIdPlaceholder(name) || !name)) return nick;
+  if (nick && !name.includes(nick)) return `${name} ${nick}`;
+  return name || nick || "—";
+}
+
 function subscriptionStatusLabelUk(code) {
   switch (String(code || "")) {
     case "pending":
@@ -117,6 +131,16 @@ function appendStudentCardMetaNums(tail, summary) {
   tail.appendChild(meta);
 }
 
+function appendAttendedVisitsDot(tail, count) {
+  const n = Math.max(0, Math.floor(Number(count) || 0));
+  const dot = document.createElement("span");
+  dot.className = "admin-students-visits-dot";
+  dot.textContent = String(n);
+  dot.title =
+    n === 0 ? "Немає відвіданих занять" : n === 1 ? "1 відвідане заняття" : `${n} відвіданих занять`;
+  tail.appendChild(dot);
+}
+
 async function fetchJson(path, opts = {}) {
   const res = await fetch(`${apiBase()}${path}`, {
     ...opts,
@@ -214,6 +238,7 @@ export async function setupStudentsAdmin() {
   const listEl = el("studentsList");
   const searchEl = el("studentsSearch");
   const filterEl = el("studentsFilter");
+  const abonFilterEl = el("studentsAbonFilter");
   const reloadBtn = el("studentsReload");
   const editModal = el("studentEditModal");
   const visitsModal = el("studentVisitsModal");
@@ -483,6 +508,10 @@ export async function setupStudentsAdmin() {
   if (filterEl && qFilter && ["all", "pending", "active", "exhausted"].includes(qFilter)) {
     filterEl.value = qFilter;
   }
+  const qAbon = params.get("abon");
+  if (abonFilterEl && qAbon && ["all", "has_abon", "no_abon"].includes(qAbon)) {
+    abonFilterEl.value = qAbon;
+  }
 
   const { url, anonKey } = await getSupabaseConfig();
   if (!url || !anonKey) {
@@ -527,9 +556,11 @@ export async function setupStudentsAdmin() {
     }
     const search = searchEl?.value.trim() || "";
     const filter = filterEl?.value || "all";
+    const abonFilter = abonFilterEl?.value || "all";
     const q = new URLSearchParams();
     if (search) q.set("search", search);
     if (filter !== "all") q.set("filter", filter);
+    if (abonFilter !== "all") q.set("abon", abonFilter);
     const query = q.toString();
     try {
       const json = await fetchJson(`/api/admin/students${query ? `?${query}` : ""}`);
@@ -550,7 +581,7 @@ export async function setupStudentsAdmin() {
         const nameBtn = document.createElement("button");
         nameBtn.type = "button";
         nameBtn.className = "admin-students-card__name-btn";
-        nameBtn.textContent = s.display_name || "—";
+        nameBtn.textContent = formatStudentListLabel(s);
         nameBtn.addEventListener("click", () => {
           void openDetail(String(s.id));
         });
@@ -559,6 +590,7 @@ export async function setupStudentsAdmin() {
         tail.className = "admin-students-card__tail";
         appendAbonBadgeIfAny(tail, s.subscription_summary);
         appendStudentCardMetaNums(tail, s.subscription_summary);
+        appendAttendedVisitsDot(tail, s.attended_visits_count);
 
         const actions = document.createElement("div");
         actions.className = "admin-students-card__actions";
@@ -570,7 +602,7 @@ export async function setupStudentsAdmin() {
         journalBtn.title = "Усі заняття учня";
         journalBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          void openVisitsJournal(String(s.id), s.display_name || "");
+          void openVisitsJournal(String(s.id), formatStudentListLabel(s));
         });
 
         const editBtn = document.createElement("button");
@@ -612,7 +644,7 @@ export async function setupStudentsAdmin() {
     try {
       const json = await fetchJson(`/api/admin/students/${encodeURIComponent(id)}`);
       const st = json.student;
-      if (title) title.textContent = st.display_name || "Учень";
+      if (title) title.textContent = formatStudentListLabel(st) || "Учень";
       el("studentDetailId").value = st.id;
       el("studentDisplayName").value = st.display_name || "";
       el("studentTelegramUsername").value = st.telegram_username || "";
@@ -650,9 +682,7 @@ export async function setupStudentsAdmin() {
       const json = await fetchJson(`/api/admin/students/${encodeURIComponent(id)}`);
       const st = json.student;
       if (sub) {
-        const bits = [st.display_name || displayName || ""];
-        if (st.telegram_username) bits.push(`@${st.telegram_username}`);
-        sub.textContent = bits.filter(Boolean).join(" · ");
+        sub.textContent = formatStudentListLabel(st) || displayName || "";
       }
       if (listBox) mountVisitJournal(listBox, json.visits || []);
     } catch (e) {
