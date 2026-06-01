@@ -1,27 +1,31 @@
 (function initHeroParallax() {
   const hero = document.getElementById("hero");
   const img = document.getElementById("heroBgImg");
-  const heroScroll = hero?.querySelector(".hero__scroll");
   if (!hero || !img) return;
 
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  if (motion.matches) return;
 
+  const PARALLAX = 0.38;
   let ticking = false;
+  let inView = true;
+
+  function clearParallax() {
+    img.style.removeProperty("--hero-parallax-y");
+  }
 
   function update() {
     ticking = false;
+    if (!inView) return;
+
     const scrollY = window.scrollY;
-    const heroHeight = hero.offsetHeight;
-
-    if (scrollY <= heroHeight * 1.5) {
-      // Photo slides down on screen as user scrolls (k > 1 = visible descent)
-      img.style.transform = `translate3d(0, ${scrollY * 1.35}px, 0)`;
+    const heroBottom = hero.offsetTop + hero.offsetHeight;
+    if (scrollY > heroBottom) {
+      clearParallax();
+      return;
     }
 
-    if (heroScroll) {
-      const progress = Math.min(scrollY / (heroHeight * 0.4), 1);
-      heroScroll.style.opacity = progress > 0.05 ? String(1 - progress) : "";
-    }
+    img.style.setProperty("--hero-parallax-y", `${scrollY * PARALLAX}px`);
   }
 
   function onScroll() {
@@ -31,7 +35,24 @@
     }
   }
 
+  const observer = new IntersectionObserver(
+    ([entry]) => {
+      inView = entry.isIntersecting;
+      if (inView) update();
+      else clearParallax();
+    },
+    { rootMargin: "20% 0px" }
+  );
+  observer.observe(hero);
+
+  motion.addEventListener("change", (e) => {
+    if (e.matches) {
+      clearParallax();
+      window.removeEventListener("scroll", onScroll);
+      observer.disconnect();
+    }
+  });
+
   window.addEventListener("scroll", onScroll, { passive: true });
-  window.addEventListener("resize", onScroll, { passive: true });
   update();
 })();
