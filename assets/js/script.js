@@ -1,6 +1,52 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { getSupabaseConfig } from "./runtime-supabase-config.js";
 
+/* ── SCROLL-TO-TOP ── */
+const scrollTopBtn = document.getElementById("scrollTop");
+if (scrollTopBtn) {
+  window.addEventListener("scroll", () => {
+    scrollTopBtn.classList.toggle("visible", window.scrollY > 400);
+  }, { passive: true });
+  scrollTopBtn.addEventListener("click", () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+
+/* ── MOBILE NAV HAMBURGER ── */
+const navHamburger = document.getElementById("navHamburger");
+const mobileNav    = document.getElementById("mobileNav");
+
+function openMobileNav() {
+  navHamburger.setAttribute("aria-expanded", "true");
+  mobileNav.classList.add("is-open");
+  mobileNav.removeAttribute("aria-hidden");
+  document.body.style.overflow = "hidden";
+}
+function closeMobileNav() {
+  navHamburger.setAttribute("aria-expanded", "false");
+  mobileNav.classList.remove("is-open");
+  mobileNav.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+}
+
+if (navHamburger && mobileNav) {
+  navHamburger.addEventListener("click", () => {
+    const isOpen = mobileNav.classList.contains("is-open");
+    isOpen ? closeMobileNav() : openMobileNav();
+  });
+
+  mobileNav.querySelectorAll(".mobile-nav__link").forEach((link) => {
+    link.addEventListener("click", closeMobileNav);
+  });
+
+  const openModalNavBtn = document.getElementById("openModalNav");
+  if (openModalNavBtn) {
+    openModalNavBtn.addEventListener("click", () => {
+      closeMobileNav();
+    });
+  }
+}
+
 /* ── NAV SCROLL ── */
 const nav = document.getElementById("nav");
 function syncNavTheme() {
@@ -364,6 +410,50 @@ const observer = new IntersectionObserver(
 );
 revealEls.forEach((el) => observer.observe(el));
 
+/* ── ACCORDION MICRO-ANIMATIONS ── */
+document.querySelectorAll(".accordion__item").forEach((details) => {
+  const summary = details.querySelector(".accordion__q");
+  const body    = details.querySelector(".accordion__body");
+  if (!summary || !body) return;
+
+  // Collapse initially (native [open] state may differ)
+  if (!details.open) body.style.height = "0px";
+
+  summary.addEventListener("click", (e) => {
+    e.preventDefault();
+
+    if (details.open) {
+      // ── CLOSING ──
+      const h = body.scrollHeight;
+      body.style.height = h + "px";
+      body.offsetHeight; // force reflow
+      body.style.height = "0px";
+      body.addEventListener(
+        "transitionend",
+        () => {
+          details.removeAttribute("open");
+          // height stays 0px for next open cycle
+        },
+        { once: true }
+      );
+    } else {
+      // ── OPENING ──
+      body.style.height = "0px";
+      details.setAttribute("open", "");
+      const h = body.scrollHeight;
+      body.offsetHeight; // force reflow
+      body.style.height = h + "px";
+      body.addEventListener(
+        "transitionend",
+        () => {
+          body.style.height = ""; // auto — allows resize
+        },
+        { once: true }
+      );
+    }
+  });
+});
+
 /* ── QUOTES SLIDER ── */
 const quotes = document.querySelectorAll(".quote");
 const dots   = document.querySelectorAll(".dot");
@@ -422,15 +512,41 @@ const openBtns   = [
   document.getElementById("openModal3"),
   document.getElementById("openModal4"),
 ];
-const form        = document.getElementById("signupForm");
-const formSuccess = document.getElementById("formSuccess");
+const form = document.getElementById("signupForm");
 
 function openModal() {
   form.hidden = false;
-  formSuccess.hidden = true;
   modal.showModal ? modal.showModal() : (modal.open = true);
   backdrop.classList.add("active");
   document.body.style.overflow = "hidden";
+}
+
+/* ── TOAST ── */
+function showToast(title, desc = "", durationMs = 4500) {
+  const container = document.getElementById("toastContainer");
+  if (!container) return;
+
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.setAttribute("role", "status");
+  toast.innerHTML = `
+    <div class="toast__icon" aria-hidden="true">✓</div>
+    <div class="toast__text">
+      <div class="toast__title">${title}</div>
+      ${desc ? `<div class="toast__desc">${desc}</div>` : ""}
+    </div>
+  `;
+
+  container.appendChild(toast);
+  // Double rAF: let the element render before triggering transition
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => toast.classList.add("is-visible"))
+  );
+
+  setTimeout(() => {
+    toast.classList.remove("is-visible");
+    toast.addEventListener("transitionend", () => toast.remove(), { once: true });
+  }, durationMs);
 }
 
 function closeModal() {
@@ -439,6 +555,8 @@ function closeModal() {
   document.body.style.overflow = "";
 }
 
+const openModalNavBtn2 = document.getElementById("openModalNav");
+if (openModalNavBtn2) openBtns.push(openModalNavBtn2);
 openBtns.forEach((b) => b && b.addEventListener("click", openModal));
 closeBtnEl.addEventListener("click", closeModal);
 backdrop.addEventListener("click", closeModal);
@@ -518,14 +636,9 @@ form.addEventListener("submit", async (e) => {
       throw new Error(serverError || `Request failed with status ${response.status}`);
     }
 
-    form.hidden = true;
-    formSuccess.hidden = false;
-    setTimeout(closeModal, 2800);
-    setTimeout(() => {
-      form.hidden = false;
-      formSuccess.hidden = true;
-      form.reset();
-    }, 3200);
+    closeModal();
+    form.reset();
+    showToast("Дякуємо!", "Ми напишемо тобі найближчим часом.");
   } catch (error) {
     showError("contact", "contactError", mapSignupErrorToUa(error?.message));
   }

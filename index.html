@@ -15,30 +15,58 @@
   </head>
   <body>
 
+    <!-- ── SITE BACKGROUND (fixed layer — glass sections see through here) ── -->
+    <div class="site-bg" aria-hidden="true"></div>
+
     <!-- ── NAV ── -->
     <nav class="nav nav--hero" id="nav">
-      <a class="nav__logo" href="#">
-        <img class="nav__logo-mark" src="logo_bbm_circle.png" alt="" width="24" height="24" />
-        <span>mozok.tilo.ruh</span>
-      </a>
-      <a
-        class="nav__ig"
-        href="https://www.instagram.com/mozok.tilo.ruh/"
-        target="_blank"
-        rel="noopener"
-        aria-label="Instagram"
-      >
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
-          <circle cx="12" cy="12" r="4"/>
-          <circle cx="17.5" cy="6.5" r=".7" fill="currentColor" stroke="none"/>
-        </svg>
-      </a>
+      <div class="nav__brand">
+        <a class="nav__logo" href="#">
+          <img class="nav__logo-mark" src="logo_bbm_circle.png" alt="" width="24" height="24" />
+          <span>mozok.tilo.ruh</span>
+        </a>
+        <a
+          class="nav__ig"
+          href="https://www.instagram.com/mozok.tilo.ruh/"
+          target="_blank"
+          rel="noopener"
+          aria-label="Instagram"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+            <circle cx="12" cy="12" r="4"/>
+            <circle cx="17.5" cy="6.5" r=".7" fill="currentColor" stroke="none"/>
+          </svg>
+        </a>
+      </div>
+      <button class="nav__hamburger" id="navHamburger" aria-label="Меню" aria-expanded="false">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </nav>
+
+    <!-- ── MOBILE NAV ── -->
+    <nav class="mobile-nav" id="mobileNav" aria-hidden="true">
+      <a href="#classes-spotlight" class="mobile-nav__link">Практики</a>
+      <a href="#schedule" class="mobile-nav__link">Розклад</a>
+      <a href="#values" class="mobile-nav__link">Цінності</a>
+      <a href="#pricing" class="mobile-nav__link">Ціни</a>
+      <button class="btn btn--primary mobile-nav__cta" id="openModalNav">Записатись</button>
     </nav>
 
     <!-- ── HERO ── -->
     <section class="hero" id="hero">
-      <div class="hero__bg" aria-hidden="true"></div>
+      <div class="hero__bg" aria-hidden="true">
+        <img
+          class="hero__bg-img"
+          id="heroBgImg"
+          src="assets/images/hero-background.png"
+          alt=""
+          decoding="async"
+          fetchpriority="high"
+        />
+      </div>
       <div class="hero__vignette" aria-hidden="true"></div>
       <div class="hero__inner">
         <p class="hero__eyebrow">мозок · тіло · рух · Київ</p>
@@ -57,6 +85,7 @@
         </div>
       </div>
       <div class="hero__grain" aria-hidden="true"></div>
+      <div class="hero__scroll" aria-hidden="true"></div>
     </section>
 
     <!-- ── CLASSES (IG-style spotlight) ── -->
@@ -170,11 +199,13 @@
                 Танець — це навичка, не талант
                 <span class="accordion__icon" aria-hidden="true"></span>
               </summary>
-              <p class="accordion__a">
-                Ми вивчаємо рух поетапно — так само, як малювання, гру на
-                інструменті чи програмування. Без «природженого хисту»,
-                без вікових обмежень.
-              </p>
+              <div class="accordion__body">
+                <p class="accordion__a">
+                  Ми вивчаємо рух поетапно — так само, як малювання, гру на
+                  інструменті чи програмування. Без «природженого хисту»,
+                  без вікових обмежень.
+                </p>
+              </div>
             </details>
 
             <details class="accordion__item reveal reveal--delay-2">
@@ -182,10 +213,12 @@
                 Рух — поза стилями
                 <span class="accordion__icon" aria-hidden="true"></span>
               </summary>
-              <p class="accordion__a">
-                Ми не навчаємо «hip-hop» або «contemporary». Ми вивчаємо типи
-                і якість руху, які лежать в основі будь-якого танцю.
-              </p>
+              <div class="accordion__body">
+                <p class="accordion__a">
+                  Ми не навчаємо «hip-hop» або «contemporary». Ми вивчаємо типи
+                  і якість руху, які лежать в основі будь-якого танцю.
+                </p>
+              </div>
             </details>
 
             <details class="accordion__item reveal reveal--delay-3">
@@ -193,10 +226,12 @@
                 Різні педагоги — максимальний прогрес
                 <span class="accordion__icon" aria-hidden="true"></span>
               </summary>
-              <p class="accordion__a">
-                Практики у різних викладачів дає різні підходи, техніки і мову
-                тіла. Це найважливіший інструмент для всебічного розвитку.
-              </p>
+              <div class="accordion__body">
+                <p class="accordion__a">
+                  Практики у різних викладачів дає різні підходи, техніки і мову
+                  тіла. Це найважливіший інструмент для всебічного розвитку.
+                </p>
+              </div>
             </details>
 
             <details class="accordion__item reveal reveal--delay-4">
@@ -204,10 +239,12 @@
                 Тебе не зламають — ні фізично, ні морально
                 <span class="accordion__icon" aria-hidden="true"></span>
               </summary>
-              <p class="accordion__a">
-                Усі педагоги вивчали анатомію й біомеханіку. Ми просимо
-                досліджувати, що може тіло — не тиснути, не рвати, а слухати.
-              </p>
+              <div class="accordion__body">
+                <p class="accordion__a">
+                  Усі педагоги вивчали анатомію й біомеханіку. Ми просимо
+                  досліджувати, що може тіло — не тиснути, не рвати, а слухати.
+                </p>
+              </div>
             </details>
 
           </div>
@@ -311,10 +348,6 @@
         <button class="btn btn--primary btn--full" type="submit">Відправити</button>
       </form>
 
-      <div class="modal__success" id="formSuccess" hidden>
-        <span class="modal__checkmark modal__checkmark--always" aria-hidden="true">✓</span>
-        <p>Дякуємо! Ми напишемо тобі найближчим часом.</p>
-      </div>
     </dialog>
     <div class="modal__backdrop" id="modalBackdrop"></div>
 
@@ -324,7 +357,17 @@
       <a href="https://www.instagram.com/mozok.tilo.ruh/" target="_blank" rel="noopener">Instagram</a>
     </footer>
 
+    <!-- ── TOAST CONTAINER ── -->
+    <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="false"></div>
+
+    <button class="scroll-top" id="scrollTop" aria-label="Повернутись нагору">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="18 15 12 9 6 15"/>
+      </svg>
+    </button>
+
     <script src="assets/js/custom-select.js"></script>
+    <script src="assets/js/hero-parallax.js"></script>
     <script type="module" src="assets/js/script.js"></script>
   </body>
 </html>
