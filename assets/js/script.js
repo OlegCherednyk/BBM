@@ -163,32 +163,56 @@ function formatTimeToHm(value) {
   return String(value).slice(0, 5);
 }
 
+async function withRetry(fn, { attempts = 3, delayMs = 400 } = {}) {
+  let lastResult = null;
+  for (let i = 0; i < attempts; i++) {
+    if (i) await new Promise((r) => setTimeout(r, delayMs * i));
+    try {
+      lastResult = await fn();
+      if (lastResult?.ok) return lastResult.value;
+    } catch (err) {
+      console.warn("Supabase request failed:", err?.message || err);
+      lastResult = { ok: false, value: false };
+    }
+  }
+  return lastResult?.value;
+}
+
 async function loadScheduleSlotsFromSupabase() {
-  if (!supabase) return;
-  const { data, error } = await supabase
-    .from("lesson_times")
-    .select("day_of_week, start_time, lesson_types(name,duration_minutes), places(name,address,river_bank)");
+  if (!supabase) return false;
 
-  if (error) {
-    console.error("Cannot load schedule from Supabase:", error.message);
-    return;
-  }
+  const result = await withRetry(async () => {
+    const { data, error } = await supabase
+      .from("lesson_times")
+      .select("day_of_week, start_time, lesson_types(name,duration_minutes), places(name,address,river_bank)");
 
-  const mapped = (data || [])
-    .filter((row) => row?.lesson_types?.name && row?.places?.name)
-    .map((row) => ({
-      dow: row.day_of_week,
-      time: formatTimeToHm(row.start_time),
-      bank: normalizeBank(row.places.river_bank),
-      type: row.lesson_types.name,
-      duration: formatDuration(row.lesson_types.duration_minutes),
-      venue: row.places.name,
-      address: row.places.address || "",
-    }));
+    if (error) {
+      console.warn("Schedule fetch attempt failed:", error.message);
+      return { ok: false, value: false };
+    }
 
-  if (mapped.length) {
+    const mapped = (data || [])
+      .filter((row) => row?.lesson_types?.name && row?.places?.name)
+      .map((row) => ({
+        dow: row.day_of_week,
+        time: formatTimeToHm(row.start_time),
+        bank: normalizeBank(row.places.river_bank),
+        type: row.lesson_types.name,
+        duration: formatDuration(row.lesson_types.duration_minutes),
+        venue: row.places.name,
+        address: row.places.address || "",
+      }));
+
+    if (!mapped.length) return { ok: false, value: false };
+
     scheduleSlots = mapped;
+    return { ok: true, value: true };
+  });
+
+  if (!result) {
+    console.error("Cannot load schedule from Supabase after retries.");
   }
+  return Boolean(result);
 }
 
 function formatUah(amount) {
@@ -205,32 +229,46 @@ function lessonKey(lessonType) {
 }
 
 async function loadPricesFromSupabase() {
-  if (!supabase) return;
-  const { data, error } = await supabase.from("prices").select("price_kind,visits_count,amount_uah,lesson_types(slug,name)");
-  if (error) {
-    console.error("Cannot load prices from Supabase:", error.message);
-    return;
+  if (!supabase) return false;
+
+  const result = await withRetry(async () => {
+    const { data, error } = await supabase
+      .from("prices")
+      .select("price_kind,visits_count,amount_uah,lesson_types(slug,name)");
+
+    if (error) {
+      console.warn("Prices fetch attempt failed:", error.message);
+      return { ok: false, value: false };
+    }
+
+    const byKey = {};
+    for (const row of data || []) {
+      const key = lessonKey(row.lesson_types);
+      if (!key) continue;
+      if (!byKey[key]) byKey[key] = {};
+      if (row.price_kind === "single") byKey[key].single = row.amount_uah;
+      if (row.price_kind === "abon" && Number(row.visits_count) === 8) byKey[key].abon8 = row.amount_uah;
+    }
+
+    if (!Object.keys(byKey).length) return { ok: false, value: false };
+
+    const setText = (id, amount) => {
+      if (!Number.isFinite(amount)) return;
+      const el = document.getElementById(id);
+      if (el) el.textContent = formatUah(amount);
+    };
+
+    setText("priceTrainingSingle", byKey.training?.single);
+    setText("priceTrainingAbon", byKey.training?.abon8);
+    setText("priceContemporarySingle", byKey.contemporary?.single);
+    setText("priceContemporaryAbon", byKey.contemporary?.abon8);
+    return { ok: true, value: true };
+  });
+
+  if (!result) {
+    console.error("Cannot load prices from Supabase after retries.");
   }
-
-  const byKey = {};
-  for (const row of data || []) {
-    const key = lessonKey(row.lesson_types);
-    if (!key) continue;
-    if (!byKey[key]) byKey[key] = {};
-    if (row.price_kind === "single") byKey[key].single = row.amount_uah;
-    if (row.price_kind === "abon" && Number(row.visits_count) === 8) byKey[key].abon8 = row.amount_uah;
-  }
-
-  const setText = (id, amount) => {
-    if (!Number.isFinite(amount)) return;
-    const el = document.getElementById(id);
-    if (el) el.textContent = formatUah(amount);
-  };
-
-  setText("priceTrainingSingle", byKey.training?.single);
-  setText("priceTrainingAbon", byKey.training?.abon8);
-  setText("priceContemporarySingle", byKey.contemporary?.single);
-  setText("priceContemporaryAbon", byKey.contemporary?.abon8);
+  return Boolean(result);
 }
 
 let selectedBank = "all";
@@ -390,10 +428,17 @@ if (typeSelect) {
   });
 }
 
-await loadScheduleSlotsFromSupabase();
-await loadPricesFromSupabase();
 renderCalGrid();
 renderDetail();
+
+const [scheduleLoaded] = await Promise.all([
+  loadScheduleSlotsFromSupabase(),
+  loadPricesFromSupabase(),
+]);
+if (scheduleLoaded) {
+  renderCalGrid();
+  renderDetail();
+}
 
 /* ── SCROLL REVEAL ── */
 const revealEls = document.querySelectorAll(".reveal");

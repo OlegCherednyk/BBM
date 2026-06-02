@@ -12,6 +12,14 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="assets/css/styles.css" />
+    <script>
+      window.__bbmPublicConfig = fetch("/api/public-config", {
+        headers: { Accept: "application/json" },
+        credentials: "same-origin",
+      })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; });
+    </script>
   </head>
   <body>
 
@@ -366,7 +374,6 @@
     </button>
 
     <script src="assets/js/custom-select.js"></script>
-    <script src="assets/js/hero-parallax.js"></script>
     <script type="module" src="assets/js/script.js"></script>
   </body>
 </html>
