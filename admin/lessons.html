@@ -20,22 +20,31 @@
       <div class="admin-nav__inner">
         <div class="admin-nav__brand">
           <a class="nav__logo" href="../index.html">mozok.tilo.ruh</a>
-          <span class="admin-nav__sep" aria-hidden="true">·</span>
-          <a class="admin-nav__site" href="../index.html">На сайт</a>
         </div>
-        <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі за порядком">
-          <li><a href="prices.html">Ціни</a></li>
-          <li><a href="places.html">Місця</a></li>
-          <li><a href="teachers.html">Викладачі</a></li>
-          <li><a href="students.html">Учні</a></li>
-          <li><a href="lessons.html" aria-current="page">Заняття</a></li>
-          <li><a href="stats.html">Статистика</a></li>
-        </ol>
-        <div id="adminNavMeta" class="admin-nav__meta admin-hide">
-          <button type="button" class="btn btn--ghost btn--sm" id="signOutDash">Вийти</button>
-        </div>
+        <button
+          type="button"
+          class="admin-nav__toggle nav__hamburger admin-hide"
+          id="adminNavToggle"
+          aria-label="Меню"
+          aria-expanded="false"
+          aria-controls="adminNavDrawer"
+        >
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
       </div>
     </nav>
+    <div id="adminNavDrawer" class="admin-nav__drawer admin-hide" aria-hidden="true">
+      <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі за порядком">
+        <li><a href="prices.html">Ціни</a></li>
+        <li><a href="places.html">Місця</a></li>
+        <li><a href="teachers.html">Викладачі</a></li>
+        <li><a href="students.html">Учні</a></li>
+        <li><a href="lessons.html" aria-current="page">Заняття</a></li>
+        <li><a href="stats.html">Статистика</a></li>
+      </ol>
+    </div>
 
     <main class="admin-page">
       <div id="authSection" class="admin-hide"></div>
@@ -83,6 +92,73 @@
         </div>
       </div>
     </main>
+
+    <div id="lessonEditModal" class="admin-modal admin-hide" aria-hidden="true">
+      <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+      <div
+        class="admin-modal__dialog admin-modal__dialog--wide"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lessonEditModalTitle"
+      >
+        <div class="admin-modal__head">
+          <h3 id="lessonEditModalTitle" class="admin-modal__title">Редагування заняття</h3>
+          <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
+        </div>
+        <div class="admin-modal__body">
+          <div class="admin-field">
+            <label for="lessonEditTeacherSelect">Викладач</label>
+            <select id="lessonEditTeacherSelect">
+              <option value="">— не вибрано —</option>
+            </select>
+          </div>
+          <p id="lessonEditModalSub" class="admin-muted admin-modal__sub"></p>
+          <div id="lessonEditVisitsList" class="admin-visit-journal" aria-live="polite"></div>
+          <div class="admin-modal__section-head" style="margin-top: 20px">
+            <h4 class="admin-modal__section-title">Додати учня</h4>
+          </div>
+          <form id="lessonEditForm" class="admin-lesson-edit-add">
+            <div class="admin-lesson-edit-add__row">
+              <select id="lessonAddStudentSelect" aria-label="Учень">
+                <option value="">— оберіть учня —</option>
+              </select>
+              <label class="admin-lesson-edit-add__type" title="Без галочки — абонемент">
+                <input type="checkbox" id="lessonAddStudentIsSingle" />
+                <span>Разове</span>
+              </label>
+            </div>
+            <button type="submit" class="btn btn--primary btn--sm" id="lessonSaveBtn">Зберегти</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div id="lessonFinanceModal" class="admin-modal admin-hide" aria-hidden="true">
+      <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+      <div
+        class="admin-modal__dialog admin-modal__dialog--wide admin-lesson-finance-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lessonFinanceModalTitle"
+      >
+        <div class="admin-modal__head">
+          <h3 id="lessonFinanceModalTitle" class="admin-modal__title">Фінанси заняття</h3>
+          <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
+        </div>
+        <div class="admin-modal__body">
+          <p id="lessonFinanceModalSub" class="admin-lesson-finance__meta"></p>
+          <div id="lessonFinanceSummary" class="admin-lesson-finance__stats" aria-live="polite"></div>
+          <div class="admin-lesson-finance__panel">
+            <div class="admin-lesson-finance__panel-head">
+              <span class="admin-lesson-finance__panel-title">Оплата по учнях</span>
+              <span id="lessonFinancePeopleCount" class="admin-lesson-finance__people"></span>
+            </div>
+            <div id="lessonFinanceStudents" class="admin-lesson-finance__students" aria-live="polite"></div>
+          </div>
+          <div id="lessonFinanceFooter" class="admin-lesson-finance__footer" aria-live="polite"></div>
+        </div>
+      </div>
+    </div>
 
     <footer class="footer">
       <span>mozok.tilo.ruh — адмін</span>

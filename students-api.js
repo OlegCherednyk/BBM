@@ -642,6 +642,194 @@ async function attendedVisitsCountForStudents(supabaseAdmin, studentIds) {
 }
 
 /**
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {string} studentId
+ * @param {string} lessonTypeId
+ */
+async function resolveSubscriptionForAbonVisit(supabaseAdmin, studentId, lessonTypeId) {
+  const { data: activeSub, error: actErr } = await supabaseAdmin
+    .from("subscriptions")
+    .select("id")
+    .eq("student_id", studentId)
+    .eq("lesson_type_id", lessonTypeId)
+    .eq("status", "active")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (actErr) throw new Error(actErr.message);
+  if (activeSub) return activeSub.id;
+
+  const { data: pendingSub, error: penErr } = await supabaseAdmin
+    .from("subscriptions")
+    .select("id")
+    .eq("student_id", studentId)
+    .eq("lesson_type_id", lessonTypeId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (penErr) throw new Error(penErr.message);
+  if (pendingSub) return pendingSub.id;
+
+  const { data: newSub, error: insErr } = await supabaseAdmin
+    .from("subscriptions")
+    .insert({
+      student_id: studentId,
+      lesson_type_id: lessonTypeId,
+      total_visits: null,
+      status: "pending",
+      updated_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+  if (insErr) throw new Error(insErr.message);
+  return newSub.id;
+}
+
+const visitWithStudentSelect =
+  "id, student_id, vote_choice, subscription_id, visit_status, rolled_back_at, created_at, students ( display_name, telegram_username, telegram_user_id )";
+
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {string} occurrenceId
+ */
+export async function recomputeLessonCountsFromVisits(supabaseAdmin, occurrenceId) {
+  const { data: visits, error: vErr } = await supabaseAdmin
+    .from("visits")
+    .select("vote_choice, visit_status")
+    .eq("lesson_vote_occurrence_id", occurrenceId)
+    .eq("visit_status", "attended");
+  if (vErr) throw new Error(vErr.message);
+
+  let abon = 0;
+  let single = 0;
+  for (const v of visits || []) {
+    if (v.vote_choice === "abon") abon += 1;
+    else if (v.vote_choice === "single") single += 1;
+  }
+
+  const { error: upErr } = await supabaseAdmin
+    .from("lessons")
+    .update({ abon_count: abon, single_visitors_count: single })
+    .eq("lesson_vote_occurrence_id", occurrenceId);
+  if (upErr) throw new Error(upErr.message);
+
+  return { abon_count: abon, single_visitors_count: single };
+}
+
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {{ occurrenceId: string, studentId: string, voteChoice: string }} args
+ */
+export async function adminUpsertLessonVisit(supabaseAdmin, { occurrenceId, studentId, voteChoice }) {
+  const choice = voteChoice === "single" ? "single" : voteChoice === "abon" ? "abon" : null;
+  if (!choice) throw new Error("vote_choice must be 'abon' or 'single'.");
+
+  const { data: occ, error: occErr } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .select("id, lesson_time_id, lesson_snapshot")
+    .eq("id", occurrenceId)
+    .maybeSingle();
+  if (occErr) throw new Error(occErr.message);
+  if (!occ) throw new Error("Occurrence not found.");
+
+  const lessonTypeId = await resolveLessonTypeIdForOccurrence(supabaseAdmin, occ);
+  if (!lessonTypeId) throw new Error("Missing lesson type for occurrence.");
+
+  const { data: student, error: stErr } = await supabaseAdmin
+    .from("students")
+    .select("id")
+    .eq("id", studentId)
+    .maybeSingle();
+  if (stErr) throw new Error(stErr.message);
+  if (!student) throw new Error("Student not found.");
+
+  const { data: existing, error: exErr } = await supabaseAdmin
+    .from("visits")
+    .select("id, visit_status, vote_choice, subscription_id")
+    .eq("student_id", studentId)
+    .eq("lesson_vote_occurrence_id", occurrenceId)
+    .maybeSingle();
+  if (exErr) throw new Error(exErr.message);
+
+  if (existing && existing.visit_status === "attended") {
+    throw new Error("Учень уже у списку відвідувачів.");
+  }
+
+  let subscriptionId = null;
+  const oldSubId = existing?.subscription_id ? String(existing.subscription_id) : null;
+  if (choice === "abon") {
+    subscriptionId = await resolveSubscriptionForAbonVisit(supabaseAdmin, studentId, lessonTypeId);
+  }
+
+  /** @type {Record<string, unknown>} */
+  let visitRow;
+  if (existing) {
+    const { data: updated, error: upErr } = await supabaseAdmin
+      .from("visits")
+      .update({
+        vote_choice: choice,
+        subscription_id: subscriptionId,
+        visit_status: "attended",
+        rolled_back_at: null,
+      })
+      .eq("id", existing.id)
+      .select(visitWithStudentSelect)
+      .single();
+    if (upErr) throw new Error(upErr.message);
+    visitRow = updated;
+    if (oldSubId && oldSubId !== String(subscriptionId || "")) {
+      await recomputeSubscriptionStatus(supabaseAdmin, oldSubId);
+    }
+  } else {
+    const { data: inserted, error: insErr } = await supabaseAdmin
+      .from("visits")
+      .insert({
+        student_id: studentId,
+        lesson_vote_occurrence_id: occurrenceId,
+        vote_choice: choice,
+        subscription_id: subscriptionId,
+        visit_status: "attended",
+      })
+      .select(visitWithStudentSelect)
+      .single();
+    if (insErr) throw new Error(insErr.message);
+    visitRow = inserted;
+  }
+
+  if (subscriptionId) {
+    await recomputeSubscriptionStatus(supabaseAdmin, subscriptionId);
+  }
+
+  const counts = await recomputeLessonCountsFromVisits(supabaseAdmin, occurrenceId);
+  return { visit: visitRow, counts };
+}
+
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {string} visitId
+ */
+export async function adminRemoveLessonVisit(supabaseAdmin, visitId) {
+  const { data: v, error: vErr } = await supabaseAdmin.from("visits").select("*").eq("id", visitId).maybeSingle();
+  if (vErr) throw new Error(vErr.message);
+  if (!v) throw new Error("Visit not found.");
+  if (v.visit_status !== "attended") throw new Error("Visit is not active.");
+
+  const { error: upErr } = await supabaseAdmin
+    .from("visits")
+    .update({ visit_status: "rolled_back", rolled_back_at: new Date().toISOString() })
+    .eq("id", visitId);
+  if (upErr) throw new Error(upErr.message);
+
+  if (v.subscription_id) {
+    await recomputeSubscriptionStatus(supabaseAdmin, v.subscription_id);
+  }
+
+  const counts = await recomputeLessonCountsFromVisits(supabaseAdmin, v.lesson_vote_occurrence_id);
+  return { counts };
+}
+
+/**
  * @param {import("express").Express} app
  * @param {import("@supabase/supabase-js").SupabaseClient | null} supabaseAdmin
  */
@@ -1017,15 +1205,50 @@ export function registerStudentRoutes(app, supabaseAdmin) {
 
       const { data: rows, error } = await supabaseAdmin
         .from("visits")
-        .select(
-          "id, student_id, vote_choice, subscription_id, visit_status, rolled_back_at, created_at, students ( display_name, telegram_user_id )",
-        )
+        .select(visitWithStudentSelect)
         .eq("lesson_vote_occurrence_id", occurrenceId)
+        .eq("visit_status", "attended")
         .order("created_at", { ascending: true });
       if (error) return res.status(500).json({ ok: false, error: error.message });
       return res.status(200).json({ ok: true, rows: rows || [] });
     } catch (e) {
       console.error("GET /api/admin/lessons/:occurrenceId/visits:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.post("/api/admin/lessons/:occurrenceId/visits", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+      }
+      const occurrenceId = String(req.params.occurrenceId || "").trim();
+      if (!occurrenceId) return res.status(400).json({ ok: false, error: "Missing occurrence id." });
+
+      const studentId = String(req.body?.student_id ?? req.body?.studentId ?? "").trim();
+      const voteChoice = String(req.body?.vote_choice ?? req.body?.voteChoice ?? "").trim();
+      if (!studentId) return res.status(400).json({ ok: false, error: "Missing student_id." });
+
+      const result = await adminUpsertLessonVisit(supabaseAdmin, { occurrenceId, studentId, voteChoice });
+      return res.status(200).json({ ok: true, ...result });
+    } catch (e) {
+      console.error("POST /api/admin/lessons/:occurrenceId/visits:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.post("/api/admin/visits/:id/remove", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+      }
+      const id = String(req.params.id || "").trim();
+      if (!id) return res.status(400).json({ ok: false, error: "Missing visit id." });
+
+      const result = await adminRemoveLessonVisit(supabaseAdmin, id);
+      return res.status(200).json({ ok: true, ...result });
+    } catch (e) {
+      console.error("POST /api/admin/visits/:id/remove:", e?.message || e);
       return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
     }
   });

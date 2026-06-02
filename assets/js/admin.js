@@ -277,28 +277,343 @@ function fmtKyivDateTime(isoLike) {
   return KYIV_DATE_FMT.format(d).replace(",", " ·");
 }
 
-/** @type {{ id: string, name: string }[]} */
-let cachedLessonTeachers = [];
-/** @type {{ id: string, name: string }[]} */
-let cachedLessonPlaces = [];
-
-function makeNativeSelect() {
-  const sel = document.createElement("select");
-  sel.dataset.customSelectReady = "true";
-  sel.style.cssText =
-    "padding:6px 8px;border:1px solid var(--cream-mid);border-radius:6px;background:var(--cream-soft);font:inherit;color:inherit;max-width:100%;";
-  return sel;
+/**
+ * Split a Kyiv datetime into display parts for card layouts.
+ * @param {string | null | undefined} isoLike
+ * @returns {{ dow: string, date: string, time: string }}
+ */
+function fmtKyivDateParts(isoLike) {
+  if (!isoLike) return { dow: "—", date: "", time: "" };
+  const d = new Date(isoLike);
+  if (Number.isNaN(d.getTime())) return { dow: "—", date: "", time: "" };
+  const parts = KYIV_DATE_FMT.formatToParts(d);
+  const pick = (type) => parts.find((p) => p.type === type)?.value || "";
+  const dow = pick("weekday");
+  const date = `${pick("day")}.${pick("month")}.${pick("year")}`;
+  const time = `${pick("hour")}:${pick("minute")}`;
+  return { dow, date, time };
 }
 
-function makeNumberInput(value) {
-  const input = document.createElement("input");
-  input.type = "number";
-  input.min = "0";
-  input.step = "1";
-  input.value = String(Number.isFinite(value) ? value : 0);
-  input.style.cssText =
-    "width:64px;padding:6px 8px;border:1px solid var(--cream-mid);border-radius:6px;background:var(--cream-soft);font:inherit;color:inherit;";
-  return input;
+/** @type {object | null} */
+let editingLessonRow = null;
+/** @type {(() => void) | null} */
+let onLessonEditSaved = null;
+let lessonEditModalWired = false;
+
+async function fetchAdminJson(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { "Content-Type": "application/json", ...opts.headers },
+  });
+  const text = await res.text();
+  /** @type {any} */
+  let json;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+  if (!res.ok || json.ok === false) {
+    throw new Error(json.error || `HTTP ${res.status}`);
+  }
+  return json;
+}
+
+function studentDisplayName(visit) {
+  const st = visit?.students;
+  return formatStudentLine(st?.display_name, st?.telegram_username);
+}
+
+/** @param {string | null | undefined} displayName @param {string | null | undefined} telegramUsername */
+function formatStudentLine(displayName, telegramUsername) {
+  const name = (displayName && String(displayName).trim()) || "—";
+  const un = telegramUsername && String(telegramUsername).trim().replace(/^@/, "");
+  return un ? `${name} · @${un}` : name;
+}
+
+/** @param {{ display_name?: string | null, telegram_username?: string | null }} student */
+function studentOptionLabel(student) {
+  return formatStudentLine(student.display_name, student.telegram_username);
+}
+
+function populateLessonTeacherSelect(selectEl, teachers, selectedId) {
+  if (!selectEl) return;
+  selectEl.innerHTML = "";
+  const noneOpt = document.createElement("option");
+  noneOpt.value = "";
+  noneOpt.textContent = "— не вибрано —";
+  selectEl.appendChild(noneOpt);
+
+  for (const t of teachers || []) {
+    const opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent = t.name?.trim() || "—";
+    selectEl.appendChild(opt);
+  }
+  selectEl.value = selectedId || "";
+  syncCustomSelect(selectEl);
+}
+
+function mountLessonVisitsList(container, visits, onRemove) {
+  container.innerHTML = "";
+  if (!visits.length) {
+    container.innerHTML = `<p class="admin-muted" style="margin:0">Немає відвідувачів.</p>`;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const visit of visits) {
+    const isAbon = String(visit.vote_choice || "") === "abon";
+    const item = document.createElement("div");
+    item.className = "admin-visit-journal__item";
+
+    const kind = document.createElement("span");
+    kind.className = `admin-visit-journal__kind admin-visit-journal__kind--${isAbon ? "abon" : "single"}`;
+    kind.textContent = isAbon ? "Абон" : "Раз";
+    kind.title = isAbon ? "Абонемент" : "Разове";
+
+    const main = document.createElement("div");
+    main.className = "admin-visit-journal__main";
+    const label = document.createElement("div");
+    label.className = "admin-visit-journal__label";
+    label.textContent = studentDisplayName(visit);
+    main.appendChild(label);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "btn btn--danger btn--sm admin-visit-journal__remove";
+    removeBtn.textContent = "✕";
+    removeBtn.title = "Видалити зі списку";
+    removeBtn.addEventListener("click", () => onRemove(visit));
+
+    item.append(kind, main, removeBtn);
+    frag.appendChild(item);
+  }
+  container.appendChild(frag);
+}
+
+function populateLessonAddStudentSelect(selectEl, allStudents, attendedStudentIds) {
+  if (!selectEl) return;
+  const attended = new Set(attendedStudentIds);
+  selectEl.innerHTML = "";
+  const defaultOpt = document.createElement("option");
+  defaultOpt.value = "";
+  defaultOpt.textContent = "— оберіть учня —";
+  selectEl.appendChild(defaultOpt);
+
+  const available = (allStudents || [])
+    .filter((s) => s?.id && !attended.has(String(s.id)))
+    .sort((a, b) => String(a.display_name || "").localeCompare(String(b.display_name || ""), "uk"));
+
+  for (const s of available) {
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    opt.textContent = studentOptionLabel(s);
+    selectEl.appendChild(opt);
+  }
+  syncCustomSelect(selectEl);
+}
+
+function closeLessonEditModal() {
+  const modal = maybeEl("lessonEditModal");
+  if (!modal) return;
+  modal.classList.add("admin-hide");
+  modal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("admin-modal-open");
+  editingLessonRow = null;
+  onLessonEditSaved = null;
+}
+
+function ensureLessonEditModalWired() {
+  if (lessonEditModalWired) return;
+  const modal = maybeEl("lessonEditModal");
+  const form = maybeEl("lessonEditForm");
+  if (!modal) return;
+  lessonEditModalWired = true;
+
+  modal.querySelectorAll("[data-admin-modal-close]").forEach((node) => {
+    node.addEventListener("click", () => closeLessonEditModal());
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (modal.classList.contains("admin-hide")) return;
+    closeLessonEditModal();
+  });
+
+  form?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await saveLessonEdit();
+  });
+}
+
+const lessonEditSelectFields = `id, starts_at, abon_count, single_visitors_count, skip_visitors_count,
+  conducting_display_name, vote_finalized_at, lesson_vote_occurrence_id,
+  teachers ( id, name ),
+  places ( id, name, address ),
+  lesson_times ( id, start_time, day_of_week, lesson_types ( id, name, slug ) )`;
+
+async function saveLessonEdit() {
+  if (!editingLessonRow?.lesson_vote_occurrence_id) return;
+
+  const teacherSel = maybeEl("lessonEditTeacherSelect");
+  const selectEl = maybeEl("lessonAddStudentSelect");
+  const isSingleEl = maybeEl("lessonAddStudentIsSingle");
+  const submitBtn = maybeEl("lessonSaveBtn");
+
+  clearDashMessages();
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const teacherId = teacherSel?.value?.trim() || null;
+    const { data: updated, error: updErr } = await supabase
+      .from("lessons")
+      .update({ teacher_id: teacherId })
+      .eq("id", editingLessonRow.id)
+      .select(lessonEditSelectFields)
+      .single();
+    if (updErr) throw new Error(updErr.message);
+    Object.assign(editingLessonRow, updated);
+
+    const studentId = selectEl?.value?.trim() || "";
+    if (studentId) {
+      const voteChoice = isSingleEl?.checked ? "single" : "abon";
+      const body = await fetchAdminJson(
+        `/api/admin/lessons/${encodeURIComponent(editingLessonRow.lesson_vote_occurrence_id)}/visits`,
+        {
+          method: "POST",
+          body: JSON.stringify({ student_id: studentId, vote_choice: voteChoice }),
+        },
+      );
+      if (body.counts) {
+        editingLessonRow.abon_count = body.counts.abon_count;
+        editingLessonRow.single_visitors_count = body.counts.single_visitors_count;
+      }
+    }
+
+    onLessonEditSaved?.();
+    closeLessonEditModal();
+    showDashOk("Заняття збережено.");
+  } catch (err) {
+    showDashError(err?.message || String(err));
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+/** @type {{ id: string, display_name: string | null, telegram_username?: string | null }[]} */
+let cachedAllStudents = [];
+/** @type {{ id: string, name: string | null }[]} */
+let cachedAllTeachers = [];
+
+async function removeLessonVisit(visit) {
+  if (!visit?.id || !editingLessonRow) return;
+  const name = studentDisplayName(visit);
+  if (!confirm(`Видалити «${name}» зі списку відвідувачів?`)) return;
+
+  clearDashMessages();
+  try {
+    const body = await fetchAdminJson(`/api/admin/visits/${encodeURIComponent(visit.id)}/remove`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+
+    if (body.counts && editingLessonRow) {
+      editingLessonRow.abon_count = body.counts.abon_count;
+      editingLessonRow.single_visitors_count = body.counts.single_visitors_count;
+    }
+
+    const visitsList = maybeEl("lessonEditVisitsList");
+    const selectEl = maybeEl("lessonAddStudentSelect");
+    const visitsRes = await fetchAdminJson(
+      `/api/admin/lessons/${encodeURIComponent(editingLessonRow.lesson_vote_occurrence_id)}/visits`,
+    );
+    const visits = visitsRes.rows || [];
+
+    mountLessonVisitsList(visitsList, visits, (v) => removeLessonVisit(v));
+    populateLessonAddStudentSelect(
+      selectEl,
+      cachedAllStudents,
+      visits.map((v) => v.student_id),
+    );
+    onLessonEditSaved?.();
+    showDashOk("Учня видалено зі списку.");
+  } catch (err) {
+    showDashError(err?.message || String(err));
+  }
+}
+
+async function openLessonEditModal(row, onSaved) {
+  ensureLessonEditModalWired();
+  const modal = maybeEl("lessonEditModal");
+  const titleEl = maybeEl("lessonEditModalTitle");
+  const subEl = maybeEl("lessonEditModalSub");
+  const visitsList = maybeEl("lessonEditVisitsList");
+  const teacherSel = maybeEl("lessonEditTeacherSelect");
+  const selectEl = maybeEl("lessonAddStudentSelect");
+  const isSingleEl = maybeEl("lessonAddStudentIsSingle");
+  const form = maybeEl("lessonEditForm");
+
+  if (!modal || !row) return;
+
+  const occurrenceId = String(row.lesson_vote_occurrence_id || "").trim();
+  if (!occurrenceId) {
+    showDashError("Для цього заняття немає прив'язки до голосування — редагування недоступне.");
+    return;
+  }
+
+  editingLessonRow = row;
+  onLessonEditSaved = onSaved;
+
+  if (titleEl) titleEl.textContent = "Редагування заняття";
+  if (subEl) {
+    subEl.textContent = [fmtKyivDateTime(row.starts_at), lessonPlaceLabel(row), lessonTypeLabel(row)]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  modal.classList.remove("admin-hide");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("admin-modal-open");
+
+  if (visitsList) visitsList.innerHTML = '<p class="admin-muted">Завантаження…</p>';
+  if (form) form.classList.add("admin-hide");
+  if (teacherSel) teacherSel.disabled = true;
+
+  try {
+    const [visitsRes, studentsRes, teachersRes] = await Promise.all([
+      fetchAdminJson(`/api/admin/lessons/${encodeURIComponent(occurrenceId)}/visits`),
+      fetchAdminJson("/api/admin/students"),
+      supabase.from("teachers").select("id, name").order("sort_order", { ascending: true }),
+    ]);
+
+    if (teachersRes.error) throw new Error(teachersRes.error.message);
+
+    cachedAllStudents = studentsRes.rows || [];
+    cachedAllTeachers = teachersRes.data || [];
+    const visits = visitsRes.rows || [];
+
+    populateLessonTeacherSelect(teacherSel, cachedAllTeachers, row.teachers?.id || "");
+    if (teacherSel) teacherSel.disabled = false;
+
+    mountLessonVisitsList(visitsList, visits, (visit) => removeLessonVisit(visit));
+    populateLessonAddStudentSelect(
+      selectEl,
+      cachedAllStudents,
+      visits.map((v) => v.student_id),
+    );
+    if (selectEl) selectEl.value = "";
+    if (isSingleEl) isSingleEl.checked = false;
+    form?.classList.remove("admin-hide");
+  } catch (err) {
+    if (teacherSel) teacherSel.disabled = false;
+    if (visitsList) {
+      visitsList.innerHTML = `<p class="admin-muted">${escapeHtml(err?.message || String(err))}</p>`;
+    }
+    showDashError(err?.message || String(err));
+  }
+
+  modal.querySelector(".admin-modal__close")?.focus();
 }
 
 function lessonTeacherLabel(row) {
@@ -321,140 +636,271 @@ function lessonTypeLabel(row) {
   );
 }
 
-function renderLessonRowView(tr, row, onEdit, onDelete) {
-  tr.innerHTML = "";
-  const cells = [
-    fmtKyivDateTime(row.starts_at),
-    lessonTeacherLabel(row),
-    lessonPlaceLabel(row),
-    lessonTypeLabel(row),
-    String(Number.isFinite(row.abon_count) ? row.abon_count : 0),
-    String(Number.isFinite(row.single_visitors_count) ? row.single_visitors_count : 0),
-    String(Number.isFinite(row.skip_visitors_count) ? row.skip_visitors_count : 0),
-  ];
-  for (const text of cells) {
-    const td = document.createElement("td");
-    td.textContent = text;
-    tr.appendChild(td);
+let lessonFinanceModalWired = false;
+
+function closeLessonFinanceModal() {
+  const modal = maybeEl("lessonFinanceModal");
+  if (!modal) return;
+  modal.classList.add("admin-hide");
+  modal.setAttribute("aria-hidden", "true");
+  if (!maybeEl("lessonEditModal") || maybeEl("lessonEditModal")?.classList.contains("admin-hide")) {
+    document.body.classList.remove("admin-modal-open");
   }
-
-  const actionsTd = document.createElement("td");
-  const editBtn = document.createElement("button");
-  editBtn.type = "button";
-  editBtn.className = "btn btn--ghost btn--sm";
-  editBtn.style.padding = "6px 10px";
-  editBtn.textContent = "Змінити";
-  editBtn.addEventListener("click", () => onEdit());
-  actionsTd.appendChild(editBtn);
-
-  const delBtn = document.createElement("button");
-  delBtn.type = "button";
-  delBtn.className = "btn btn--danger btn--sm";
-  delBtn.style.padding = "6px 10px";
-  delBtn.style.marginLeft = "6px";
-  delBtn.textContent = "✕";
-  delBtn.title = "Видалити";
-  delBtn.addEventListener("click", () => onDelete());
-  actionsTd.appendChild(delBtn);
-  tr.appendChild(actionsTd);
 }
 
-function renderLessonRowEdit(tr, row, onCancel, onSave) {
-  tr.innerHTML = "";
+function ensureLessonFinanceModalWired() {
+  if (lessonFinanceModalWired) return;
+  const modal = maybeEl("lessonFinanceModal");
+  if (!modal) return;
+  lessonFinanceModalWired = true;
 
-  const timeTd = document.createElement("td");
-  timeTd.textContent = fmtKyivDateTime(row.starts_at);
-  tr.appendChild(timeTd);
-
-  const teacherTd = document.createElement("td");
-  const teacherSel = makeNativeSelect();
-  const noneOpt = document.createElement("option");
-  noneOpt.value = "";
-  noneOpt.textContent = "— не вибрано —";
-  teacherSel.appendChild(noneOpt);
-  for (const t of cachedLessonTeachers) {
-    const opt = document.createElement("option");
-    opt.value = t.id;
-    opt.textContent = t.name || "—";
-    teacherSel.appendChild(opt);
-  }
-  teacherSel.value = row.teachers?.id || "";
-  teacherTd.appendChild(teacherSel);
-  tr.appendChild(teacherTd);
-
-  const placeTd = document.createElement("td");
-  const placeSel = makeNativeSelect();
-  const placeNone = document.createElement("option");
-  placeNone.value = "";
-  placeNone.textContent = "— не вибрано —";
-  placeSel.appendChild(placeNone);
-  for (const p of cachedLessonPlaces) {
-    const opt = document.createElement("option");
-    opt.value = p.id;
-    opt.textContent = p.name || "—";
-    placeSel.appendChild(opt);
-  }
-  placeSel.value = row.places?.id || "";
-  placeTd.appendChild(placeSel);
-  tr.appendChild(placeTd);
-
-  const typeTd = document.createElement("td");
-  typeTd.textContent = lessonTypeLabel(row);
-  tr.appendChild(typeTd);
-
-  const abonTd = document.createElement("td");
-  const abonInput = makeNumberInput(row.abon_count);
-  abonTd.appendChild(abonInput);
-  tr.appendChild(abonTd);
-
-  const singleTd = document.createElement("td");
-  const singleInput = makeNumberInput(row.single_visitors_count);
-  singleTd.appendChild(singleInput);
-  tr.appendChild(singleTd);
-
-  const skipTd = document.createElement("td");
-  const skipInput = makeNumberInput(row.skip_visitors_count);
-  skipTd.appendChild(skipInput);
-  tr.appendChild(skipTd);
-
-  const actionsTd = document.createElement("td");
-  const saveBtn = document.createElement("button");
-  saveBtn.type = "button";
-  saveBtn.className = "btn btn--primary btn--sm";
-  saveBtn.style.padding = "6px 10px";
-  saveBtn.textContent = "Зберегти";
-
-  const cancelBtn = document.createElement("button");
-  cancelBtn.type = "button";
-  cancelBtn.className = "btn btn--ghost btn--sm";
-  cancelBtn.style.padding = "6px 10px";
-  cancelBtn.style.marginLeft = "6px";
-  cancelBtn.textContent = "Скасувати";
-  cancelBtn.addEventListener("click", () => onCancel());
-
-  saveBtn.addEventListener("click", async () => {
-    const teacherId = teacherSel.value || null;
-    const placeId = placeSel.value || null;
-    const abon = parseInt(abonInput.value, 10);
-    const single = parseInt(singleInput.value, 10);
-    const skip = parseInt(skipInput.value, 10);
-    if (!Number.isFinite(abon) || abon < 0 || !Number.isFinite(single) || single < 0 || !Number.isFinite(skip) || skip < 0) {
-      showDashError("Кількості мають бути цілими ≥ 0.");
-      return;
-    }
-    saveBtn.disabled = true;
-    cancelBtn.disabled = true;
-    await onSave({
-      teacher_id: teacherId,
-      place_id: placeId,
-      abon_count: abon,
-      single_visitors_count: single,
-      skip_visitors_count: skip,
-    });
+  modal.querySelectorAll("[data-admin-modal-close]").forEach((node) => {
+    node.addEventListener("click", () => closeLessonFinanceModal());
   });
+}
 
-  actionsTd.append(saveBtn, cancelBtn);
-  tr.appendChild(actionsTd);
+function mountLessonFinanceSummary(container, summary) {
+  if (!container) return;
+  container.innerHTML = `
+    <div class="admin-lesson-finance__stat admin-lesson-finance__stat--accent">
+      <div class="admin-lesson-finance__stat-label">Виручка</div>
+      <div class="admin-lesson-finance__stat-value">${escapeHtml(fmtMoney(summary.totalRevenue))}</div>
+    </div>
+    <div class="admin-lesson-finance__stat">
+      <div class="admin-lesson-finance__stat-label">Абон</div>
+      <div class="admin-lesson-finance__stat-value">${escapeHtml(fmtMoney(summary.abonRevenue))}</div>
+    </div>
+    <div class="admin-lesson-finance__stat">
+      <div class="admin-lesson-finance__stat-label">Разове</div>
+      <div class="admin-lesson-finance__stat-value">${escapeHtml(fmtMoney(summary.singleRevenue))}</div>
+    </div>
+  `;
+}
+
+/** @param {HTMLElement | null} container @param {any[]} students */
+function mountLessonFinanceStudents(container, students) {
+  if (!container) return;
+  container.innerHTML = "";
+  if (!students.length) {
+    container.innerHTML = `<p class="admin-lesson-finance__empty">Немає відвідувачів для розрахунку оплати.</p>`;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const row of students) {
+    const isAbon = row.visitKind === "abon";
+    const item = document.createElement("div");
+    item.className = "admin-lesson-finance__student";
+
+    const kind = document.createElement("span");
+    kind.className = `admin-visit-journal__kind admin-visit-journal__kind--${isAbon ? "abon" : "single"}`;
+    kind.textContent = isAbon ? "А" : "Р";
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "admin-lesson-finance__student-name";
+    nameEl.textContent = formatStudentLine(row.name, row.telegramUsername);
+    nameEl.title = formatStudentLine(row.name, row.telegramUsername);
+
+    const amount = document.createElement("div");
+    amount.className = "admin-lesson-finance__student-amount";
+    amount.textContent = fmtMoney(row.amountUah);
+
+    item.append(kind, nameEl, amount);
+    frag.appendChild(item);
+  }
+  container.appendChild(frag);
+}
+
+function mountLessonFinanceFooter(container, summary) {
+  if (!container) return;
+  const negative = Number(summary.netProfit) < 0;
+  container.innerHTML = `
+    <div class="admin-lesson-finance__footer-item">
+      <span class="admin-lesson-finance__footer-label">SMM</span>
+      <span class="admin-lesson-finance__footer-value">− ${escapeHtml(fmtMoney(summary.smm))}</span>
+    </div>
+    <div class="admin-lesson-finance__footer-item">
+      <span class="admin-lesson-finance__footer-label">Оренда</span>
+      <span class="admin-lesson-finance__footer-value">− ${escapeHtml(fmtMoney(summary.rent))}</span>
+    </div>
+    <div class="admin-lesson-finance__footer-net">
+      <span class="admin-lesson-finance__footer-net-label">Чистий</span>
+      <span class="admin-lesson-finance__footer-net-value${negative ? " admin-lesson-finance__footer-net-value--negative" : ""}">${escapeHtml(fmtMoney(summary.netProfit))}</span>
+    </div>
+  `;
+}
+
+async function openLessonFinanceModal(row) {
+  ensureLessonFinanceModalWired();
+  const modal = maybeEl("lessonFinanceModal");
+  const subEl = maybeEl("lessonFinanceModalSub");
+  const summaryEl = maybeEl("lessonFinanceSummary");
+  const studentsEl = maybeEl("lessonFinanceStudents");
+  const footerEl = maybeEl("lessonFinanceFooter");
+  const peopleEl = maybeEl("lessonFinancePeopleCount");
+
+  if (!modal || !row?.id) return;
+
+  if (subEl) {
+    subEl.textContent = [
+      fmtKyivDateTime(row.starts_at),
+      lessonTeacherLabel(row),
+      lessonPlaceLabel(row),
+      lessonTypeLabel(row),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  modal.classList.remove("admin-hide");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("admin-modal-open");
+
+  if (summaryEl) summaryEl.innerHTML = '<p class="admin-lesson-finance__empty">Завантаження…</p>';
+  if (studentsEl) studentsEl.innerHTML = "";
+  if (footerEl) footerEl.innerHTML = "";
+  if (peopleEl) peopleEl.textContent = "";
+
+  try {
+    const data = await fetchAdminJson(`/api/admin/lessons/${encodeURIComponent(row.id)}/finance`);
+    const summary = data.summary || {};
+    const students = data.students || [];
+    const peopleCount = data.lesson?.peopleCount ?? students.length;
+
+    mountLessonFinanceSummary(summaryEl, summary);
+    mountLessonFinanceStudents(studentsEl, students);
+    mountLessonFinanceFooter(footerEl, summary);
+    if (peopleEl) {
+      peopleEl.textContent =
+        peopleCount === 1 ? "1 уч." : `${peopleCount} уч.`;
+    }
+  } catch (err) {
+    if (summaryEl) {
+      summaryEl.innerHTML = `<p class="admin-lesson-finance__empty">${escapeHtml(err?.message || String(err))}</p>`;
+    }
+    showDashError(err?.message || String(err));
+  }
+
+  modal.querySelector(".admin-modal__close")?.focus();
+}
+
+/**
+ * Build a fully styled lesson card body (date, meta, stats, actions).
+ * @param {Object} opts
+ * @param {{dow:string,date:string,time:string}} opts.when
+ * @param {string} opts.teacher
+ * @param {string} opts.place
+ * @param {string} opts.type
+ * @param {number} opts.abon
+ * @param {number} opts.single
+ * @param {number} opts.skip
+ * @param {Array<{label:string,title:string,className:string,onClick:()=>void}>} opts.actions
+ */
+function buildLessonCard({ when, teacher, place, type, abon, single, skip, actions }) {
+  const card = document.createElement("article");
+  card.className = "lesson-card";
+
+  const head = document.createElement("div");
+  head.className = "lesson-card__head";
+
+  const whenEl = document.createElement("div");
+  whenEl.className = "lesson-card__when";
+  const dowEl = document.createElement("span");
+  dowEl.className = "lesson-card__dow";
+  dowEl.textContent = when.dow || "—";
+  const dtEl = document.createElement("span");
+  dtEl.className = "lesson-card__datetime";
+  dtEl.innerHTML = `<span class="lesson-card__date"></span><span class="lesson-card__time"></span>`;
+  dtEl.querySelector(".lesson-card__date").textContent = when.date || "";
+  dtEl.querySelector(".lesson-card__time").textContent = when.time || "";
+  whenEl.append(dowEl, dtEl);
+
+  const typeEl = document.createElement("span");
+  typeEl.className = "lesson-card__type";
+  typeEl.textContent = type || "—";
+
+  head.append(whenEl, typeEl);
+
+  const meta = document.createElement("div");
+  meta.className = "lesson-card__meta";
+  const teacherEl = document.createElement("span");
+  teacherEl.className = "lesson-card__meta-item lesson-card__meta-item--teacher";
+  teacherEl.textContent = teacher || "—";
+  teacherEl.title = teacher || "";
+  const placeEl = document.createElement("span");
+  placeEl.className = "lesson-card__meta-item lesson-card__meta-item--place";
+  placeEl.textContent = place || "—";
+  placeEl.title = place || "";
+  meta.append(teacherEl, placeEl);
+
+  const stats = document.createElement("div");
+  stats.className = "lesson-card__stats";
+  const statDefs = [
+    { mod: "abon", value: abon, label: "Абон" },
+    { mod: "single", value: single, label: "Разове" },
+    { mod: "skip", value: skip, label: "Пропуск" },
+  ];
+  for (const s of statDefs) {
+    const stat = document.createElement("div");
+    stat.className = `lesson-card__stat lesson-card__stat--${s.mod}`;
+    const v = document.createElement("b");
+    v.className = "lesson-card__stat-value";
+    v.textContent = String(Number.isFinite(s.value) ? s.value : 0);
+    const l = document.createElement("span");
+    l.className = "lesson-card__stat-label";
+    l.textContent = s.label;
+    stat.append(v, l);
+    stats.appendChild(stat);
+  }
+
+  const actionsEl = document.createElement("div");
+  actionsEl.className = "lesson-card__actions";
+  for (const a of actions) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = a.className;
+    btn.textContent = a.label;
+    if (a.title) btn.title = a.title;
+    btn.addEventListener("click", a.onClick);
+    actionsEl.appendChild(btn);
+  }
+
+  card.append(head, meta, stats, actionsEl);
+  return card;
+}
+
+function renderLessonCardView(container, row, onEdit, onDelete) {
+  container.innerHTML = "";
+  const card = buildLessonCard({
+    when: fmtKyivDateParts(row.starts_at),
+    teacher: lessonTeacherLabel(row),
+    place: lessonPlaceLabel(row),
+    type: lessonTypeLabel(row),
+    abon: row.abon_count,
+    single: row.single_visitors_count,
+    skip: row.skip_visitors_count,
+    actions: [
+      {
+        label: "$",
+        title: "Фінанси заняття",
+        className: "btn btn--ghost btn--sm lesson-card__btn lesson-card__btn--finance",
+        onClick: () => openLessonFinanceModal(row),
+      },
+      {
+        label: "Змінити",
+        title: "Редагувати заняття",
+        className: "btn btn--ghost btn--sm lesson-card__btn",
+        onClick: () => onEdit(),
+      },
+      {
+        label: "✕",
+        title: "Видалити",
+        className: "btn btn--danger btn--sm lesson-card__btn lesson-card__btn--del",
+        onClick: () => onDelete(),
+      },
+    ],
+  });
+  container.appendChild(card);
 }
 
 async function renderLessonsPanel() {
@@ -467,7 +913,7 @@ async function renderLessonsPanel() {
   if (paginationRoot) paginationRoot.innerHTML = "";
   if (openVotesRoot) openVotesRoot.innerHTML = '<p class="admin-muted">Завантаження…</p>';
 
-  const [lessonsRes, teachersRes, placesRes, openVotesFetch] = await Promise.all([
+  const [lessonsRes, openVotesFetch] = await Promise.all([
     supabase
       .from("lessons")
       .select(
@@ -478,21 +924,11 @@ async function renderLessonsPanel() {
          lesson_times ( id, start_time, day_of_week, lesson_types ( id, name, slug ) )`,
       )
       .order("starts_at", { ascending: false, nullsFirst: false }),
-    supabase.from("teachers").select("id, name").order("sort_order", { ascending: true }),
-    supabase.from("places").select("id, name").order("sort_order", { ascending: true }),
     fetch("/api/admin/lesson-votes/open"),
   ]);
 
   if (lessonsRes.error) {
     root.innerHTML = `<p class="admin-muted">${escapeHtml(lessonsRes.error.message)}</p>`;
-    return;
-  }
-  if (teachersRes.error) {
-    root.innerHTML = `<p class="admin-muted">${escapeHtml(teachersRes.error.message)}</p>`;
-    return;
-  }
-  if (placesRes.error) {
-    root.innerHTML = `<p class="admin-muted">${escapeHtml(placesRes.error.message)}</p>`;
     return;
   }
   let openVotes = [];
@@ -507,8 +943,6 @@ async function renderLessonsPanel() {
     openVotesRoot.innerHTML = `<p class="admin-muted">Помилка ${openVotesFetch.status}</p>`;
   }
 
-  cachedLessonTeachers = teachersRes.data || [];
-  cachedLessonPlaces = placesRes.data || [];
   const lessons = lessonsRes.data || [];
   const totalPages = Math.max(1, Math.ceil(lessons.length / LESSONS_PAGE_SIZE));
   lessonsPage = Math.min(Math.max(1, lessonsPage), totalPages);
@@ -519,26 +953,16 @@ async function renderLessonsPanel() {
   } else {
     const pageStart = (lessonsPage - 1) * LESSONS_PAGE_SIZE;
     const pageRows = lessons.slice(pageStart, pageStart + LESSONS_PAGE_SIZE);
-    const tbl = document.createElement("table");
-    tbl.className = "admin-prices-table";
-    tbl.innerHTML = `<thead><tr>
-        <th>Час</th>
-        <th>Викладач</th>
-        <th>Місце</th>
-        <th>Напрям</th>
-        <th>Абон</th>
-        <th>Разове</th>
-        <th>Пропуск</th>
-        <th></th>
-      </tr></thead><tbody></tbody>`;
-    const tbody = tbl.querySelector("tbody");
+    const grid = document.createElement("div");
+    grid.className = "lesson-cards";
 
     for (const row of pageRows) {
-      const tr = document.createElement("tr");
+      const cardSlot = document.createElement("div");
+      cardSlot.className = "lesson-card-slot";
 
       const enterView = () => {
-        renderLessonRowView(
-          tr,
+        renderLessonCardView(
+          cardSlot,
           row,
           () => enterEdit(),
           async () => {
@@ -566,44 +990,14 @@ async function renderLessonsPanel() {
       };
 
       const enterEdit = () => {
-        renderLessonRowEdit(
-          tr,
-          row,
-          () => enterView(),
-          async (payload) => {
-            clearDashMessages();
-            const { data: updated, error: updErr } = await supabase
-              .from("lessons")
-              .update(payload)
-              .eq("id", row.id)
-              .select(
-                `id, starts_at, abon_count, single_visitors_count, skip_visitors_count,
-                 conducting_display_name, vote_finalized_at, lesson_vote_occurrence_id,
-                 teachers ( id, name ),
-                 places ( id, name, address ),
-                 lesson_times ( id, start_time, day_of_week, lesson_types ( id, name, slug ) )`,
-              )
-              .single();
-            if (updErr) {
-              showDashError(updErr.message);
-              enterEdit();
-              return;
-            }
-            Object.assign(row, updated);
-            enterView();
-            showDashOk("Запис оновлено.");
-          },
-        );
+        openLessonEditModal(row, () => enterView());
       };
 
       enterView();
-      tbody.appendChild(tr);
+      grid.appendChild(cardSlot);
     }
 
-    const wrap = document.createElement("div");
-    wrap.className = "prices-table-wrap";
-    wrap.appendChild(tbl);
-    root.appendChild(wrap);
+    root.appendChild(grid);
   }
 
   if (paginationRoot) {
@@ -648,19 +1042,8 @@ async function renderLessonsPanel() {
     if (!openVotes.length) {
       openVotesRoot.innerHTML = '<p class="admin-muted">Немає відкритих голосувань.</p>';
     } else {
-      const tbl = document.createElement("table");
-      tbl.className = "admin-prices-table";
-      tbl.innerHTML = `<thead><tr>
-          <th>Час</th>
-          <th>Викладач</th>
-          <th>Місце</th>
-          <th>Напрям</th>
-          <th>Абон</th>
-          <th>Разове</th>
-          <th>Пропуск</th>
-          <th></th>
-        </tr></thead><tbody></tbody>`;
-      const tbody = tbl.querySelector("tbody");
+      const grid = document.createElement("div");
+      grid.className = "lesson-cards";
 
       const voteCount = (snapshot, key) => {
         const group = snapshot && typeof snapshot === "object" ? snapshot[key] : null;
@@ -669,61 +1052,52 @@ async function renderLessonsPanel() {
       };
 
       for (const vote of openVotes) {
-        const tr = document.createElement("tr");
         const snap = vote.lesson_snapshot && typeof vote.lesson_snapshot === "object" ? vote.lesson_snapshot : {};
-        const cells = [
-          fmtKyivDateTime(vote.occurrence_at),
-          vote.conducting_display_name?.trim() || "—",
-          snap.placeLabel || "—",
-          snap.lessonTypeLabel || "—",
-          String(voteCount(vote.votes_snapshot, "abon")),
-          String(voteCount(vote.votes_snapshot, "single")),
-          String(voteCount(vote.votes_snapshot, "skip")),
-        ];
-        for (const text of cells) {
-          const td = document.createElement("td");
-          td.textContent = text;
-          tr.appendChild(td);
-        }
-
-        const actionsTd = document.createElement("td");
-        const closeBtn = document.createElement("button");
-        closeBtn.type = "button";
-        closeBtn.className = "btn btn--danger btn--sm";
-        closeBtn.style.padding = "6px 10px";
-        closeBtn.textContent = "Закрити";
-        closeBtn.addEventListener("click", async () => {
-          if (!confirm("Закрити це голосування?")) return;
-          closeBtn.disabled = true;
-          clearDashMessages();
-          try {
-            const res = await fetch("/api/telegram/lesson-votes/close", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ occurrence_id: vote.id }),
-            });
-            const body = await res.json().catch(() => ({}));
-            if (!res.ok || !body.ok) {
-              showDashError(body.error || `Помилка ${res.status}`);
-              closeBtn.disabled = false;
-              return;
-            }
-            showDashOk("Голосування закрито.");
-            await renderLessonsPanel();
-          } catch (err) {
-            showDashError(err?.message || String(err));
-            closeBtn.disabled = false;
-          }
+        const card = buildLessonCard({
+          when: fmtKyivDateParts(vote.occurrence_at),
+          teacher: vote.conducting_display_name?.trim() || "—",
+          place: snap.placeLabel || "—",
+          type: snap.lessonTypeLabel || "—",
+          abon: voteCount(vote.votes_snapshot, "abon"),
+          single: voteCount(vote.votes_snapshot, "single"),
+          skip: voteCount(vote.votes_snapshot, "skip"),
+          actions: [
+            {
+              label: "Закрити",
+              title: "Закрити голосування",
+              className: "btn btn--danger btn--sm lesson-card__btn lesson-card__btn--close",
+              onClick: async (ev) => {
+                const closeBtn = ev.currentTarget;
+                if (!confirm("Закрити це голосування?")) return;
+                closeBtn.disabled = true;
+                clearDashMessages();
+                try {
+                  const res = await fetch("/api/telegram/lesson-votes/close", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ occurrence_id: vote.id }),
+                  });
+                  const body = await res.json().catch(() => ({}));
+                  if (!res.ok || !body.ok) {
+                    showDashError(body.error || `Помилка ${res.status}`);
+                    closeBtn.disabled = false;
+                    return;
+                  }
+                  showDashOk("Голосування закрито.");
+                  await renderLessonsPanel();
+                } catch (err) {
+                  showDashError(err?.message || String(err));
+                  closeBtn.disabled = false;
+                }
+              },
+            },
+          ],
         });
-        actionsTd.appendChild(closeBtn);
-        tr.appendChild(actionsTd);
-        tbody.appendChild(tr);
+        card.classList.add("lesson-card--open");
+        grid.appendChild(card);
       }
 
-      const wrap = document.createElement("div");
-      wrap.className = "prices-table-wrap";
-      wrap.appendChild(tbl);
-      openVotesRoot.appendChild(wrap);
+      openVotesRoot.appendChild(grid);
     }
   }
 }
@@ -1586,33 +1960,457 @@ function clearDashMessages() {
   dashOk?.classList.add("admin-hide");
 }
 
-async function renderStatsDashboard() {
-  const cardsRoot = maybeEl("statsSummaryCards");
-  const chartRoot = maybeEl("statsChart");
-  const tableRoot = maybeEl("statsTeachersTable");
-  if (!cardsRoot || !chartRoot || !tableRoot) return;
-  cardsRoot.innerHTML = '<p class="admin-muted">Завантаження…</p>';
-  chartRoot.innerHTML = '<p class="admin-muted">Завантаження…</p>';
-  tableRoot.innerHTML = '<p class="admin-muted">Завантаження…</p>';
+/** @type {import('chart.js').Chart | null} */
+let statsPayoutChartInstance = null;
+/** @type {import('chart.js').Chart | null} */
+let statsBreakdownChartInstance = null;
 
+/**
+ * Render the 4 KPI cards on the stats page.
+ * @param {{ totalLessons: number, totalPeople: number, totalNetAfterRent: number, totalSmm: number }} summary
+ */
+function renderStatsKpiCards(summary) {
+  const root = maybeEl("statsSummaryCards");
+  if (!root) return;
+  const { totalLessons, totalPeople, totalNetAfterRent, totalSmm } = summary;
+  const netColor = totalNetAfterRent >= 0 ? "green" : "red";
+
+  const ICON_CALENDAR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>`;
+  const ICON_PEOPLE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
+  const ICON_MONEY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`;
+  const ICON_SEND = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2 15 22 11 13 2 9l20-7z"/></svg>`;
+
+  const cards = [
+    { color: "olive", icon: ICON_CALENDAR, label: "Проведено занять",    value: String(totalLessons) },
+    { color: "blue",  icon: ICON_PEOPLE,   label: "Всього відвідало", value: String(totalPeople) },
+    { color: netColor, icon: ICON_MONEY,   label: "Чистий після оренди", value: fmtMoney(totalNetAfterRent) },
+    { color: "amber", icon: ICON_SEND,     label: "Загальні SMM витрати",value: fmtMoney(totalSmm) },
+  ];
+
+  root.innerHTML = cards.map((c) => `
+    <div class="admin-stats-kpi-card admin-stats-kpi-card--${c.color}">
+      <div class="admin-stats-kpi-card__icon">${c.icon}</div>
+      <div class="admin-stats-kpi-card__body">
+        <div class="admin-stats-kpi-card__label">${escapeHtml(c.label)}</div>
+        <div class="admin-stats-kpi-card__value">${escapeHtml(c.value)}</div>
+      </div>
+    </div>
+  `).join("");
+}
+
+/**
+ * Render a Chart.js horizontal bar chart of teacher payouts.
+ * @param {Array<{ name: string, payout: number }>} rows
+ */
+function renderStatsPayoutChart(rows) {
+  const canvas = /** @type {HTMLCanvasElement | null} */ (document.getElementById("statsPayoutChart"));
+  const wrap = document.getElementById("statsPayoutWrap");
+  if (!canvas || !wrap) return;
+
+  if (statsPayoutChartInstance) {
+    statsPayoutChartInstance.destroy();
+    statsPayoutChartInstance = null;
+  }
+
+  if (!rows.length || !window.Chart) {
+    wrap.innerHTML = '<p class="admin-muted" style="padding:20px 0;text-align:center">Немає даних для відображення.</p>';
+    return;
+  }
+
+  const dynamicH = Math.max(160, rows.length * 54);
+  canvas.style.height = `${dynamicH}px`;
+
+  const labels = rows.map((r) => r.name);
+  const values = rows.map((r) => r.payout);
+  const bgColors = values.map((v) => v >= 0 ? "rgba(116,134,47,0.82)" : "rgba(192,79,79,0.82)");
+  const borderColors = values.map((v) => v >= 0 ? "rgba(116,134,47,1)" : "rgba(192,79,79,1)");
+
+  statsPayoutChartInstance = new window.Chart(canvas, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: bgColors,
+        borderColor: borderColors,
+        borderWidth: 1.5,
+        borderRadius: 6,
+        borderSkipped: false,
+      }],
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: (ctx) => `  ${fmtMoney(ctx.raw)}` },
+          backgroundColor: "rgba(251,246,240,0.97)",
+          titleColor: "#2d1f0e",
+          bodyColor: "#5a3e22",
+          borderColor: "rgba(232,217,205,0.9)",
+          borderWidth: 1,
+          padding: 10,
+          cornerRadius: 8,
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: "rgba(232,217,205,0.45)" },
+          ticks: {
+            color: "#8b7258",
+            font: { size: 11 },
+            callback: (v) => fmtMoney(v),
+          },
+          border: { dash: [3, 3] },
+        },
+        y: {
+          grid: { display: false },
+          ticks: { color: "#3d2b18", font: { size: 12, weight: "600" } },
+        },
+      },
+    },
+  });
+}
+
+/**
+ * Render a Chart.js doughnut chart for overall financial breakdown.
+ * @param {Array<{ revenue: number, rent: number, smm: number, payout: number }>} rows
+ */
+function renderStatsBreakdownChart(rows) {
+  const canvas = /** @type {HTMLCanvasElement | null} */ (document.getElementById("statsBreakdownChart"));
+  const legendRoot = document.getElementById("statsBreakdownLegend");
+  const wrap = document.getElementById("statsBreakdownWrap");
+  if (!canvas || !wrap) return;
+
+  if (statsBreakdownChartInstance) {
+    statsBreakdownChartInstance.destroy();
+    statsBreakdownChartInstance = null;
+  }
+
+  if (!rows.length || !window.Chart) {
+    wrap.innerHTML = '<p class="admin-muted" style="padding:20px 0;text-align:center">Немає даних.</p>';
+    if (legendRoot) legendRoot.innerHTML = "";
+    return;
+  }
+
+  const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
+  const totalRent    = rows.reduce((s, r) => s + r.rent, 0);
+  const totalSmm     = rows.reduce((s, r) => s + r.smm, 0);
+  const totalPayout  = rows.reduce((s, r) => s + r.payout, 0);
+
+  const segments = [
+    { label: "Виплати",  value: Math.max(0, totalPayout), color: "rgba(116,134,47,0.85)",  border: "rgba(116,134,47,1)" },
+    { label: "Оренда",   value: Math.max(0, totalRent),   color: "rgba(163,128,87,0.82)",  border: "rgba(163,128,87,1)" },
+    { label: "SMM",      value: Math.max(0, totalSmm),    color: "rgba(201,138,43,0.82)",  border: "rgba(201,138,43,1)" },
+  ].filter((s) => s.value > 0);
+
+  if (!segments.length) {
+    wrap.innerHTML = '<p class="admin-muted" style="padding:20px 0;text-align:center">Немає даних.</p>';
+    if (legendRoot) legendRoot.innerHTML = "";
+    return;
+  }
+
+  statsBreakdownChartInstance = new window.Chart(canvas, {
+    type: "doughnut",
+    data: {
+      labels: segments.map((s) => s.label),
+      datasets: [{
+        data: segments.map((s) => s.value),
+        backgroundColor: segments.map((s) => s.color),
+        borderColor: segments.map((s) => s.border),
+        borderWidth: 1.5,
+        hoverOffset: 8,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "62%",
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: (ctx) => `  ${ctx.label}: ${fmtMoney(ctx.raw)}` },
+          backgroundColor: "rgba(251,246,240,0.97)",
+          titleColor: "#2d1f0e",
+          bodyColor: "#5a3e22",
+          borderColor: "rgba(232,217,205,0.9)",
+          borderWidth: 1,
+          padding: 10,
+          cornerRadius: 8,
+        },
+      },
+    },
+  });
+
+  if (legendRoot) {
+    legendRoot.innerHTML = segments.map((s) => `
+      <div class="admin-stats-donut-legend__item">
+        <span class="admin-stats-donut-legend__dot" style="background:${s.color};border:1.5px solid ${s.border}"></span>
+        <span>${escapeHtml(s.label)}</span>
+        <span class="admin-stats-donut-legend__amount">${escapeHtml(fmtMoney(s.value))}</span>
+      </div>
+    `).join("") + `
+      <div class="admin-stats-donut-legend__item" style="width:100%;border-top:1px solid var(--admin-panel-border);padding-top:8px;margin-top:2px">
+        <span class="admin-stats-donut-legend__dot" style="background:rgba(241,230,221,0.9);border:1.5px solid var(--cream-mid)"></span>
+        <span>Виручка</span>
+        <span class="admin-stats-donut-legend__amount">${escapeHtml(fmtMoney(totalRevenue))}</span>
+      </div>
+    `;
+  }
+}
+
+/**
+ * Render teacher detail cards.
+ * @param {Array<{ id?: string | null, name: string, lessonsCount: number, peopleCount: number, revenue: number, rent: number, smm: number, payout: number }>} rows
+ */
+function renderStatsTeachersTable(rows) {
+  const tableRoot = maybeEl("statsTeachersTable");
+  if (!tableRoot) return;
+
+  if (!rows.length) {
+    tableRoot.className = "admin-stats-teacher-cards admin-stats-teacher-cards--empty";
+    tableRoot.innerHTML = '<p class="admin-muted">Немає даних.</p>';
+    return;
+  }
+
+  tableRoot.className = "admin-stats-teacher-cards";
+  tableRoot.innerHTML = rows.map((row, i) => {
+    const rank = i + 1;
+    const payoutCls = row.payout >= 0 ? "admin-stats-payout-positive" : "admin-stats-payout-negative";
+    const topMod = rank <= 3 ? ` admin-stats-teacher-card--top-${rank}` : "";
+    const teacherId = row.id ? escapeHtml(String(row.id)) : "";
+    const teacherName = escapeHtml(row.name);
+    return `
+      <article class="admin-stats-teacher-card${topMod}">
+        <header class="admin-stats-teacher-card__head">
+          <h3 class="admin-stats-teacher-card__name">${teacherName}</h3>
+        </header>
+        <dl class="admin-stats-teacher-card__stats">
+          <div class="admin-stats-teacher-card__stat">
+            <dt>Уроків</dt>
+            <dd>${row.lessonsCount}</dd>
+          </div>
+          <div class="admin-stats-teacher-card__stat">
+            <dt>Людей</dt>
+            <dd>${row.peopleCount}</dd>
+          </div>
+          <div class="admin-stats-teacher-card__stat">
+            <dt>Виручка</dt>
+            <dd>${escapeHtml(fmtMoney(row.revenue))}</dd>
+          </div>
+          <div class="admin-stats-teacher-card__stat">
+            <dt>Оренда</dt>
+            <dd class="admin-stats-teacher-card__stat--muted">${escapeHtml(fmtMoney(row.rent))}</dd>
+          </div>
+          <div class="admin-stats-teacher-card__stat">
+            <dt>SMM</dt>
+            <dd class="admin-stats-teacher-card__stat--muted">${escapeHtml(fmtMoney(row.smm))}</dd>
+          </div>
+          <div class="admin-stats-teacher-card__journal-cell">
+            <button
+              type="button"
+              class="admin-stats-teacher-card__journal"
+              data-teacher-id="${teacherId}"
+              data-teacher-name="${teacherName}"
+            >Журнал уроків</button>
+          </div>
+          <div class="admin-stats-teacher-card__stat admin-stats-teacher-card__stat--payout">
+            <dt>Виплата</dt>
+            <dd class="${payoutCls}">${escapeHtml(fmtMoney(row.payout))}</dd>
+          </div>
+        </dl>
+      </article>
+    `;
+  }).join("");
+}
+
+let statsTeacherJournalWired = false;
+
+function closeStatsTeacherJournalModal() {
+  const modal = maybeEl("statsTeacherJournalModal");
+  if (!modal) return;
+  modal.classList.add("admin-hide");
+  modal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("admin-modal-open");
+}
+
+function mountStatsTeacherJournalTotals(container, summary) {
+  if (!container) return;
+  const payoutCls = summary.payout >= 0 ? "admin-stats-payout-positive" : "admin-stats-payout-negative";
+  container.innerHTML = `
+    <div class="admin-stats-journal-totals__grid">
+      <div class="admin-stats-journal-totals__item">
+        <span class="admin-stats-journal-totals__label">Уроків</span>
+        <span class="admin-stats-journal-totals__value">${summary.lessonsCount}</span>
+      </div>
+      <div class="admin-stats-journal-totals__item">
+        <span class="admin-stats-journal-totals__label">Людей</span>
+        <span class="admin-stats-journal-totals__value">${summary.peopleCount}</span>
+      </div>
+      <div class="admin-stats-journal-totals__item">
+        <span class="admin-stats-journal-totals__label">Виручка</span>
+        <span class="admin-stats-journal-totals__value">${escapeHtml(fmtMoney(summary.revenue))}</span>
+      </div>
+      <div class="admin-stats-journal-totals__item">
+        <span class="admin-stats-journal-totals__label">Виплата</span>
+        <span class="admin-stats-journal-totals__value ${payoutCls}">${escapeHtml(fmtMoney(summary.payout))}</span>
+      </div>
+    </div>
+  `;
+  container.classList.remove("admin-hide");
+}
+
+/**
+ * @param {HTMLElement | null} container
+ * @param {Array<{ startsAt: string, lessonTypeName: string, placeName: string, peopleCount: number, revenue: number, rent: number, smm: number, payout: number }>} lessons
+ */
+function mountStatsTeacherJournalList(container, lessons) {
+  if (!container) return;
+  if (!lessons.length) {
+    container.innerHTML = '<p class="admin-muted">Немає уроків за обраний період.</p>';
+    return;
+  }
+
+  container.innerHTML = lessons.map((lesson) => {
+    const payoutCls = lesson.payout >= 0 ? "admin-stats-payout-positive" : "admin-stats-payout-negative";
+    return `
+      <article class="admin-stats-journal__item">
+        <div class="admin-stats-journal__main">
+          <div class="admin-stats-journal__date">${escapeHtml(fmtKyivDateTime(lesson.startsAt))}</div>
+          <div class="admin-stats-journal__meta">${escapeHtml(lesson.lessonTypeName)} · ${escapeHtml(lesson.placeName)} · ${lesson.peopleCount} ${lesson.peopleCount === 1 ? "людина" : lesson.peopleCount >= 2 && lesson.peopleCount <= 4 ? "людини" : "людей"}</div>
+        </div>
+        <dl class="admin-stats-journal__finance">
+          <div class="admin-stats-journal__finance-item">
+            <dt>Виручка</dt>
+            <dd>${escapeHtml(fmtMoney(lesson.revenue))}</dd>
+          </div>
+          <div class="admin-stats-journal__finance-item">
+            <dt>Оренда</dt>
+            <dd class="admin-stats-teacher-card__stat--muted">${escapeHtml(fmtMoney(lesson.rent))}</dd>
+          </div>
+          <div class="admin-stats-journal__finance-item">
+            <dt>SMM</dt>
+            <dd class="admin-stats-teacher-card__stat--muted">${escapeHtml(fmtMoney(lesson.smm))}</dd>
+          </div>
+          <div class="admin-stats-journal__finance-item admin-stats-journal__finance-item--payout">
+            <dt>Виплата</dt>
+            <dd class="${payoutCls}">${escapeHtml(fmtMoney(lesson.payout))}</dd>
+          </div>
+        </dl>
+      </article>
+    `;
+  }).join("");
+}
+
+async function openStatsTeacherJournalModal({ teacherId, teacherName }) {
+  ensureStatsTeacherJournalWired();
+  const modal = maybeEl("statsTeacherJournalModal");
+  const titleEl = maybeEl("statsTeacherJournalTitle");
+  const subEl = maybeEl("statsTeacherJournalSub");
+  const listEl = maybeEl("statsTeacherJournalList");
+  const totalsEl = maybeEl("statsTeacherJournalTotals");
+  if (!modal || !listEl) return;
+
+  const name = teacherName || "Викладач";
+  if (titleEl) titleEl.textContent = `Журнал уроків — ${name}`;
+  if (subEl) subEl.textContent = "Завантаження…";
+  totalsEl?.classList.add("admin-hide");
+  listEl.innerHTML = '<p class="admin-muted">Завантаження…</p>';
+
+  modal.classList.remove("admin-hide");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("admin-modal-open");
+  modal.querySelector(".admin-modal__close")?.focus();
+
+  const params = new URLSearchParams();
+  if (teacherId) params.set("teacherId", teacherId);
+  else if (teacherName) params.set("teacherName", teacherName);
   const fromInput = maybeEl("statsDateFrom")?.value?.trim() || "";
   const toInput = maybeEl("statsDateTo")?.value?.trim() || "";
-  if (fromInput && !startOfDayIso(fromInput)) {
-    showDashError("Некоректна дата «від».");
-    return;
+  if (fromInput) params.set("from", fromInput);
+  if (toInput) params.set("to", toInput);
+
+  try {
+    const res = await fetch(`/api/admin/stats/teacher-lessons?${params.toString()}`);
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.ok) {
+      throw new Error(json.error || `Помилка ${res.status}`);
+    }
+    if (subEl) {
+      const parts = [];
+      if (fromInput || toInput) {
+        const fmt = new Intl.DateTimeFormat("uk-UA", { day: "numeric", month: "short", year: "numeric" });
+        if (fromInput) parts.push(fmt.format(new Date(`${fromInput}T12:00:00`)));
+        if (toInput) parts.push(fmt.format(new Date(`${toInput}T12:00:00`)));
+        subEl.textContent = `Період: ${parts.join(" — ")} · ${json.lessons?.length || 0} уроків`;
+      } else {
+        subEl.textContent = `${json.lessons?.length || 0} уроків за весь час`;
+      }
+    }
+    mountStatsTeacherJournalTotals(totalsEl, json.summary || { lessonsCount: 0, peopleCount: 0, revenue: 0, payout: 0 });
+    mountStatsTeacherJournalList(listEl, json.lessons || []);
+  } catch (err) {
+    if (subEl) subEl.textContent = "";
+    listEl.innerHTML = `<p class="admin-muted">${escapeHtml(err instanceof Error ? err.message : String(err))}</p>`;
   }
-  if (toInput && !endOfDayIso(toInput)) {
-    showDashError("Некоректна дата «до».");
-    return;
+}
+
+function ensureStatsTeacherJournalWired() {
+  if (statsTeacherJournalWired) return;
+  const modal = maybeEl("statsTeacherJournalModal");
+  const tableRoot = maybeEl("statsTeachersTable");
+  if (!modal) return;
+  statsTeacherJournalWired = true;
+
+  modal.querySelectorAll("[data-admin-modal-close]").forEach((node) => {
+    node.addEventListener("click", () => closeStatsTeacherJournalModal());
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (modal.classList.contains("admin-hide")) return;
+    closeStatsTeacherJournalModal();
+  });
+
+  tableRoot?.addEventListener("click", (e) => {
+    const btn = /** @type {HTMLElement} */ (e.target).closest(".admin-stats-teacher-card__journal");
+    if (!btn) return;
+    openStatsTeacherJournalModal({
+      teacherId: btn.getAttribute("data-teacher-id") || "",
+      teacherName: btn.getAttribute("data-teacher-name") || "",
+    });
+  });
+}
+
+async function renderStatsDashboard() {
+  const cardsRoot = maybeEl("statsSummaryCards");
+  const tableRoot = maybeEl("statsTeachersTable");
+  if (!cardsRoot) return;
+
+  cardsRoot.innerHTML = `
+    <div class="admin-stats-kpi-card admin-stats-kpi-card--skeleton"></div>
+    <div class="admin-stats-kpi-card admin-stats-kpi-card--skeleton"></div>
+    <div class="admin-stats-kpi-card admin-stats-kpi-card--skeleton"></div>
+    <div class="admin-stats-kpi-card admin-stats-kpi-card--skeleton"></div>
+  `;
+  if (tableRoot) {
+    tableRoot.className = "admin-stats-teacher-cards admin-stats-teacher-cards--empty";
+    tableRoot.innerHTML = '<p class="admin-muted">Завантаження…</p>';
   }
-  if (fromInput && toInput && fromInput > toInput) {
-    showDashError("Дата «від» має бути не пізніше за «до».");
-    return;
-  }
+
+  const fromInput = maybeEl("statsDateFrom")?.value?.trim() || "";
+  const toInput   = maybeEl("statsDateTo")?.value?.trim() || "";
+  if (fromInput && !startOfDayIso(fromInput)) { showDashError("Некоректна дата «від»."); return; }
+  if (toInput   && !endOfDayIso(toInput))    { showDashError("Некоректна дата «до»."); return; }
+  if (fromInput && toInput && fromInput > toInput) { showDashError("Дата «від» має бути не пізніше за «до»."); return; }
 
   const params = new URLSearchParams();
   if (fromInput) params.set("from", fromInput);
-  if (toInput) params.set("to", toInput);
+  if (toInput)   params.set("to", toInput);
+
+  updateStatsPeriodLabel(fromInput, toInput);
 
   /** @type {{ ok?: boolean, error?: string, summary?: { totalLessons: number, totalPeople: number, totalNetAfterRent: number, totalSmm: number }, teachers?: Array<{ name: string, lessonsCount: number, peopleCount: number, revenue: number, rent: number, smm: number, payout: number }> }} */
   let json;
@@ -1621,115 +2419,183 @@ async function renderStatsDashboard() {
     json = await res.json().catch(() => ({}));
     if (!res.ok || !json.ok) {
       const msg = json.error || `Помилка ${res.status}`;
-      cardsRoot.innerHTML = `<p class="admin-muted">${escapeHtml(msg)}</p>`;
-      chartRoot.innerHTML = "";
-      tableRoot.innerHTML = "";
+      renderStatsKpiCards({ totalLessons: 0, totalPeople: 0, totalNetAfterRent: 0, totalSmm: 0 });
+      if (tableRoot) {
+        tableRoot.className = "admin-stats-teacher-cards admin-stats-teacher-cards--empty";
+        tableRoot.innerHTML = `<p class="admin-muted">${escapeHtml(msg)}</p>`;
+      }
       return;
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    cardsRoot.innerHTML = `<p class="admin-muted">${escapeHtml(msg)}</p>`;
-    chartRoot.innerHTML = "";
-    tableRoot.innerHTML = "";
+    renderStatsKpiCards({ totalLessons: 0, totalPeople: 0, totalNetAfterRent: 0, totalSmm: 0 });
+    if (tableRoot) {
+      tableRoot.className = "admin-stats-teacher-cards admin-stats-teacher-cards--empty";
+      tableRoot.innerHTML = `<p class="admin-muted">${escapeHtml(msg)}</p>`;
+    }
     return;
   }
 
-  const summary = json.summary || {
-    totalLessons: 0,
-    totalPeople: 0,
-    totalNetAfterRent: 0,
-    totalSmm: 0,
-  };
+  const summary = json.summary || { totalLessons: 0, totalPeople: 0, totalNetAfterRent: 0, totalSmm: 0 };
   const rows = json.teachers || [];
-  const { totalLessons, totalPeople, totalNetAfterRent, totalSmm } = summary;
 
-  cardsRoot.innerHTML = `
-    <div class="admin-stats-card"><div class="admin-stats-card__label">Проведено занять</div><div class="admin-stats-card__value">${totalLessons}</div></div>
-    <div class="admin-stats-card"><div class="admin-stats-card__label">Всього людей</div><div class="admin-stats-card__value">${totalPeople}</div></div>
-    <div class="admin-stats-card"><div class="admin-stats-card__label">Чистий після оренди</div><div class="admin-stats-card__value">${fmtMoney(totalNetAfterRent)}</div></div>
-    <div class="admin-stats-card"><div class="admin-stats-card__label">Загальні SMM витрати</div><div class="admin-stats-card__value">${fmtMoney(totalSmm)}</div></div>
-  `;
+  renderStatsKpiCards(summary);
+  renderStatsPayoutChart(rows);
+  renderStatsBreakdownChart(rows);
+  renderStatsTeachersTable(rows);
+}
 
-  if (!rows.length) {
-    chartRoot.innerHTML = '<p class="admin-muted">Ще немає проведених занять для розрахунку.</p>';
-    tableRoot.innerHTML = '<p class="admin-muted">Немає даних.</p>';
+/**
+ * Update the period label shown in the page header.
+ * @param {string} fromInput - date string yyyy-mm-dd or ""
+ * @param {string} toInput   - date string yyyy-mm-dd or ""
+ */
+function updateStatsPeriodLabel(fromInput, toInput) {
+  const el = maybeEl("statsPeriodLabel");
+  if (!el) return;
+  const fmt = new Intl.DateTimeFormat("uk-UA", { day: "numeric", month: "short", year: "numeric" });
+  if (!fromInput && !toInput) {
+    el.classList.add("admin-hide");
     return;
   }
+  const parts = [];
+  if (fromInput) parts.push(fmt.format(new Date(`${fromInput}T12:00:00`)));
+  if (toInput)   parts.push(fmt.format(new Date(`${toInput}T12:00:00`)));
+  el.textContent = parts.join(" — ");
+  el.classList.remove("admin-hide");
+}
 
-  const maxAbs = Math.max(1, ...rows.map((row) => Math.abs(row.payout)));
-  chartRoot.innerHTML = "";
-  for (const row of rows) {
-    const bar = document.createElement("div");
-    bar.className = "admin-stats-bar";
-    const pct = Math.max(4, Math.round((Math.abs(row.payout) / maxAbs) * 100));
-    const barColor = row.payout >= 0 ? "linear-gradient(90deg, #74862f 0%, #9db458 100%)" : "linear-gradient(90deg, #d97777 0%, #c04f4f 100%)";
-    bar.innerHTML = `
-      <div class="admin-stats-bar__name">${escapeHtml(row.name)}</div>
-      <div class="admin-stats-bar__track"><div class="admin-stats-bar__fill" style="width:${pct}%;background:${barColor}"></div></div>
-      <div class="admin-stats-bar__value">${fmtMoney(row.payout)}</div>
-    `;
-    chartRoot.appendChild(bar);
+/**
+ * Return { from, to } date strings for a named quick period.
+ * @param {string} quick
+ * @returns {{ from: string, to: string } | null}
+ */
+function getQuickPeriod(quick) {
+  const now = new Date();
+  switch (quick) {
+    case "month": {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { from: toDateInputValue(start), to: toDateInputValue(now) };
+    }
+    case "prev-month": {
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const end   = new Date(now.getFullYear(), now.getMonth(), 0);
+      return { from: toDateInputValue(start), to: toDateInputValue(end) };
+    }
+    case "3months": {
+      const start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+      return { from: toDateInputValue(start), to: toDateInputValue(now) };
+    }
+    case "6months": {
+      const start = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+      return { from: toDateInputValue(start), to: toDateInputValue(now) };
+    }
+    case "year": {
+      const start = new Date(now.getFullYear(), 0, 1);
+      return { from: toDateInputValue(start), to: toDateInputValue(now) };
+    }
+    default:
+      return null;
   }
-
-  const table = document.createElement("table");
-  table.className = "admin-prices-table";
-  table.innerHTML = `<thead><tr>
-    <th>Викладач</th>
-    <th>Уроків</th>
-    <th>Людей</th>
-    <th>Виручка</th>
-    <th>Оренда</th>
-    <th>SMM</th>
-    <th>Виплата</th>
-  </tr></thead><tbody></tbody>`;
-  const tbody = table.querySelector("tbody");
-  for (const row of rows) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${escapeHtml(row.name)}</td>
-      <td>${row.lessonsCount}</td>
-      <td>${row.peopleCount}</td>
-      <td>${fmtMoney(row.revenue)}</td>
-      <td>${fmtMoney(row.rent)}</td>
-      <td>${fmtMoney(row.smm)}</td>
-      <td>${fmtMoney(row.payout)}</td>
-    `;
-    tbody.appendChild(tr);
-  }
-  const wrap = document.createElement("div");
-  wrap.className = "prices-table-wrap";
-  wrap.appendChild(table);
-  tableRoot.innerHTML = "";
-  tableRoot.appendChild(wrap);
 }
 
 function initStatsRangeControls() {
-  const form = maybeEl("statsRangeForm");
-  const fromEl = maybeEl("statsDateFrom");
-  const toEl = maybeEl("statsDateTo");
+  ensureStatsTeacherJournalWired();
+  const form    = maybeEl("statsRangeForm");
+  const fromEl  = maybeEl("statsDateFrom");
+  const toEl    = maybeEl("statsDateTo");
   const resetBtn = maybeEl("statsRangeReset");
   if (!form || !fromEl || !toEl) return;
 
+  const setActivePeriod = (from, to) => {
+    fromEl.value = from;
+    toEl.value   = to;
+  };
+
   if (!fromEl.value && !toEl.value) {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    fromEl.value = toDateInputValue(monthStart);
-    toEl.value = toDateInputValue(now);
+    const p = getQuickPeriod("month");
+    if (p) setActivePeriod(p.from, p.to);
   }
+
+  const syncQuickBtnHighlight = () => {
+    const quickBtns = document.querySelectorAll(".admin-stats-quick__btn");
+    quickBtns.forEach((btn) => {
+      const q = /** @type {HTMLElement} */ (btn).dataset.quick || "";
+      const p = getQuickPeriod(q);
+      const matches = p && p.from === fromEl.value && p.to === toEl.value;
+      btn.classList.toggle("is-active", !!matches);
+    });
+  };
+
+  syncQuickBtnHighlight();
+
+  const quickContainer = document.getElementById("statsQuickBtns");
+  quickContainer?.addEventListener("click", async (e) => {
+    const btn = /** @type {HTMLElement} */ (e.target).closest(".admin-stats-quick__btn");
+    if (!btn) return;
+    const quick = btn.dataset.quick || "";
+    const p = getQuickPeriod(quick);
+    if (!p) return;
+    setActivePeriod(p.from, p.to);
+    syncQuickBtnHighlight();
+    clearDashMessages();
+    await renderStatsDashboard();
+  });
+
+  fromEl.addEventListener("change", syncQuickBtnHighlight);
+  toEl.addEventListener("change", syncQuickBtnHighlight);
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    syncQuickBtnHighlight();
     clearDashMessages();
     await renderStatsDashboard();
   });
 
   resetBtn?.addEventListener("click", async () => {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    fromEl.value = toDateInputValue(monthStart);
-    toEl.value = toDateInputValue(now);
+    const p = getQuickPeriod("month");
+    if (p) setActivePeriod(p.from, p.to);
+    syncQuickBtnHighlight();
     clearDashMessages();
     await renderStatsDashboard();
+  });
+}
+
+function closeAdminNavDrawer() {
+  const toggle = maybeEl("adminNavToggle");
+  const drawer = maybeEl("adminNavDrawer");
+  if (!toggle || !drawer) return;
+  toggle.setAttribute("aria-expanded", "false");
+  drawer.classList.remove("is-open");
+  drawer.setAttribute("aria-hidden", "true");
+}
+
+function initAdminNavDrawer() {
+  const toggle = maybeEl("adminNavToggle");
+  const drawer = maybeEl("adminNavDrawer");
+  if (!toggle || !drawer) return;
+
+  toggle.addEventListener("click", () => {
+    const open = toggle.getAttribute("aria-expanded") === "true";
+    toggle.setAttribute("aria-expanded", open ? "false" : "true");
+    drawer.classList.toggle("is-open", !open);
+    drawer.setAttribute("aria-hidden", open ? "true" : "false");
+  });
+
+  drawer.querySelectorAll("a[href]").forEach((link) => {
+    link.addEventListener("click", () => closeAdminNavDrawer());
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeAdminNavDrawer();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!drawer.classList.contains("is-open")) return;
+    const target = /** @type {Node | null} */ (e.target);
+    if (target && !drawer.contains(target) && !toggle.contains(target)) {
+      closeAdminNavDrawer();
+    }
   });
 }
 
@@ -1739,9 +2605,12 @@ function showView(view) {
   if (dashSection) dashSection.classList.toggle("admin-hide", view !== "dash");
   const dash = view === "dash";
   const jumps = maybeEl("adminNavJumps");
-  const meta = maybeEl("adminNavMeta");
+  const toggle = maybeEl("adminNavToggle");
+  const drawer = maybeEl("adminNavDrawer");
   if (jumps) jumps.classList.toggle("admin-hide", !dash);
-  if (meta) meta.classList.toggle("admin-hide", !dash);
+  if (toggle) toggle.classList.toggle("admin-hide", !dash);
+  if (drawer) drawer.classList.toggle("admin-hide", !dash);
+  if (!dash) closeAdminNavDrawer();
 }
 
 async function isAdminUser(userId) {
@@ -2370,8 +3239,9 @@ function wireSignOut(btn) {
   });
 }
 
+initAdminNavDrawer();
+
 wireSignOut(maybeEl("signOutBlocked"));
-wireSignOut(maybeEl("signOutDash"));
 
 /** Skip duplicate bootstrap when `getSession` and `onAuthStateChange` both report the same user. */
 let lastSuccessfulDashBootstrapUserId = null;

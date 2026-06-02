@@ -20,22 +20,31 @@
       <div class="admin-nav__inner">
         <div class="admin-nav__brand">
           <a class="nav__logo" href="../index.html">mozok.tilo.ruh</a>
-          <span class="admin-nav__sep" aria-hidden="true">·</span>
-          <a class="admin-nav__site" href="../index.html">На сайт</a>
         </div>
-        <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі за порядком">
-          <li><a href="prices.html">Ціни</a></li>
-          <li><a href="places.html">Місця</a></li>
-          <li><a href="teachers.html">Викладачі</a></li>
-          <li><a href="students.html">Учні</a></li>
-          <li><a href="lessons.html">Заняття</a></li>
-          <li><a href="stats.html">Статистика</a></li>
-        </ol>
-        <div id="adminNavMeta" class="admin-nav__meta admin-hide">
-          <button type="button" class="btn btn--ghost btn--sm" id="signOutDash">Вийти</button>
-        </div>
+        <button
+          type="button"
+          class="admin-nav__toggle nav__hamburger admin-hide"
+          id="adminNavToggle"
+          aria-label="Меню"
+          aria-expanded="false"
+          aria-controls="adminNavDrawer"
+        >
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
       </div>
     </nav>
+    <div id="adminNavDrawer" class="admin-nav__drawer admin-hide" aria-hidden="true">
+      <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі за порядком">
+        <li><a href="prices.html">Ціни</a></li>
+        <li><a href="places.html">Місця</a></li>
+        <li><a href="teachers.html">Викладачі</a></li>
+        <li><a href="students.html">Учні</a></li>
+        <li><a href="lessons.html">Заняття</a></li>
+        <li><a href="stats.html">Статистика</a></li>
+      </ol>
+    </div>
 
     <main class="admin-page">
       <div id="authSection" class="admin-hide"></div>

@@ -14,30 +14,40 @@
     />
     <link rel="stylesheet" href="../assets/css/styles.css" />
     <link rel="stylesheet" href="../assets/css/admin.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   </head>
   <body data-admin-page="stats">
     <nav class="nav nav--admin scrolled" aria-label="Адмін">
       <div class="admin-nav__inner">
         <div class="admin-nav__brand">
           <a class="nav__logo" href="../index.html">mozok.tilo.ruh</a>
-          <span class="admin-nav__sep" aria-hidden="true">·</span>
-          <a class="admin-nav__site" href="../index.html">На сайт</a>
         </div>
-        <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі за порядком">
-          <li><a href="prices.html">Ціни</a></li>
-          <li><a href="places.html">Місця</a></li>
-          <li><a href="teachers.html">Викладачі</a></li>
-          <li><a href="students.html">Учні</a></li>
-          <li><a href="lessons.html">Заняття</a></li>
-          <li><a href="stats.html" aria-current="page">Статистика</a></li>
-        </ol>
-        <div id="adminNavMeta" class="admin-nav__meta admin-hide">
-          <button type="button" class="btn btn--ghost btn--sm" id="signOutDash">Вийти</button>
-        </div>
+        <button
+          type="button"
+          class="admin-nav__toggle nav__hamburger admin-hide"
+          id="adminNavToggle"
+          aria-label="Меню"
+          aria-expanded="false"
+          aria-controls="adminNavDrawer"
+        >
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
       </div>
     </nav>
+    <div id="adminNavDrawer" class="admin-nav__drawer admin-hide" aria-hidden="true">
+      <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі за порядком">
+        <li><a href="prices.html">Ціни</a></li>
+        <li><a href="places.html">Місця</a></li>
+        <li><a href="teachers.html">Викладачі</a></li>
+        <li><a href="students.html">Учні</a></li>
+        <li><a href="lessons.html">Заняття</a></li>
+        <li><a href="stats.html" aria-current="page">Статистика</a></li>
+      </ol>
+    </div>
 
-    <main class="admin-page">
+    <main class="admin-page admin-page--stats">
       <div id="authSection" class="admin-hide"></div>
       <div id="blockedSection" class="admin-hide">
         <div class="admin-top">
@@ -62,20 +72,45 @@
       </div>
 
       <div id="dashSection" class="admin-hide">
-        <div class="admin-top admin-top--title-only">
-          <h1>Статистика викладачів</h1>
+
+        <!-- Page Header -->
+        <div class="admin-top admin-top--stats">
+          <div class="admin-top__title-group">
+            <h1>Аналітика</h1>
+            <p id="statsPeriodLabel" class="admin-stats-period-label admin-hide"></p>
+          </div>
         </div>
+
         <div id="dashError" class="admin-alert admin-alert--error admin-hide" role="status"></div>
         <div id="dashOk" class="admin-alert admin-alert--ok admin-hide" role="status"></div>
 
-        <div class="admin-panel admin-stats-range-panel">
+        <!-- KPI Cards -->
+        <div id="statsSummaryCards" class="admin-stats-kpi">
+          <div class="admin-stats-kpi-card admin-stats-kpi-card--skeleton"></div>
+          <div class="admin-stats-kpi-card admin-stats-kpi-card--skeleton"></div>
+          <div class="admin-stats-kpi-card admin-stats-kpi-card--skeleton"></div>
+          <div class="admin-stats-kpi-card admin-stats-kpi-card--skeleton"></div>
+        </div>
+
+        <!-- Filter Panel -->
+        <div class="admin-panel admin-stats-filter-panel">
+          <div class="admin-stats-filter-header">
+            <span class="admin-stats-filter-label">Фільтр за періодом</span>
+            <div class="admin-stats-quick" id="statsQuickBtns" role="group" aria-label="Швидкий вибір періоду">
+              <button type="button" class="admin-stats-quick__btn" data-quick="month">Цей місяць</button>
+              <button type="button" class="admin-stats-quick__btn" data-quick="prev-month">Минулий</button>
+              <button type="button" class="admin-stats-quick__btn" data-quick="3months">3 міс.</button>
+              <button type="button" class="admin-stats-quick__btn" data-quick="6months">6 міс.</button>
+              <button type="button" class="admin-stats-quick__btn" data-quick="year">Рік</button>
+            </div>
+          </div>
           <form id="statsRangeForm" class="admin-stats-range-form">
             <div class="admin-field">
-              <label for="statsDateFrom">Період від</label>
+              <label for="statsDateFrom">Від</label>
               <input id="statsDateFrom" type="date" />
             </div>
             <div class="admin-field">
-              <label for="statsDateTo">Період до</label>
+              <label for="statsDateTo">До</label>
               <input id="statsDateTo" type="date" />
             </div>
             <div class="admin-actions">
@@ -85,20 +120,53 @@
           </form>
         </div>
 
-        <div class="admin-panel">
-          <h2>Розрахунок виплат</h2>
-          <div id="statsSummaryCards" class="admin-stats-cards"><p class="admin-muted">Завантаження…</p></div>
+        <!-- Charts Grid -->
+        <div class="admin-stats-charts-grid" id="statsChartsGrid">
+          <div class="admin-panel admin-stats-chart-panel">
+            <h2 class="admin-stats-chart-panel__title">Виплати викладачам</h2>
+            <div class="admin-stats-chart-wrap admin-stats-chart-wrap--bar" id="statsPayoutWrap">
+              <canvas id="statsPayoutChart" aria-label="Горизонтальна діаграма виплат по викладачах"></canvas>
+            </div>
+          </div>
+          <div class="admin-panel admin-stats-chart-panel">
+            <h2 class="admin-stats-chart-panel__title">Фінансовий розподіл</h2>
+            <div class="admin-stats-chart-wrap admin-stats-chart-wrap--donut" id="statsBreakdownWrap">
+              <canvas id="statsBreakdownChart" aria-label="Кільцева діаграма розподілу фінансів"></canvas>
+            </div>
+            <div id="statsBreakdownLegend" class="admin-stats-donut-legend"></div>
+          </div>
         </div>
 
-        <div class="admin-panel">
-          <h2>Хто скільки заробив</h2>
-          <div id="statsChart" class="admin-stats-chart"><p class="admin-muted">Завантаження…</p></div>
+        <!-- Teacher detail cards -->
+        <div class="admin-panel admin-stats-teachers-panel">
+          <div class="admin-stats-table-head">
+            <h2>Деталі по викладачах</h2>
+          </div>
+          <div id="statsTeachersTable" class="admin-stats-teacher-cards"><p class="admin-muted">Завантаження…</p></div>
         </div>
 
-        <div class="admin-panel">
-          <h2>Детальна таблиця</h2>
-          <div id="statsTeachersTable"><p class="admin-muted">Завантаження…</p></div>
+        <div id="statsTeacherJournalModal" class="admin-modal admin-hide" aria-hidden="true">
+          <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+          <div
+            class="admin-modal__dialog admin-modal__dialog--wide admin-stats-journal-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="statsTeacherJournalTitle"
+          >
+            <div class="admin-modal__head">
+              <h3 id="statsTeacherJournalTitle" class="admin-modal__title">Журнал уроків</h3>
+              <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
+            </div>
+            <div class="admin-modal__body">
+              <p id="statsTeacherJournalSub" class="admin-muted admin-modal__sub"></p>
+              <div id="statsTeacherJournalTotals" class="admin-stats-journal-totals admin-hide" aria-live="polite"></div>
+              <div id="statsTeacherJournalList" class="admin-stats-journal" aria-live="polite">
+                <p class="admin-muted">Завантаження…</p>
+              </div>
+            </div>
+          </div>
         </div>
+
       </div>
     </main>
 
