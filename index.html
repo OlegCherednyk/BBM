@@ -338,9 +338,11 @@
     <!-- ── SIGN-UP MODAL ── -->
     <dialog class="modal" id="signupModal">
       <button class="modal__close" id="closeModal" aria-label="Закрити">✕</button>
-      <p class="modal__eyebrow">мозок.тіло.рух</p>
-      <h2 class="modal__title">Почнемо разом</h2>
-      <p class="modal__sub">Залиш своє ім'я та контакт (Instagram або Telegram) — ми напишемо тобі першою.</p>
+      <div id="modalIntro">
+        <p class="modal__eyebrow">мозок.тіло.рух</p>
+        <h2 class="modal__title">Почнемо разом</h2>
+        <p class="modal__sub">Залиш своє ім'я та контакт (Instagram або Telegram) — ми напишемо тобі першою.</p>
+      </div>
       <form class="modal__form" id="signupForm" novalidate>
         <div class="form-group">
           <label for="name">Ім'я</label>
@@ -352,9 +354,13 @@
           <input id="contact" name="contact" type="text" placeholder="@instagram або @telegram" required />
           <span class="form-error" id="contactError"></span>
         </div>
-        <button class="btn btn--primary btn--full" type="submit">Відправити</button>
+        <button class="btn btn--primary btn--full" type="submit" id="signupSubmit">Відправити</button>
       </form>
-
+      <div class="modal__success" id="signupSuccess" hidden>
+        <div class="modal__checkmark modal__checkmark--always" aria-hidden="true">✓</div>
+        <p>Заявку відправлено!</p>
+        <p class="modal__sub modal__sub--success">Ми напишемо тобі найближчим часом.</p>
+      </div>
     </dialog>
     <div class="modal__backdrop" id="modalBackdrop"></div>
 

@@ -1262,6 +1262,7 @@ details[open] .accordion__icon::after { transform: translate(-50%,-50%) rotate(9
   margin: 0 auto 16px;
 }
 .modal__success p { font-size: 1rem; font-weight: 500; color: var(--brown-dark); }
+.modal__sub--success { margin: 0; text-align: center; }
 
 /* ── PRICING ── */
 .pricing { background: var(--cream); }

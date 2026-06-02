@@ -558,9 +558,39 @@ const openBtns   = [
   document.getElementById("openModal4"),
 ];
 const form = document.getElementById("signupForm");
+const signupSuccess = document.getElementById("signupSuccess");
+const modalIntro = document.getElementById("modalIntro");
+const signupSubmit = document.getElementById("signupSubmit");
+const SIGNUP_SUCCESS_MS = 1400;
+
+function resetSignupModal() {
+  if (form) {
+    form.hidden = false;
+    form.reset();
+  }
+  if (signupSuccess) signupSuccess.hidden = true;
+  if (modalIntro) modalIntro.hidden = false;
+  clearError("name", "nameError");
+  clearError("contact", "contactError");
+  if (signupSubmit) {
+    signupSubmit.disabled = false;
+    signupSubmit.textContent = "Відправити";
+  }
+}
+
+function showSignupSuccessAndClose() {
+  if (form) form.hidden = true;
+  if (modalIntro) modalIntro.hidden = true;
+  if (signupSuccess) signupSuccess.hidden = false;
+
+  window.setTimeout(() => {
+    closeModal();
+    showToast("Заявку відправлено!", "Ми напишемо тобі найближчим часом.");
+  }, SIGNUP_SUCCESS_MS);
+}
 
 function openModal() {
-  form.hidden = false;
+  resetSignupModal();
   modal.showModal ? modal.showModal() : (modal.open = true);
   backdrop.classList.add("active");
   document.body.style.overflow = "hidden";
@@ -598,6 +628,7 @@ function closeModal() {
   modal.close ? modal.close() : (modal.open = false);
   backdrop.classList.remove("active");
   document.body.style.overflow = "";
+  resetSignupModal();
 }
 
 const openModalNavBtn2 = document.getElementById("openModalNav");
@@ -661,6 +692,11 @@ form.addEventListener("submit", async (e) => {
 
   if (!valid) return;
 
+  if (signupSubmit) {
+    signupSubmit.disabled = true;
+    signupSubmit.textContent = "Відправляємо…";
+  }
+
   try {
     const response = await fetch("/api/signup", {
       method: "POST",
@@ -670,21 +706,24 @@ form.addEventListener("submit", async (e) => {
       body: JSON.stringify({ name, contact }),
     });
 
-    if (!response.ok) {
-      let serverError = "";
-      try {
-        const payload = await response.json();
-        serverError = String(payload?.error || payload?.message || "");
-      } catch (_ignored) {
-        serverError = "";
-      }
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (_ignored) {
+      payload = null;
+    }
+
+    if (!response.ok || payload?.ok === false) {
+      const serverError = String(payload?.error || payload?.message || "");
       throw new Error(serverError || `Request failed with status ${response.status}`);
     }
 
-    closeModal();
-    form.reset();
-    showToast("Дякуємо!", "Ми напишемо тобі найближчим часом.");
+    showSignupSuccessAndClose();
   } catch (error) {
+    if (signupSubmit) {
+      signupSubmit.disabled = false;
+      signupSubmit.textContent = "Відправити";
+    }
     showError("contact", "contactError", mapSignupErrorToUa(error?.message));
   }
 });
