@@ -41,6 +41,7 @@
         <li><a href="places.html">Місця</a></li>
         <li><a href="teachers.html">Викладачі</a></li>
         <li><a href="students.html">Учні</a></li>
+        <li><a href="votes.html">Голосування</a></li>
         <li><a href="lessons.html" aria-current="page">Заняття</a></li>
         <li><a href="stats.html">Статистика</a></li>
       </ol>
@@ -77,18 +78,9 @@
         <div id="dashError" class="admin-alert admin-alert--error admin-hide" role="status"></div>
         <div id="dashOk" class="admin-alert admin-alert--ok admin-hide" role="status"></div>
 
-        <div class="admin-panel" id="section-lessons">
-          <div class="admin-lessons__head">
-            <h2>Закриті голосування та проведені заняття</h2>
-            <button type="button" class="btn btn--primary btn--sm" id="lessonsBatchVoteBtn">Створити голосування</button>
-          </div>
+        <div id="section-lessons">
           <div id="lessonsList"><p class="admin-muted">Завантаження…</p></div>
           <div id="lessonsPagination"></div>
-          <hr class="admin-lessons__divider" />
-          <div class="admin-lessons__head">
-            <h2>Відкриті голосування</h2>
-          </div>
-          <div id="openLessonVotesList"><p class="admin-muted">Завантаження…</p></div>
         </div>
       </div>
     </main>

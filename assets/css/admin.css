@@ -223,8 +223,45 @@ body[data-admin-page] {
 /* ── SCROLL MARGINS ── */
 #section-lesson-types,
 #section-prices,
-#section-places {
+#section-smm-prices,
+#section-place-prices,
+#section-places,
+#section-lessons,
+#section-votes,
+#section-students,
+#section-teachers {
   scroll-margin-top: calc(var(--admin-nav-h) + 20px);
+}
+
+#dashSection > [id^="section-"] {
+  margin-bottom: 28px;
+}
+
+#dashSection > [id^="section-"]:last-child {
+  margin-bottom: 0;
+}
+
+#dashSection [id^="section-"] > h2,
+#dashSection .admin-price-create__head h2 {
+  font-family: var(--ff-display);
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: var(--brown-dark);
+  letter-spacing: -0.018em;
+  margin: 0;
+}
+
+#section-students > .admin-students-toolbar {
+  margin-bottom: 16px;
+}
+
+#section-lesson-types > .admin-muted:first-child {
+  margin-bottom: 20px;
+}
+
+.admin-price-create__head:not(:has(h2)),
+.admin-place-create__head:not(:has(h2)) {
+  justify-content: flex-end;
 }
 
 /* ── PAGE LAYOUT ── */
@@ -2212,14 +2249,28 @@ body[data-admin-page] .btn--ghost:active {
 
 .admin-stats-range-form {
   display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(180px, 240px) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   align-items: end;
-  gap: 12px;
+  gap: 10px 12px;
+  min-width: 0;
+}
+
+.admin-stats-range-form .admin-field {
+  min-width: 0;
+}
+
+.admin-stats-range-form .admin-field input[type="date"] {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .admin-stats-range-form .admin-actions {
   margin-top: 0;
   justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: 8px;
 }
 
 .admin-stats-card {
@@ -2291,10 +2342,16 @@ body[data-admin-page] .btn--ghost:active {
 
 @media (max-width: 860px) {
   .admin-stats-range-form {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px 10px;
   }
   .admin-stats-range-form .admin-actions {
     grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+  .admin-stats-range-form .admin-actions .btn {
+    flex: 1 1 0;
+    min-width: 0;
   }
   .admin-stats-cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2303,7 +2360,12 @@ body[data-admin-page] .btn--ghost:active {
 
 @media (max-width: 560px) {
   .admin-stats-range-form {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+  .admin-stats-range-form .admin-field input[type="date"] {
+    padding: 10px 8px;
+    font-size: 0.84rem;
   }
   .admin-stats-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2486,6 +2548,8 @@ pre {
 .admin-stats-filter-panel {
   margin-bottom: 18px;
   padding: 18px 24px 20px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .admin-stats-filter-header {

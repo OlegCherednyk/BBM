@@ -41,6 +41,7 @@
         <li><a href="places.html" aria-current="page">Місця</a></li>
         <li><a href="teachers.html">Викладачі</a></li>
         <li><a href="students.html">Учні</a></li>
+        <li><a href="votes.html">Голосування</a></li>
         <li><a href="lessons.html">Заняття</a></li>
         <li><a href="stats.html">Статистика</a></li>
       </ol>
@@ -71,17 +72,14 @@
       </div>
 
       <div id="dashSection" class="admin-hide">
-        <div class="admin-top admin-top--title-only">
+        <div class="admin-top">
           <h1>Місця та час занять</h1>
+          <button id="placeFormToggle" class="btn btn--primary btn--sm btn--place-add" type="button">+ Нове місце</button>
         </div>
         <div id="dashError" class="admin-alert admin-alert--error admin-hide" role="status"></div>
         <div id="dashOk" class="admin-alert admin-alert--ok admin-hide" role="status"></div>
 
-        <div class="admin-panel" id="section-places">
-          <div class="admin-place-create__head">
-            <h2>Місця</h2>
-            <button id="placeFormToggle" class="btn btn--primary btn--sm btn--place-add" type="button">+ Нове місце</button>
-          </div>
+        <div id="section-places">
           <form id="placeForm" class="admin-grid admin-grid--2 admin-hide">
             <div class="admin-field">
               <label for="placeName">Назва</label>
@@ -112,10 +110,6 @@
               <button id="placeFormCancel" class="btn btn--ghost btn--sm" type="button">Скасувати</button>
             </div>
           </form>
-        </div>
-
-        <div class="admin-panel">
-          <h2>Мої місця</h2>
           <div id="placesList"><p class="admin-muted">Завантаження…</p></div>
         </div>
       </div>

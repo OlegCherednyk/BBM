@@ -210,6 +210,11 @@ function mountVisitJournal(container, visits) {
 /** @type {string | null} */
 let selectedId = null;
 
+const STUDENTS_PAGE_SIZE = 10;
+let studentsPage = 1;
+/** @type {any[]} */
+let cachedStudentRows = [];
+
 let studentsAdminWired = false;
 
 export async function setupStudentsAdmin() {
@@ -509,8 +514,123 @@ export async function setupStudentsAdmin() {
     }
   }
 
-  async function refreshList() {
+  function renderStudentsPagination(totalCount) {
+    const paginationRoot = el("studentsPagination");
+    if (!paginationRoot) return;
+    paginationRoot.innerHTML = "";
+    if (totalCount <= STUDENTS_PAGE_SIZE) return;
+
+    const totalPages = Math.max(1, Math.ceil(totalCount / STUDENTS_PAGE_SIZE));
+    studentsPage = Math.min(Math.max(1, studentsPage), totalPages);
+
+    const pagination = document.createElement("div");
+    pagination.className = "admin-lessons__pagination";
+
+    const prevBtn = document.createElement("button");
+    prevBtn.type = "button";
+    prevBtn.className = "btn btn--ghost btn--sm";
+    prevBtn.textContent = "← Попередні";
+    prevBtn.disabled = studentsPage <= 1;
+    prevBtn.addEventListener("click", () => {
+      if (studentsPage <= 1) return;
+      studentsPage -= 1;
+      mountStudentsList(cachedStudentRows);
+    });
+
+    const info = document.createElement("span");
+    info.className = "admin-muted";
+    info.textContent = `Сторінка ${studentsPage} з ${totalPages} · учнів: ${totalCount}`;
+
+    const nextBtn = document.createElement("button");
+    nextBtn.type = "button";
+    nextBtn.className = "btn btn--ghost btn--sm";
+    nextBtn.textContent = "Наступні →";
+    nextBtn.disabled = studentsPage >= totalPages;
+    nextBtn.addEventListener("click", () => {
+      if (studentsPage >= totalPages) return;
+      studentsPage += 1;
+      mountStudentsList(cachedStudentRows);
+    });
+
+    pagination.append(prevBtn, info, nextBtn);
+    paginationRoot.appendChild(pagination);
+  }
+
+  function mountStudentsList(rows) {
     if (!listEl) return;
+
+    cachedStudentRows = rows;
+    const totalPages = Math.max(1, Math.ceil(rows.length / STUDENTS_PAGE_SIZE));
+    studentsPage = Math.min(Math.max(1, studentsPage), totalPages);
+
+    listEl.innerHTML = "";
+    if (!rows.length) {
+      listEl.innerHTML = `<p class="admin-muted">Нікого не знайдено.</p>`;
+      renderStudentsPagination(0);
+      listEl.dataset.ready = "true";
+      return;
+    }
+
+    const pageStart = (studentsPage - 1) * STUDENTS_PAGE_SIZE;
+    const pageRows = rows.slice(pageStart, pageStart + STUDENTS_PAGE_SIZE);
+    const frag = document.createDocumentFragment();
+    for (const s of pageRows) {
+      const card = document.createElement("div");
+      card.className = "admin-panel admin-students-card";
+      const row = document.createElement("div");
+      row.className = "admin-students-card__row";
+
+      const nameBtn = document.createElement("button");
+      nameBtn.type = "button";
+      nameBtn.className = "admin-students-card__name-btn";
+      nameBtn.textContent = formatStudentListLabel(s);
+      nameBtn.addEventListener("click", () => {
+        void openDetail(String(s.id));
+      });
+
+      const tail = document.createElement("div");
+      tail.className = "admin-students-card__tail";
+      appendAbonBadgeIfAny(tail, s.subscription_summary);
+      appendStudentCardMetaNums(tail, s.subscription_summary);
+      appendAttendedVisitsDot(tail, s.attended_visits_count);
+
+      const actions = document.createElement("div");
+      actions.className = "admin-students-card__actions";
+
+      const journalBtn = document.createElement("button");
+      journalBtn.type = "button";
+      journalBtn.className = "btn btn--ghost btn--sm";
+      journalBtn.textContent = "Журнал відвідування";
+      journalBtn.title = "Усі заняття учня";
+      journalBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        void openVisitsJournal(String(s.id), formatStudentListLabel(s));
+      });
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "btn btn--ghost btn--sm admin-students-card__edit-btn";
+      editBtn.textContent = "✏️";
+      editBtn.title = "Редагувати";
+      editBtn.setAttribute("aria-label", "Редагувати");
+      editBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        void openDetail(String(s.id));
+      });
+
+      actions.append(journalBtn, editBtn);
+      row.append(nameBtn, tail, actions);
+      card.appendChild(row);
+      frag.appendChild(card);
+    }
+    listEl.appendChild(frag);
+    renderStudentsPagination(rows.length);
+    listEl.dataset.ready = "true";
+  }
+
+  async function refreshList({ resetPage = false } = {}) {
+    if (!listEl) return;
+    if (resetPage) studentsPage = 1;
     const requestSeq = ++listRequestSeq;
     const hasRenderedList = listEl.dataset.ready === "true";
     showStudentsLocalError("");
@@ -519,6 +639,7 @@ export async function setupStudentsAdmin() {
     if (reloadBtn) reloadBtn.disabled = true;
     if (!hasRenderedList) {
       listEl.innerHTML = `<p class="admin-muted">Завантаження…</p>`;
+      el("studentsPagination") && (el("studentsPagination").innerHTML = "");
     }
     const search = searchEl?.value.trim() || "";
     const q = new URLSearchParams();
@@ -527,68 +648,11 @@ export async function setupStudentsAdmin() {
     try {
       const json = await fetchJson(`/api/admin/students${query ? `?${query}` : ""}`);
       if (requestSeq !== listRequestSeq) return;
-      const rows = json.rows || [];
-      if (!rows.length) {
-        listEl.innerHTML = `<p class="admin-muted">Нікого не знайдено.</p>`;
-        listEl.dataset.ready = "true";
-        return;
-      }
-      const frag = document.createDocumentFragment();
-      for (const s of rows) {
-        const card = document.createElement("div");
-        card.className = "admin-panel admin-students-card";
-        const row = document.createElement("div");
-        row.className = "admin-students-card__row";
-
-        const nameBtn = document.createElement("button");
-        nameBtn.type = "button";
-        nameBtn.className = "admin-students-card__name-btn";
-        nameBtn.textContent = formatStudentListLabel(s);
-        nameBtn.addEventListener("click", () => {
-          void openDetail(String(s.id));
-        });
-
-        const tail = document.createElement("div");
-        tail.className = "admin-students-card__tail";
-        appendAbonBadgeIfAny(tail, s.subscription_summary);
-        appendStudentCardMetaNums(tail, s.subscription_summary);
-        appendAttendedVisitsDot(tail, s.attended_visits_count);
-
-        const actions = document.createElement("div");
-        actions.className = "admin-students-card__actions";
-
-        const journalBtn = document.createElement("button");
-        journalBtn.type = "button";
-        journalBtn.className = "btn btn--ghost btn--sm";
-        journalBtn.textContent = "Журнал відвідування";
-        journalBtn.title = "Усі заняття учня";
-        journalBtn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          void openVisitsJournal(String(s.id), formatStudentListLabel(s));
-        });
-
-        const editBtn = document.createElement("button");
-        editBtn.type = "button";
-        editBtn.className = "btn btn--ghost btn--sm admin-students-card__edit-btn";
-        editBtn.textContent = "✏️";
-        editBtn.title = "Редагувати";
-        editBtn.setAttribute("aria-label", "Редагувати");
-        editBtn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          void openDetail(String(s.id));
-        });
-
-        actions.append(journalBtn, editBtn);
-        row.append(nameBtn, tail, actions);
-        card.appendChild(row);
-        frag.appendChild(card);
-      }
-      listEl.innerHTML = "";
-      listEl.appendChild(frag);
-      listEl.dataset.ready = "true";
+      mountStudentsList(json.rows || []);
     } catch (e) {
       if (requestSeq !== listRequestSeq) return;
       if (!hasRenderedList) listEl.innerHTML = "";
+      el("studentsPagination") && (el("studentsPagination").innerHTML = "");
       showStudentsLocalError(e?.message || String(e));
     } finally {
       if (requestSeq === listRequestSeq) {
@@ -676,11 +740,11 @@ export async function setupStudentsAdmin() {
       }
     });
 
-    reloadBtn?.addEventListener("click", () => void refreshList());
+    reloadBtn?.addEventListener("click", () => void refreshList({ resetPage: true }));
     searchEl?.addEventListener("keydown", (e) => {
       if (e.key !== "Enter") return;
       e.preventDefault();
-      void refreshList();
+      void refreshList({ resetPage: true });
     });
 
     subFormToggle?.addEventListener("click", () => {

@@ -41,6 +41,7 @@
         <li><a href="places.html">Місця</a></li>
         <li><a href="teachers.html" aria-current="page">Викладачі</a></li>
         <li><a href="students.html">Учні</a></li>
+        <li><a href="votes.html">Голосування</a></li>
         <li><a href="lessons.html">Заняття</a></li>
         <li><a href="stats.html">Статистика</a></li>
       </ol>
@@ -71,19 +72,14 @@
       </div>
 
       <div id="dashSection" class="admin-hide">
-        <div class="admin-top admin-top--title-only">
+        <div class="admin-top">
           <h1>Викладачі</h1>
+          <button id="teacherFormToggle" class="btn btn--primary btn--sm btn--price-add" type="button">+ Новий викладач</button>
         </div>
         <div id="dashError" class="admin-alert admin-alert--error admin-hide" role="status"></div>
         <div id="dashOk" class="admin-alert admin-alert--ok admin-hide" role="status"></div>
 
-        <div class="admin-panel" id="section-teachers">
-          <div class="admin-price-create__head">
-            <h2>Список викладачів</h2>
-            <div class="admin-price-create__actions">
-              <button id="teacherFormToggle" class="btn btn--primary btn--sm btn--price-add" type="button">+ Новий викладач</button>
-            </div>
-          </div>
+        <div id="section-teachers">
           <form id="teacherForm" class="admin-grid admin-grid--2 admin-hide">
             <input type="hidden" id="teacherEditingId" value="" />
             <div class="admin-field admin-grid-span-2">

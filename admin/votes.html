@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" type="image/png" href="../logo_bbm_circle.png" />
-    <title>Адмін — типи занять</title>
+    <title>Адмін — голосування</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="../assets/css/styles.css" />
     <link rel="stylesheet" href="../assets/css/admin.css" />
   </head>
-  <body data-admin-page="lesson-types">
+  <body data-admin-page="votes">
     <nav class="nav nav--admin scrolled" aria-label="Адмін">
       <div class="admin-nav__inner">
         <div class="admin-nav__brand">
@@ -41,7 +41,7 @@
         <li><a href="places.html">Місця</a></li>
         <li><a href="teachers.html">Викладачі</a></li>
         <li><a href="students.html">Учні</a></li>
-        <li><a href="votes.html">Голосування</a></li>
+        <li><a href="votes.html" aria-current="page">Голосування</a></li>
         <li><a href="lessons.html">Заняття</a></li>
         <li><a href="stats.html">Статистика</a></li>
       </ol>
@@ -72,15 +72,15 @@
       </div>
 
       <div id="dashSection" class="admin-hide">
-        <div class="admin-top admin-top--title-only">
-          <h1>Типи занять</h1>
+        <div class="admin-top">
+          <h1>Голосування</h1>
+          <button type="button" class="btn btn--primary btn--sm" id="votesBatchVoteBtn">Створити голосування</button>
         </div>
         <div id="dashError" class="admin-alert admin-alert--error admin-hide" role="status"></div>
         <div id="dashOk" class="admin-alert admin-alert--ok admin-hide" role="status"></div>
 
-        <div id="section-lesson-types">
-          <p class="admin-muted">Два напрями (назва й тривалість для сайту).</p>
-          <div id="lessonTypesList" class="admin-muted">Завантаження…</div>
+        <div id="section-votes">
+          <div id="openLessonVotesList"><p class="admin-muted">Завантаження…</p></div>
         </div>
       </div>
     </main>

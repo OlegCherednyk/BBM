@@ -15,7 +15,7 @@ function syncCustomSelect(selectEl) {
   }
 }
 
-/** @type {"login"|"lesson-types"|"prices"|"places"|"teachers"|"students"|"lessons"|"stats"} */
+/** @type {"login"|"lesson-types"|"prices"|"places"|"teachers"|"students"|"votes"|"lessons"|"stats"} */
 const ADMIN_PAGE = /** @type {any} */ (document.body?.dataset.adminPage ?? "lesson-types");
 
 const isLoginPage = ADMIN_PAGE === "login";
@@ -84,7 +84,7 @@ let editingPlacePriceId = null;
 let editingTeacherId = null;
 /** @type {{ chat_id: string, username: string | null, first_name: string | null, last_name: string | null }[]} */
 let cachedPrivateTelegramTargets = [];
-let lessonsBatchVoteWired = false;
+let votesBatchVoteWired = false;
 const LESSONS_PAGE_SIZE = 10;
 let lessonsPage = 1;
 /** @type {{ id: string, name: string }[]} */
@@ -906,41 +906,24 @@ function renderLessonCardView(container, row, onEdit, onDelete) {
 async function renderLessonsPanel() {
   const root = maybeEl("lessonsList");
   const paginationRoot = maybeEl("lessonsPagination");
-  const openVotesRoot = maybeEl("openLessonVotesList");
   if (!root) return;
-  ensureLessonsBatchVoteWired();
   root.innerHTML = '<p class="admin-muted">Завантаження…</p>';
   if (paginationRoot) paginationRoot.innerHTML = "";
-  if (openVotesRoot) openVotesRoot.innerHTML = '<p class="admin-muted">Завантаження…</p>';
 
-  const [lessonsRes, openVotesFetch] = await Promise.all([
-    supabase
-      .from("lessons")
-      .select(
-        `id, starts_at, abon_count, single_visitors_count, skip_visitors_count,
-         conducting_display_name, vote_finalized_at, lesson_vote_occurrence_id,
-         teachers ( id, name ),
-         places ( id, name, address ),
-         lesson_times ( id, start_time, day_of_week, lesson_types ( id, name, slug ) )`,
-      )
-      .order("starts_at", { ascending: false, nullsFirst: false }),
-    fetch("/api/admin/lesson-votes/open"),
-  ]);
+  const lessonsRes = await supabase
+    .from("lessons")
+    .select(
+      `id, starts_at, abon_count, single_visitors_count, skip_visitors_count,
+       conducting_display_name, vote_finalized_at, lesson_vote_occurrence_id,
+       teachers ( id, name ),
+       places ( id, name, address ),
+       lesson_times ( id, start_time, day_of_week, lesson_types ( id, name, slug ) )`,
+    )
+    .order("starts_at", { ascending: false, nullsFirst: false });
 
   if (lessonsRes.error) {
     root.innerHTML = `<p class="admin-muted">${escapeHtml(lessonsRes.error.message)}</p>`;
     return;
-  }
-  let openVotes = [];
-  if (openVotesFetch.ok) {
-    const body = await openVotesFetch.json().catch(() => ({}));
-    if (body?.ok && Array.isArray(body.rows)) {
-      openVotes = body.rows;
-    } else if (openVotesRoot) {
-      openVotesRoot.innerHTML = `<p class="admin-muted">${escapeHtml(body?.error || `Помилка ${openVotesFetch.status}`)}</p>`;
-    }
-  } else if (openVotesRoot) {
-    openVotesRoot.innerHTML = `<p class="admin-muted">Помилка ${openVotesFetch.status}</p>`;
   }
 
   const lessons = lessonsRes.data || [];
@@ -1036,77 +1019,106 @@ async function renderLessonsPanel() {
       paginationRoot.appendChild(pagination);
     }
   }
-
-  if (openVotesRoot) {
-    openVotesRoot.innerHTML = "";
-    if (!openVotes.length) {
-      openVotesRoot.innerHTML = '<p class="admin-muted">Немає відкритих голосувань.</p>';
-    } else {
-      const grid = document.createElement("div");
-      grid.className = "lesson-cards";
-
-      const voteCount = (snapshot, key) => {
-        const group = snapshot && typeof snapshot === "object" ? snapshot[key] : null;
-        if (!group || typeof group !== "object") return 0;
-        return Object.keys(group).length;
-      };
-
-      for (const vote of openVotes) {
-        const snap = vote.lesson_snapshot && typeof vote.lesson_snapshot === "object" ? vote.lesson_snapshot : {};
-        const card = buildLessonCard({
-          when: fmtKyivDateParts(vote.occurrence_at),
-          teacher: vote.conducting_display_name?.trim() || "—",
-          place: snap.placeLabel || "—",
-          type: snap.lessonTypeLabel || "—",
-          abon: voteCount(vote.votes_snapshot, "abon"),
-          single: voteCount(vote.votes_snapshot, "single"),
-          skip: voteCount(vote.votes_snapshot, "skip"),
-          actions: [
-            {
-              label: "Закрити",
-              title: "Закрити голосування",
-              className: "btn btn--danger btn--sm lesson-card__btn lesson-card__btn--close",
-              onClick: async (ev) => {
-                const closeBtn = ev.currentTarget;
-                if (!confirm("Закрити це голосування?")) return;
-                closeBtn.disabled = true;
-                clearDashMessages();
-                try {
-                  const res = await fetch("/api/telegram/lesson-votes/close", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ occurrence_id: vote.id }),
-                  });
-                  const body = await res.json().catch(() => ({}));
-                  if (!res.ok || !body.ok) {
-                    showDashError(body.error || `Помилка ${res.status}`);
-                    closeBtn.disabled = false;
-                    return;
-                  }
-                  showDashOk("Голосування закрито.");
-                  await renderLessonsPanel();
-                } catch (err) {
-                  showDashError(err?.message || String(err));
-                  closeBtn.disabled = false;
-                }
-              },
-            },
-          ],
-        });
-        card.classList.add("lesson-card--open");
-        grid.appendChild(card);
-      }
-
-      openVotesRoot.appendChild(grid);
-    }
-  }
 }
 
-function ensureLessonsBatchVoteWired() {
-  if (lessonsBatchVoteWired) return;
-  const btn = maybeEl("lessonsBatchVoteBtn");
+function voteCountFromSnapshot(snapshot, key) {
+  const group = snapshot && typeof snapshot === "object" ? snapshot[key] : null;
+  if (!group || typeof group !== "object") return 0;
+  return Object.keys(group).length;
+}
+
+async function fetchOpenLessonVotes() {
+  const res = await fetch("/api/admin/lesson-votes/open");
+  if (!res.ok) {
+    return { ok: false, error: `Помилка ${res.status}`, rows: [] };
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!body?.ok || !Array.isArray(body.rows)) {
+    return { ok: false, error: body?.error || `Помилка ${res.status}`, rows: [] };
+  }
+  return { ok: true, error: "", rows: body.rows };
+}
+
+async function renderOpenLessonVotesList(openVotesRoot, openVotes, refresh) {
+  if (!openVotesRoot) return;
+  openVotesRoot.innerHTML = "";
+  if (!openVotes.length) {
+    openVotesRoot.innerHTML = '<p class="admin-muted">Немає відкритих голосувань.</p>';
+    return;
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "lesson-cards";
+
+  for (const vote of openVotes) {
+    const snap = vote.lesson_snapshot && typeof vote.lesson_snapshot === "object" ? vote.lesson_snapshot : {};
+    const card = buildLessonCard({
+      when: fmtKyivDateParts(vote.occurrence_at),
+      teacher: vote.conducting_display_name?.trim() || "—",
+      place: snap.placeLabel || "—",
+      type: snap.lessonTypeLabel || "—",
+      abon: voteCountFromSnapshot(vote.votes_snapshot, "abon"),
+      single: voteCountFromSnapshot(vote.votes_snapshot, "single"),
+      skip: voteCountFromSnapshot(vote.votes_snapshot, "skip"),
+      actions: [
+        {
+          label: "Закрити",
+          title: "Закрити голосування",
+          className: "btn btn--danger btn--sm lesson-card__btn lesson-card__btn--close",
+          onClick: async (ev) => {
+            const closeBtn = ev.currentTarget;
+            if (!confirm("Закрити це голосування?")) return;
+            closeBtn.disabled = true;
+            clearDashMessages();
+            try {
+              const res = await fetch("/api/telegram/lesson-votes/close", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ occurrence_id: vote.id }),
+              });
+              const body = await res.json().catch(() => ({}));
+              if (!res.ok || !body.ok) {
+                showDashError(body.error || `Помилка ${res.status}`);
+                closeBtn.disabled = false;
+                return;
+              }
+              showDashOk("Голосування закрито.");
+              await refresh();
+            } catch (err) {
+              showDashError(err?.message || String(err));
+              closeBtn.disabled = false;
+            }
+          },
+        },
+      ],
+    });
+    card.classList.add("lesson-card--open");
+    grid.appendChild(card);
+  }
+
+  openVotesRoot.appendChild(grid);
+}
+
+async function renderVotesPanel() {
+  const openVotesRoot = maybeEl("openLessonVotesList");
+  if (!openVotesRoot) return;
+  ensureVotesBatchVoteWired();
+  openVotesRoot.innerHTML = '<p class="admin-muted">Завантаження…</p>';
+
+  const result = await fetchOpenLessonVotes();
+  if (!result.ok) {
+    openVotesRoot.innerHTML = `<p class="admin-muted">${escapeHtml(result.error)}</p>`;
+    return;
+  }
+
+  await renderOpenLessonVotesList(openVotesRoot, result.rows, renderVotesPanel);
+}
+
+function ensureVotesBatchVoteWired() {
+  if (votesBatchVoteWired) return;
+  const btn = maybeEl("votesBatchVoteBtn");
   if (!btn) return;
-  lessonsBatchVoteWired = true;
+  votesBatchVoteWired = true;
 
   btn.addEventListener("click", async () => {
     clearDashMessages();
@@ -1133,7 +1145,7 @@ function ensureLessonsBatchVoteWired() {
       msg += `Пропущено дублів: ${dup}. Поза вікном: ${outWin}.`;
       if (fail > 0) msg += ` Помилок відправки: ${fail}.`;
       showDashOk(msg);
-      await renderLessonsPanel();
+      await renderVotesPanel();
     } catch (err) {
       showDashError(err?.message || String(err));
     } finally {
@@ -1902,6 +1914,9 @@ async function refreshDashboard() {
         await mod.setupStudentsAdmin();
         break;
       }
+      case "votes":
+        await renderVotesPanel();
+        break;
       case "lessons":
         await renderLessonsPanel();
         break;
