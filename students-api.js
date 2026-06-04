@@ -1090,6 +1090,105 @@ export function registerStudentRoutes(app, supabaseAdmin) {
     }
   });
 
+  app.get("/api/admin/subscriptions", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+      }
+      const statusFilter = typeof req.query.status === "string" ? req.query.status.trim() : "";
+      const lessonTypeFilter = typeof req.query.lesson_type_id === "string" ? req.query.lesson_type_id.trim() : "";
+      const searchFilter = typeof req.query.search === "string" ? req.query.search.trim() : "";
+
+      let q = supabaseAdmin
+        .from("subscriptions")
+        .select("*, lesson_types ( id, name ), students ( id, display_name, telegram_username, phone, instagram )")
+        .order("created_at", { ascending: false });
+
+      if (statusFilter) q = q.eq("status", statusFilter);
+      if (lessonTypeFilter) q = q.eq("lesson_type_id", lessonTypeFilter);
+
+      const { data: subs, error: subErr } = await q.limit(300);
+      if (subErr) return res.status(500).json({ ok: false, error: subErr.message });
+
+      let rows = subs || [];
+
+      if (searchFilter) {
+        const lower = searchFilter.toLowerCase().trim();
+        const lowerNick = lower.replace(/^@/, "");
+        rows = rows.filter((s) => {
+          const st = s.students;
+          if (!st) return false;
+          const name = String(st.display_name || "").toLowerCase();
+          const nick = String(st.telegram_username || "").toLowerCase().replace(/^@/, "");
+          const phone = String(st.phone || "").toLowerCase();
+          const ig = String(st.instagram || "").toLowerCase();
+          return (
+            name.includes(lower) ||
+            nick.includes(lowerNick) ||
+            (lowerNick && name.includes(lowerNick)) ||
+            phone.includes(lower) ||
+            ig.includes(lower)
+          );
+        });
+      }
+
+      const subIds = rows.map((r) => r.id);
+      /** @type {Map<string, number>} */
+      const usedBySubId = new Map();
+      if (subIds.length > 0) {
+        const { data: vRows, error: vErr } = await supabaseAdmin
+          .from("visits")
+          .select("subscription_id")
+          .in("subscription_id", subIds)
+          .eq("visit_status", "attended");
+        if (vErr) return res.status(500).json({ ok: false, error: vErr.message });
+        for (const v of vRows || []) {
+          if (!v.subscription_id) continue;
+          const sid = String(v.subscription_id);
+          usedBySubId.set(sid, (usedBySubId.get(sid) || 0) + 1);
+        }
+      }
+
+      const todayKyiv = DateTime.now().setZone(KYIV_TZ).toISODate();
+      const enriched = rows.map((r) => {
+        const visits_attended = usedBySubId.get(String(r.id)) || 0;
+        const visits_used = computeSubscriptionUsedVisits(
+          visits_attended,
+          r.used_visits_override,
+          r.total_visits,
+        );
+        /** @type {"expired" | "visits_used" | "manual" | null} */
+        let status_hint = null;
+        if (String(r.status || "") === "exhausted") {
+          if (r.valid_until && String(r.valid_until) < String(todayKyiv)) {
+            status_hint = "expired";
+          } else if (r.total_visits != null && visits_used >= Number(r.total_visits)) {
+            status_hint = "visits_used";
+          } else {
+            status_hint = "manual";
+          }
+        }
+        return { ...r, visits_attended, visits_used, status_hint };
+      });
+
+      enriched.sort((a, b) => {
+        const label = (row) => {
+          const st = row.students;
+          if (!st) return "\uffff";
+          const name = String(st.display_name || "").trim();
+          const nick = String(st.telegram_username || "").trim().replace(/^@/, "");
+          return (name || (nick ? `@${nick}` : "")).toLocaleLowerCase("uk");
+        };
+        return label(a).localeCompare(label(b), "uk");
+      });
+
+      return res.status(200).json({ ok: true, rows: enriched });
+    } catch (e) {
+      console.error("GET /api/admin/subscriptions:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
   app.patch("/api/admin/subscriptions/:id", async (req, res) => {
     try {
       if (!supabaseAdmin) {
@@ -1130,11 +1229,16 @@ export function registerStudentRoutes(app, supabaseAdmin) {
       }
       patch.updated_at = new Date().toISOString();
 
+      /** When admin explicitly sets status, honour it and skip auto-recompute. */
+      const adminForcedStatus = Object.prototype.hasOwnProperty.call(req.body, "status");
+
       const { data, error } = await supabaseAdmin.from("subscriptions").update(patch).eq("id", id).select("*").maybeSingle();
       if (error) return res.status(500).json({ ok: false, error: error.message });
       if (!data) return res.status(404).json({ ok: false, error: "Subscription not found." });
 
-      await recomputeSubscriptionStatus(supabaseAdmin, id);
+      if (!adminForcedStatus) {
+        await recomputeSubscriptionStatus(supabaseAdmin, id);
+      }
       const { data: fresh, error: frErr } = await supabaseAdmin.from("subscriptions").select("*").eq("id", id).single();
       if (frErr) return res.status(500).json({ ok: false, error: frErr.message });
       return res.status(200).json({ ok: true, row: fresh });
@@ -1157,6 +1261,54 @@ export function registerStudentRoutes(app, supabaseAdmin) {
       return res.status(200).json({ ok: true, deletedId: id });
     } catch (e) {
       console.error("DELETE /api/admin/subscriptions/:id:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.patch("/api/admin/visits/:id", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+      }
+      const id = String(req.params.id || "").trim();
+      if (!id) return res.status(400).json({ ok: false, error: "Missing visit id." });
+
+      const { data: visit, error: vErr } = await supabaseAdmin
+        .from("visits")
+        .select("id, subscription_id, lesson_vote_occurrence_id, visit_status")
+        .eq("id", id)
+        .maybeSingle();
+      if (vErr) return res.status(500).json({ ok: false, error: vErr.message });
+      if (!visit) return res.status(404).json({ ok: false, error: "Visit not found." });
+
+      const newSubId = Object.prototype.hasOwnProperty.call(req.body, "subscription_id")
+        ? (req.body.subscription_id === null || req.body.subscription_id === "" ? null : String(req.body.subscription_id))
+        : undefined;
+
+      if (newSubId === undefined) {
+        return res.status(400).json({ ok: false, error: "subscription_id is required." });
+      }
+
+      const oldSubId = visit.subscription_id ? String(visit.subscription_id) : null;
+
+      const { error: upErr } = await supabaseAdmin
+        .from("visits")
+        .update({ subscription_id: newSubId })
+        .eq("id", id);
+      if (upErr) return res.status(500).json({ ok: false, error: upErr.message });
+
+      if (oldSubId && oldSubId !== (newSubId || "")) {
+        await recomputeSubscriptionStatus(supabaseAdmin, oldSubId);
+      }
+      if (newSubId && newSubId !== (oldSubId || "")) {
+        await recomputeSubscriptionStatus(supabaseAdmin, newSubId);
+      }
+
+      const { data: fresh, error: frErr } = await supabaseAdmin.from("visits").select("*").eq("id", id).single();
+      if (frErr) return res.status(500).json({ ok: false, error: frErr.message });
+      return res.status(200).json({ ok: true, row: fresh });
+    } catch (e) {
+      console.error("PATCH /api/admin/visits/:id:", e?.message || e);
       return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
     }
   });

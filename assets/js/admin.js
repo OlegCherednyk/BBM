@@ -1914,6 +1914,11 @@ async function refreshDashboard() {
         await mod.setupStudentsAdmin();
         break;
       }
+      case "subscriptions": {
+        const mod = await import("./admin-subscriptions.js");
+        await mod.setupSubscriptionsAdmin();
+        break;
+      }
       case "votes":
         await renderVotesPanel();
         break;
@@ -2576,7 +2581,29 @@ function initStatsRangeControls() {
   });
 }
 
+const ADMIN_NAV_DESKTOP_MQ = window.matchMedia("(min-width: 721px)");
+
+function isAdminNavDesktop() {
+  return ADMIN_NAV_DESKTOP_MQ.matches;
+}
+
+function syncAdminNavDesktopState() {
+  const toggle = maybeEl("adminNavToggle");
+  const drawer = maybeEl("adminNavDrawer");
+  if (!drawer) return;
+  if (isAdminNavDesktop()) {
+    if (toggle) toggle.setAttribute("aria-expanded", "false");
+    drawer.classList.remove("is-open");
+    if (!drawer.classList.contains("admin-hide")) {
+      drawer.setAttribute("aria-hidden", "false");
+    }
+  } else if (!drawer.classList.contains("is-open")) {
+    drawer.setAttribute("aria-hidden", "true");
+  }
+}
+
 function closeAdminNavDrawer() {
+  if (isAdminNavDesktop()) return;
   const toggle = maybeEl("adminNavToggle");
   const drawer = maybeEl("adminNavDrawer");
   if (!toggle || !drawer) return;
@@ -2591,6 +2618,7 @@ function initAdminNavDrawer() {
   if (!toggle || !drawer) return;
 
   toggle.addEventListener("click", () => {
+    if (isAdminNavDesktop()) return;
     const open = toggle.getAttribute("aria-expanded") === "true";
     toggle.setAttribute("aria-expanded", open ? "false" : "true");
     drawer.classList.toggle("is-open", !open);
@@ -2606,12 +2634,15 @@ function initAdminNavDrawer() {
   });
 
   document.addEventListener("click", (e) => {
-    if (!drawer.classList.contains("is-open")) return;
+    if (isAdminNavDesktop() || !drawer.classList.contains("is-open")) return;
     const target = /** @type {Node | null} */ (e.target);
     if (target && !drawer.contains(target) && !toggle.contains(target)) {
       closeAdminNavDrawer();
     }
   });
+
+  ADMIN_NAV_DESKTOP_MQ.addEventListener("change", syncAdminNavDesktopState);
+  syncAdminNavDesktopState();
 }
 
 function showView(view) {
@@ -2626,6 +2657,7 @@ function showView(view) {
   if (toggle) toggle.classList.toggle("admin-hide", !dash);
   if (drawer) drawer.classList.toggle("admin-hide", !dash);
   if (!dash) closeAdminNavDrawer();
+  else syncAdminNavDesktopState();
 }
 
 async function isAdminUser(userId) {

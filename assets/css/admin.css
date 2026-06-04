@@ -48,7 +48,8 @@ body[data-admin-page] {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px 20px;
+  gap: 12px 16px;
+  min-width: 0;
 }
 
 .admin-nav__brand {
@@ -161,35 +162,50 @@ body[data-admin-page] {
 }
 
 @media (min-width: 721px) {
-  .admin-nav__drawer {
-    top: calc(var(--admin-nav-h) + 6px);
-    left: auto;
-    right: max(24px, calc((100vw - 960px) / 2));
-    width: max-content;
-    max-width: min(calc(100vw - 32px), 680px);
-    padding: 8px 10px;
-    border: 1px solid var(--admin-panel-border);
-    border-radius: 14px;
-    border-bottom: 1px solid var(--admin-panel-border);
-    box-shadow: var(--admin-shadow-md);
-    transform: translateY(-10px) scale(0.97);
-    transform-origin: top right;
-    opacity: 0;
+  .admin-nav__inner {
+    max-width: 1280px;
+    gap: 12px 20px;
   }
 
-  .admin-nav__drawer.is-open {
-    transform: translateY(0) scale(1);
+  .admin-nav__toggle {
+    display: none !important;
+  }
+
+  .admin-nav__drawer {
+    position: static;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: none;
+    box-shadow: none;
+    transform: none;
     opacity: 1;
+    pointer-events: auto;
+  }
+
+  .admin-nav__drawer:not(.admin-hide) {
+    display: block;
   }
 
   .admin-nav__jumps {
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: flex-end;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     max-width: none;
     margin: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+
+  .admin-nav__jumps::-webkit-scrollbar {
+    display: none;
   }
 
   .admin-nav__jumps > li {
@@ -198,8 +214,8 @@ body[data-admin-page] {
 
   .admin-nav__jumps a {
     width: auto;
-    padding: 7px 13px;
-    font-size: 0.8rem;
+    padding: 6px 11px;
+    font-size: 0.78rem;
     letter-spacing: 0.01em;
     white-space: nowrap;
   }
@@ -1072,7 +1088,9 @@ body.admin-modal-open {
 }
 
 .admin-students-abon-badge--exhausted {
-  opacity: 0.82;
+  border-color: rgba(198, 40, 40, 0.55);
+  background: rgba(198, 40, 40, 0.14);
+  color: #c62828;
 }
 
 .admin-students-visits-dot {
@@ -1334,9 +1352,61 @@ body.admin-modal-open {
   max-width: 100%;
 }
 
+/* Абонементи: пошук + фільтри + кнопка в один ряд */
+.admin-students-toolbar--subs {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding-bottom: 4px;
+}
+
+.admin-students-toolbar--subs .admin-students-toolbar__cell {
+  flex: 0 0 auto;
+}
+
+.admin-students-toolbar--subs .admin-students-toolbar__cell:first-child {
+  flex: 1 1 200px;
+  min-width: 120px;
+}
+
+.admin-students-toolbar--subs .admin-students-toolbar__cell:nth-child(2),
+.admin-students-toolbar--subs .admin-students-toolbar__cell:nth-child(3) {
+  flex: 0 0 min(11rem, 22vw);
+  min-width: 7.5rem;
+}
+
+.admin-students-toolbar--subs .admin-students-toolbar__cell:last-child {
+  flex: 0 0 auto;
+}
+
+.admin-students-toolbar--subs .admin-students-toolbar__action.btn {
+  width: auto;
+  min-width: 5.5rem;
+  white-space: nowrap;
+}
+
 @media (max-width: 720px) {
   .admin-students-toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .admin-students-toolbar--subs {
+    flex-wrap: wrap;
+  }
+
+  .admin-students-toolbar--subs .admin-students-toolbar__cell:first-child {
+    flex: 1 1 100%;
+  }
+
+  .admin-students-toolbar--subs .admin-students-toolbar__cell:nth-child(2),
+  .admin-students-toolbar--subs .admin-students-toolbar__cell:nth-child(3) {
+    flex: 1 1 calc(50% - 4px);
+  }
+
+  .admin-students-toolbar--subs .admin-students-toolbar__cell:last-child {
+    flex: 1 1 100%;
   }
 }
 
@@ -1394,6 +1464,68 @@ body.admin-modal-open {
 
 .btn--price-add {
   min-width: 160px;
+}
+
+.admin-student-pick {
+  position: relative;
+}
+
+.admin-student-pick__selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  background: var(--cream-soft);
+  border: 1px solid var(--cream-mid);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+.admin-student-pick__results {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin: 4px 0 0;
+  padding: 6px 0;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--admin-panel-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--admin-shadow-md);
+}
+
+.admin-student-pick__results li {
+  margin: 0;
+}
+
+.admin-student-pick__option {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: var(--brown-dark);
+  cursor: pointer;
+}
+
+.admin-student-pick__option:hover,
+.admin-student-pick__option:focus-visible {
+  background: var(--cream-soft);
+}
+
+.admin-student-pick__empty {
+  padding: 10px 14px;
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--brown-mid);
 }
 
 /* ── QUICK BANK BUTTONS ── */

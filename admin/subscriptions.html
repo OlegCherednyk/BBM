@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/png" href="../logo_bbm_circle.png" />
+    <title>Адмін — абонементи</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+    <link rel="stylesheet" href="../assets/css/admin.css" />
+  </head>
+  <body data-admin-page="subscriptions">
+    <nav class="nav nav--admin scrolled" aria-label="Адмін">
+      <div class="admin-nav__inner">
+        <div class="admin-nav__brand">
+          <a class="nav__logo" href="../index.html">mozok.tilo.ruh</a>
+        </div>
+        <div id="adminNavDrawer" class="admin-nav__drawer admin-hide" aria-hidden="true">
+          <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі за порядком">
+        <li><a href="prices.html">Ціни</a></li>
+        <li><a href="places.html">Місця</a></li>
+        <li><a href="teachers.html">Викладачі</a></li>
+        <li><a href="students.html">Учні</a></li>
+        <li><a href="subscriptions.html" aria-current="page">Абонементи</a></li>
+        <li><a href="votes.html">Голосування</a></li>
+        <li><a href="lessons.html">Заняття</a></li>
+        <li><a href="stats.html">Статистика</a></li>
+          </ol>
+        </div>
+        <button
+          type="button"
+          class="admin-nav__toggle nav__hamburger admin-hide"
+          id="adminNavToggle"
+          aria-label="Меню"
+          aria-expanded="false"
+          aria-controls="adminNavDrawer"
+        >
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+      </div>
+    </nav>
+
+    <main class="admin-page">
+      <div id="authSection" class="admin-hide"></div>
+      <div id="blockedSection" class="admin-hide">
+        <div class="admin-top">
+          <h1 style="margin: 0">Немає прав</h1>
+          <button type="button" class="btn btn--ghost btn--sm" id="signOutBlocked">Вийти</button>
+        </div>
+        <p class="admin-muted">
+          Обліковий запис не у списку адміністраторів. Виконай у Supabase → SQL Editor (ідентифікатор користувача підставлено):
+        </p>
+        <pre
+          style="
+            font-size: 0.82rem;
+            background: var(--cream-soft);
+            border: 1px solid var(--cream-mid);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            overflow: auto;
+            line-height: 1.45;
+          "
+          id="allowlistSnippet"
+        ></pre>
+      </div>
+
+      <div id="dashSection" class="admin-hide">
+        <div class="admin-top">
+          <h1>Абонементи</h1>
+          <button type="button" class="btn btn--primary btn--sm btn--price-add" id="subCreateOpenBtn">
+            + Створити абонемент
+          </button>
+        </div>
+        <div id="dashError" class="admin-alert admin-alert--error admin-hide" role="status"></div>
+        <div id="dashOk" class="admin-alert admin-alert--ok admin-hide" role="status"></div>
+        <div id="subsError" class="admin-alert admin-alert--error admin-hide" role="status"></div>
+
+        <!-- Toolbar: filters -->
+        <div class="admin-students-toolbar admin-students-toolbar--subs" role="search" aria-label="Фільтр абонементів">
+          <div class="admin-students-toolbar__cell">
+            <input
+              type="search"
+              id="subsSearch"
+              placeholder="Учень: імʼя, @нік, телефон…"
+              class="admin-search__input admin-students-toolbar__search"
+              aria-label="Пошук за учнем"
+            />
+          </div>
+          <div class="admin-students-toolbar__cell">
+            <select id="subsStatusFilter" class="admin-students-toolbar__select" aria-label="Фільтр за статусом">
+              <option value="">Усі статуси</option>
+              <option value="pending">В обробці</option>
+              <option value="active">Активні</option>
+              <option value="exhausted">Вичерпані</option>
+            </select>
+          </div>
+          <div class="admin-students-toolbar__cell">
+            <select id="subsLessonTypeFilter" class="admin-students-toolbar__select" aria-label="Фільтр за типом заняття">
+              <option value="">Усі типи</option>
+            </select>
+          </div>
+          <div class="admin-students-toolbar__cell">
+            <button type="button" class="btn btn--primary btn--sm admin-students-toolbar__action" id="subsReload">
+              Пошук
+            </button>
+          </div>
+        </div>
+
+        <!-- Subscription list -->
+        <div id="subsList"><p class="admin-muted">Завантаження…</p></div>
+        <div id="subsPagination"></div>
+
+        <!-- Create subscription modal -->
+        <div id="subCreateModal" class="admin-modal admin-hide" aria-hidden="true">
+          <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+          <div
+            class="admin-modal__dialog admin-modal__dialog--wide"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="subCreateModalTitle"
+          >
+            <div class="admin-modal__head">
+              <h3 id="subCreateModalTitle" class="admin-modal__title">Новий абонемент</h3>
+              <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
+            </div>
+            <div class="admin-modal__body">
+              <form id="subCreateForm" class="admin-grid admin-grid--2">
+                <input type="hidden" id="subCreateStudentId" />
+
+                <div class="admin-field admin-grid-span-2 admin-student-pick">
+                  <label for="subCreateStudentSearch">Учень</label>
+                  <div id="subCreateStudentSelected" class="admin-student-pick__selected admin-hide">
+                    <span id="subCreateStudentSelectedLabel"></span>
+                    <button type="button" class="btn btn--ghost btn--sm" id="subCreateStudentClear">Змінити</button>
+                  </div>
+                  <input
+                    id="subCreateStudentSearch"
+                    type="search"
+                    class="admin-search__input"
+                    placeholder="Імʼя, @нік, телефон…"
+                    autocomplete="off"
+                    aria-controls="subCreateStudentResults"
+                    aria-expanded="false"
+                  />
+                  <ul
+                    id="subCreateStudentResults"
+                    class="admin-student-pick__results admin-hide"
+                    role="listbox"
+                    aria-label="Результати пошуку учнів"
+                  ></ul>
+                </div>
+
+                <div class="admin-field">
+                  <label for="subCreateLessonType">Тип заняття</label>
+                  <select id="subCreateLessonType" required>
+                    <option value="">— оберіть тип —</option>
+                  </select>
+                </div>
+                <div class="admin-field">
+                  <label for="subCreateTotalVisits">Візитів у пакеті</label>
+                  <input id="subCreateTotalVisits" type="number" min="1" step="1" placeholder="8" />
+                </div>
+                <div class="admin-field">
+                  <label for="subCreateAmount">Сума ₴</label>
+                  <input id="subCreateAmount" type="number" min="0" step="1" />
+                </div>
+                <div class="admin-field">
+                  <label for="subCreateValidUntil">Діє до</label>
+                  <input id="subCreateValidUntil" type="date" />
+                </div>
+                <div class="admin-field">
+                  <label for="subCreatePurchasedAt">Дата покупки</label>
+                  <input id="subCreatePurchasedAt" type="date" />
+                </div>
+
+                <div class="admin-actions admin-grid-span-2">
+                  <button type="submit" class="btn btn--primary btn--sm">Створити абонемент</button>
+                  <button type="button" class="btn btn--ghost btn--sm" data-admin-modal-close>Скасувати</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- Edit modal -->
+        <div id="subEditModal" class="admin-modal admin-hide" aria-hidden="true">
+          <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+          <div
+            class="admin-modal__dialog admin-modal__dialog--wide"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="subEditModalTitle"
+          >
+            <div class="admin-modal__head">
+              <h3 id="subEditModalTitle" class="admin-modal__title">Абонемент</h3>
+              <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
+            </div>
+            <div class="admin-modal__body">
+              <input type="hidden" id="subEditId" />
+
+              <p id="subEditStudentName" class="admin-muted admin-modal__sub" style="margin-bottom:12px"></p>
+
+              <div class="admin-grid admin-grid--2">
+                <div class="admin-field">
+                  <label for="subEditLessonType">Тип заняття</label>
+                  <input id="subEditLessonType" type="text" readonly style="background:var(--cream-soft)" />
+                </div>
+                <div class="admin-field">
+                  <label for="subEditStatus">Статус</label>
+                  <select id="subEditStatus">
+                    <option value="pending">В обробці</option>
+                    <option value="active">Активний</option>
+                    <option value="exhausted">Вичерпаний</option>
+                  </select>
+                </div>
+                <div class="admin-field">
+                  <label for="subEditVisitsRow">Використано · пакет</label>
+                  <div class="admin-subscription-card__visits-row">
+                    <input id="subEditUsedVisits" type="number" min="0" step="1"
+                      title="Використані візити (разом). Якщо залишити як у журналі — лише авто; більше — задає «використано до журналу»." />
+                    <input id="subEditTotalVisits" type="number" min="0" step="1" placeholder="порожньо = «в обробці»" />
+                  </div>
+                </div>
+                <div class="admin-field">
+                  <label for="subEditValidUntil">Діє до</label>
+                  <input id="subEditValidUntil" type="date" />
+                </div>
+                <div class="admin-field">
+                  <label for="subEditAmount">Сума ₴</label>
+                  <input id="subEditAmount" type="number" min="0" step="1" />
+                </div>
+                <div class="admin-field">
+                  <label for="subEditPurchasedAt">Дата покупки</label>
+                  <input id="subEditPurchasedAt" type="date" />
+                </div>
+              </div>
+
+              <div class="admin-actions" style="margin-top:16px">
+                <button type="button" class="btn btn--primary btn--sm" id="subEditSaveBtn">Зберегти</button>
+                <button type="button" class="btn btn--ghost btn--sm" id="subEditDeleteBtn">Видалити абонемент</button>
+              </div>
+
+              <!-- Visits linked to this subscription -->
+              <div class="admin-price-create__head admin-modal__section-head" style="margin-top:24px">
+                <h4 class="admin-modal__section-title">Візити цього абонемента</h4>
+              </div>
+              <div id="subEditVisitsList" class="admin-visit-journal" aria-live="polite">
+                <p class="admin-muted">Завантаження…</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Visit reassign modal -->
+        <div id="visitReassignModal" class="admin-modal admin-hide" aria-hidden="true">
+          <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+          <div
+            class="admin-modal__dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="visitReassignTitle"
+          >
+            <div class="admin-modal__head">
+              <h3 id="visitReassignTitle" class="admin-modal__title">Перечіпити візит</h3>
+              <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
+            </div>
+            <div class="admin-modal__body">
+              <input type="hidden" id="visitReassignVisitId" />
+              <p id="visitReassignLabel" class="admin-muted" style="margin-bottom:12px"></p>
+              <div class="admin-field">
+                <label for="visitReassignSubSelect">Абонемент учня</label>
+                <select id="visitReassignSubSelect">
+                  <option value="">— без абонемента (разове) —</option>
+                </select>
+              </div>
+              <div class="admin-actions" style="margin-top:16px">
+                <button type="button" class="btn btn--primary btn--sm" id="visitReassignSaveBtn">Зберегти</button>
+                <button type="button" class="btn btn--ghost btn--sm" data-admin-modal-close>Скасувати</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span>mozok.tilo.ruh — адмін</span>
+      <a href="../index.html">Сайт</a>
+    </footer>
+
+    <script src="../assets/js/custom-select.js"></script>
+    <script type="module" src="../assets/js/admin.js"></script>
+  </body>
+</html>
