@@ -643,6 +643,120 @@ async function attendedVisitsCountForStudents(supabaseAdmin, studentIds) {
 
 /**
  * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {string[]} studentIds
+ */
+async function lastVisitAtForStudents(supabaseAdmin, studentIds) {
+  if (studentIds.length === 0) return new Map();
+  const { data, error } = await supabaseAdmin
+    .from("visits")
+    .select("student_id, created_at, lesson_vote_occurrences ( occurrence_at )")
+    .in("student_id", studentIds)
+    .eq("visit_status", "attended");
+  if (error) throw new Error(error.message);
+
+  /** @type {Map<string, string>} */
+  const m = new Map();
+  for (const row of data || []) {
+    const sid = row.student_id;
+    if (!sid) continue;
+    const occ = row.lesson_vote_occurrences?.occurrence_at;
+    const at = occ || row.created_at;
+    if (!at) continue;
+    const key = String(sid);
+    const prev = m.get(key);
+    if (!prev || new Date(at).getTime() > new Date(prev).getTime()) {
+      m.set(key, String(at));
+    }
+  }
+  return m;
+}
+
+/** @param {unknown[]} pricesRows */
+function buildPriceByType(pricesRows) {
+  /** @type {Map<string, { single: number, abonUnit: number }>} */
+  const map = new Map();
+  for (const row of pricesRows || []) {
+    const lessonTypeId = String(row.lesson_type_id || "");
+    if (!lessonTypeId) continue;
+    const amount = Number(row.amount_uah) || 0;
+    const visits = Math.max(1, Number(row.visits_count) || 1);
+    const current = map.get(lessonTypeId) || { single: 0, abonUnit: 0 };
+    if (row.price_kind === "single") {
+      current.single = amount;
+    } else if (row.price_kind === "abon") {
+      const unit = amount / visits;
+      if (!current.abonUnit || unit < current.abonUnit) current.abonUnit = unit;
+    }
+    map.set(lessonTypeId, current);
+  }
+  return map;
+}
+
+/** @param {Record<string, unknown> | null | undefined} snap */
+function lessonTypeIdFromSnapshot(snap) {
+  if (snap && typeof snap.lesson_type_id === "string" && snap.lesson_type_id.trim()) {
+    return snap.lesson_type_id.trim();
+  }
+  return null;
+}
+
+/**
+ * Виручка учня: сума amount_uah усіх куплених абонементів (у т.ч. вичерпаних) + разові з журналу.
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {string[]} studentIds
+ */
+async function totalRevenueForStudents(supabaseAdmin, studentIds) {
+  if (studentIds.length === 0) return new Map();
+
+  const [
+    { data: subs, error: sErr },
+    { data: pricesRows, error: pErr },
+    { data: visits, error: vErr },
+  ] = await Promise.all([
+    supabaseAdmin.from("subscriptions").select("student_id, amount_uah").in("student_id", studentIds),
+    supabaseAdmin.from("prices").select("lesson_type_id, price_kind, visits_count, amount_uah"),
+    supabaseAdmin
+      .from("visits")
+      .select("student_id, vote_choice, lesson_vote_occurrences ( lesson_snapshot )")
+      .in("student_id", studentIds)
+      .eq("visit_status", "attended")
+      .eq("vote_choice", "single"),
+  ]);
+  if (sErr) throw new Error(sErr.message);
+  if (pErr) throw new Error(pErr.message);
+  if (vErr) throw new Error(vErr.message);
+
+  const priceByType = buildPriceByType(pricesRows || []);
+  /** @type {Map<string, number>} */
+  const m = new Map();
+  for (const id of studentIds) m.set(String(id), 0);
+
+  for (const sub of subs || []) {
+    const sid = String(sub.student_id || "");
+    if (!sid || !m.has(sid)) continue;
+    const amount = Number(sub.amount_uah) || 0;
+    if (amount <= 0) continue;
+    m.set(sid, (m.get(sid) || 0) + amount);
+  }
+
+  for (const visit of visits || []) {
+    const sid = String(visit.student_id || "");
+    if (!sid || !m.has(sid)) continue;
+
+    const snap = visit.lesson_vote_occurrences?.lesson_snapshot;
+    const lessonTypeId = lessonTypeIdFromSnapshot(snap);
+    const prices = lessonTypeId ? priceByType.get(lessonTypeId) || { single: 0, abonUnit: 0 } : { single: 0, abonUnit: 0 };
+    m.set(sid, (m.get(sid) || 0) + prices.single);
+  }
+
+  for (const [sid, val] of m) {
+    m.set(sid, Math.round(val * 100) / 100);
+  }
+  return m;
+}
+
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
  * @param {string} studentId
  * @param {string} lessonTypeId
  */
@@ -854,6 +968,8 @@ export function registerStudentRoutes(app, supabaseAdmin) {
       const ids = (students || []).map((s) => s.id);
       const summaryMap = await subscriptionSummaryForStudents(supabaseAdmin, ids);
       const attendedMap = await attendedVisitsCountForStudents(supabaseAdmin, ids);
+      const lastVisitMap = await lastVisitAtForStudents(supabaseAdmin, ids);
+      const revenueMap = await totalRevenueForStudents(supabaseAdmin, ids);
       const rows = (students || []).map((s) => ({
         ...s,
         subscription_summary: summaryMap.get(s.id) || {
@@ -865,6 +981,8 @@ export function registerStudentRoutes(app, supabaseAdmin) {
           abon_visits_remaining: 0,
         },
         attended_visits_count: attendedMap.get(String(s.id)) || 0,
+        last_visit_at: lastVisitMap.get(String(s.id)) || null,
+        total_revenue_uah: revenueMap.get(String(s.id)) || 0,
       }));
 
       rows.sort((a, b) => {

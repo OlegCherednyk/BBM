@@ -92,6 +92,17 @@
               />
             </div>
             <div class="admin-students-toolbar__cell">
+              <button
+                type="button"
+                class="btn btn--danger btn--sm admin-students-toolbar__risk"
+                id="studentsRiskFilter"
+                aria-pressed="false"
+                title="Учні без жодного заняття або без відвідування понад 2 тижні"
+              >
+                Зона ризику
+              </button>
+            </div>
+            <div class="admin-students-toolbar__cell">
               <button type="button" class="btn btn--primary btn--sm admin-students-toolbar__action" id="studentsReload">
                 Пошук
               </button>
@@ -115,6 +126,7 @@
               <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
             </div>
             <div class="admin-modal__body">
+              <div id="studentEditOk" class="admin-alert admin-alert--ok admin-hide admin-modal__alert" role="status"></div>
               <form id="studentEditForm" class="admin-grid admin-grid--2">
                 <input type="hidden" id="studentDetailId" />
                 <div class="admin-field">

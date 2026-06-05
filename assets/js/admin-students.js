@@ -10,6 +10,41 @@ function showStudentsLocalError(msg) {
   if (!box) return;
   box.textContent = msg;
   box.classList.toggle("admin-hide", !msg);
+  if (msg) clearStudentEditOk();
+}
+
+/** @type {ReturnType<typeof setTimeout> | null} */
+let studentEditOkTimer = null;
+
+function clearStudentEditOk() {
+  if (studentEditOkTimer) {
+    clearTimeout(studentEditOkTimer);
+    studentEditOkTimer = null;
+  }
+  el("studentEditOk")?.classList.add("admin-hide");
+}
+
+function showStudentsDashOk(msg) {
+  const ok = el("dashOk");
+  if (!ok) return;
+  ok.textContent = msg;
+  ok.classList.remove("admin-hide");
+  setTimeout(() => ok.classList.add("admin-hide"), 3600);
+}
+
+function showStudentEditOk(msg) {
+  const box = el("studentEditOk");
+  if (!box) {
+    showStudentsDashOk(msg);
+    return;
+  }
+  clearStudentEditOk();
+  box.textContent = msg;
+  box.classList.remove("admin-hide");
+  studentEditOkTimer = setTimeout(() => {
+    box.classList.add("admin-hide");
+    studentEditOkTimer = null;
+  }, 3600);
 }
 
 function apiBase() {
@@ -50,21 +85,108 @@ function toDateInputValue(isoLike) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
 }
 
-/** Бейдж у списку: пріоритет активний → в обробці → вичерпаний. */
-function appendAbonBadgeIfAny(rowWrap, summary) {
-  const p = Number(summary?.pending) || 0;
+function fmtStudentMoney(amount) {
+  const n = Number(amount) || 0;
+  return `${Math.round(n).toLocaleString("uk-UA")} ₴`;
+}
+
+function formatStudentLastVisitShort(lastVisitAt) {
+  if (!lastVisitAt) return "—";
+  try {
+    return new Date(lastVisitAt).toLocaleDateString("uk-UA", {
+      timeZone: "Europe/Kyiv",
+      day: "2-digit",
+      month: "2-digit",
+      year: "2-digit",
+    });
+  } catch {
+    return "—";
+  }
+}
+
+/** @param {Record<string, unknown> | null | undefined} summary */
+function studentAbonStatus(summary) {
   const a = Number(summary?.active) || 0;
+  const p = Number(summary?.pending) || 0;
   const x = Number(summary?.exhausted) || 0;
-  if (!p && !a && !x) return;
-  const span = document.createElement("span");
-  span.className = "admin-students-abon-badge";
-  span.textContent = "Абон";
-  span.title =
-    a > 0 ? "Є активний абонемент" : p > 0 ? "Є абонемент «в обробці»" : "Лише вичерпані абонементи";
-  if (a > 0) span.classList.add("admin-students-abon-badge--active");
-  else if (p > 0) span.classList.add("admin-students-abon-badge--pending");
-  else span.classList.add("admin-students-abon-badge--exhausted");
-  rowWrap.appendChild(span);
+  if (a > 0) {
+    return { valueClass: "admin-students-card__metric-value--abon-active", title: "Є активний абонемент" };
+  }
+  if (p > 0) {
+    return { valueClass: "admin-students-card__metric-value--abon-pending", title: "Є абонемент «в обробці»" };
+  }
+  if (x > 0) {
+    return { valueClass: "admin-students-card__metric-value--abon-exhausted", title: "Лише вичерпані абонементи" };
+  }
+  return null;
+}
+
+function studentAbonVisitsText(summary) {
+  const totalPkg = Number(summary?.abon_visits_total);
+  if (!Number.isFinite(totalPkg) || totalPkg <= 0) return null;
+  let remPkg = Number(summary?.abon_visits_remaining);
+  if (!Number.isFinite(remPkg) || remPkg < 0) remPkg = 0;
+  const usedPkg = Math.max(0, Math.floor(totalPkg) - Math.floor(remPkg));
+  return {
+    text: `${usedPkg}/${Math.floor(totalPkg)}`,
+    title: `Використано ${usedPkg} із ${Math.floor(totalPkg)} візитів абонемента.`,
+  };
+}
+
+/** @param {HTMLElement} container @param {string} label @param {string} value @param {string} [extraClass] @param {string} [title] @param {string} [valueClass] */
+function appendStudentMetric(container, label, value, extraClass = "", title = "", valueClass = "") {
+  const tile = document.createElement("div");
+  tile.className = `admin-students-card__metric${extraClass ? ` ${extraClass}` : ""}`;
+  if (title) tile.title = title;
+
+  const lab = document.createElement("span");
+  lab.className = "admin-students-card__metric-label";
+  lab.textContent = label;
+  const val = document.createElement("span");
+  val.className = `admin-students-card__metric-value${valueClass ? ` ${valueClass}` : ""}`;
+  val.textContent = value;
+  tile.append(lab, val);
+  container.appendChild(tile);
+}
+
+/** @param {HTMLElement} container @param {any} student */
+function mountStudentTileMetrics(container, student) {
+  container.innerHTML = "";
+  const summary = student.subscription_summary;
+  const visits = Math.max(0, Math.floor(Number(student.attended_visits_count) || 0));
+  const visitsTitle =
+    visits === 0 ? "Немає відвіданих занять" : visits === 1 ? "1 відвідане заняття" : `${visits} відвіданих занять`;
+
+  const lastVisit = formatStudentLastVisitShort(student.last_visit_at);
+  const lastTitle = student.last_visit_at
+    ? `Останнє відвідане заняття: ${lastVisit}`
+    : "Ще не був на занятті";
+
+  appendStudentMetric(
+    container,
+    "Виручка",
+    fmtStudentMoney(student.total_revenue_uah),
+    "admin-students-card__metric--revenue",
+    "Сума куплених абонементів (у т.ч. вичерпаних) + разові відвідування",
+  );
+  appendStudentMetric(container, "Останнє", lastVisit, "admin-students-card__metric--last", lastTitle);
+  appendStudentMetric(container, "Візити", String(visits), "", visitsTitle);
+
+  const abonStatus = studentAbonStatus(summary);
+  const abonVisits = studentAbonVisitsText(summary);
+  if (abonStatus) {
+    const abonTitle = abonVisits?.title ? `${abonStatus.title}. ${abonVisits.title}` : abonStatus.title;
+    appendStudentMetric(
+      container,
+      "Абонемент",
+      abonVisits?.text || "—",
+      "admin-students-card__metric--abon",
+      abonTitle,
+      abonStatus.valueClass,
+    );
+  } else {
+    appendStudentMetric(container, "Абонемент", "—", "admin-students-card__metric--muted");
+  }
 }
 
 /** Кількість абонементів і дроб Р/Т по візитах — один блок у рядку картки списку. */
@@ -94,29 +216,39 @@ function computeUsedVisitsDisplay(sub, visits) {
   return used;
 }
 
-function appendStudentCardMetaNums(tail, summary) {
-  const totalPkg = Number(summary?.abon_visits_total);
-  let remPkg = Number(summary?.abon_visits_remaining);
-  if (!Number.isFinite(totalPkg) || totalPkg <= 0) return;
+function isStudentAbsentOverTwoWeeks(student, lastVisitAt) {
+  const attended = Math.max(0, Math.floor(Number(student?.attended_visits_count) || 0));
 
-  if (!Number.isFinite(remPkg) || remPkg < 0) remPkg = 0;
-  const usedPkg = Math.max(0, Math.floor(totalPkg) - Math.floor(remPkg));
+  if (attended === 0) {
+    return true;
+  }
 
-  const meta = document.createElement("span");
-  meta.className = "admin-students-card__meta";
-  meta.textContent = `${usedPkg}/${Math.floor(totalPkg)}`;
-  meta.title = `Використано ${usedPkg} із ${Math.floor(totalPkg)} візитів абонемента.`;
-  tail.appendChild(meta);
+  if (!lastVisitAt) return false;
+
+  const t = new Date(lastVisitAt).getTime();
+  if (!Number.isFinite(t)) return false;
+  return Date.now() - t > STUDENT_ABSENT_MS;
 }
 
-function appendAttendedVisitsDot(tail, count) {
-  const n = Math.max(0, Math.floor(Number(count) || 0));
-  const dot = document.createElement("span");
-  dot.className = "admin-students-visits-dot";
-  dot.textContent = String(n);
-  dot.title =
-    n === 0 ? "Немає відвіданих занять" : n === 1 ? "1 відвідане заняття" : `${n} відвіданих занять`;
-  tail.appendChild(dot);
+function absentStudentTriggerTitle(student, lastVisitAt) {
+  const attended = Math.max(0, Math.floor(Number(student?.attended_visits_count) || 0));
+  if (attended === 0) {
+    return "Не був на жодному занятті.";
+  }
+  if (lastVisitAt) {
+    try {
+      const when = new Date(lastVisitAt).toLocaleDateString("uk-UA", {
+        timeZone: "Europe/Kyiv",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
+      return `Останнє заняття: ${when}. Більше 2 тижнів без відвідування.`;
+    } catch {
+      return "Більше 2 тижнів без відвідування.";
+    }
+  }
+  return "Більше 2 тижнів без відвідування.";
 }
 
 async function fetchJson(path, opts = {}) {
@@ -210,10 +342,19 @@ function mountVisitJournal(container, visits) {
 /** @type {string | null} */
 let selectedId = null;
 
-const STUDENTS_PAGE_SIZE = 10;
+const STUDENTS_PAGE_SIZE = 12;
+const STUDENT_ABSENT_MS = 14 * 24 * 60 * 60 * 1000;
 let studentsPage = 1;
+let studentsRiskFilter = false;
+/** @type {any[]} */
+let cachedAllStudentRows = [];
 /** @type {any[]} */
 let cachedStudentRows = [];
+
+function studentRowsForDisplay(allRows) {
+  if (!studentsRiskFilter) return allRows;
+  return allRows.filter((s) => isStudentAbsentOverTwoWeeks(s, s.last_visit_at));
+}
 
 let studentsAdminWired = false;
 
@@ -221,6 +362,7 @@ export async function setupStudentsAdmin() {
   const listEl = el("studentsList");
   const searchEl = el("studentsSearch");
   const reloadBtn = el("studentsReload");
+  const riskBtn = el("studentsRiskFilter");
   const editModal = el("studentEditModal");
   const visitsModal = el("studentVisitsModal");
   const subFormToggle = el("subscriptionFormToggle");
@@ -438,12 +580,7 @@ export async function setupStudentsAdmin() {
             }),
           });
           await reloadSubs();
-          const okBox = el("dashOk");
-          if (okBox) {
-            okBox.textContent = "Абонемент збережено.";
-            okBox.classList.remove("admin-hide");
-            setTimeout(() => okBox.classList.add("admin-hide"), 2400);
-          }
+          showStudentEditOk("Абонемент збережено.");
         } catch (err) {
           showStudentsLocalError(err?.message || String(err));
         } finally {
@@ -462,12 +599,7 @@ export async function setupStudentsAdmin() {
             method: "DELETE",
           });
           await reloadSubs();
-          const okBox = el("dashOk");
-          if (okBox) {
-            okBox.textContent = "Абонемент видалено.";
-            okBox.classList.remove("admin-hide");
-            setTimeout(() => okBox.classList.add("admin-hide"), 2400);
-          }
+          showStudentEditOk("Абонемент видалено.");
         } catch (err) {
           showStudentsLocalError(err?.message || String(err));
         } finally {
@@ -539,7 +671,8 @@ export async function setupStudentsAdmin() {
 
     const info = document.createElement("span");
     info.className = "admin-muted";
-    info.textContent = `Сторінка ${studentsPage} з ${totalPages} · учнів: ${totalCount}`;
+    const scopeLabel = studentsRiskFilter ? " · зона ризику" : "";
+    info.textContent = `Сторінка ${studentsPage} з ${totalPages} · учнів: ${totalCount}${scopeLabel}`;
 
     const nextBtn = document.createElement("button");
     nextBtn.type = "button";
@@ -565,7 +698,10 @@ export async function setupStudentsAdmin() {
 
     listEl.innerHTML = "";
     if (!rows.length) {
-      listEl.innerHTML = `<p class="admin-muted">Нікого не знайдено.</p>`;
+      const emptyMsg = studentsRiskFilter
+        ? "У зоні ризику зараз нікого немає."
+        : "Нікого не знайдено.";
+      listEl.innerHTML = `<p class="admin-muted">${emptyMsg}</p>`;
       renderStudentsPagination(0);
       listEl.dataset.ready = "true";
       return;
@@ -575,10 +711,22 @@ export async function setupStudentsAdmin() {
     const pageRows = rows.slice(pageStart, pageStart + STUDENTS_PAGE_SIZE);
     const frag = document.createDocumentFragment();
     for (const s of pageRows) {
-      const card = document.createElement("div");
-      card.className = "admin-panel admin-students-card";
-      const row = document.createElement("div");
-      row.className = "admin-students-card__row";
+      const absent = isStudentAbsentOverTwoWeeks(s, s.last_visit_at);
+
+      const card = document.createElement("article");
+      card.className = "admin-students-card admin-students-card--tile";
+      if (absent) card.classList.add("admin-students-card--absent");
+
+      if (absent) {
+        const trigger = document.createElement("span");
+        trigger.className = "admin-students-card__absent-trigger";
+        trigger.title = absentStudentTriggerTitle(s, s.last_visit_at);
+        trigger.setAttribute("aria-label", trigger.title);
+        card.appendChild(trigger);
+      }
+
+      const head = document.createElement("div");
+      head.className = "admin-students-card__head";
 
       const nameBtn = document.createElement("button");
       nameBtn.type = "button";
@@ -587,21 +735,20 @@ export async function setupStudentsAdmin() {
       nameBtn.addEventListener("click", () => {
         void openDetail(String(s.id));
       });
+      head.appendChild(nameBtn);
 
-      const tail = document.createElement("div");
-      tail.className = "admin-students-card__tail";
-      appendAbonBadgeIfAny(tail, s.subscription_summary);
-      appendStudentCardMetaNums(tail, s.subscription_summary);
-      appendAttendedVisitsDot(tail, s.attended_visits_count);
+      const metrics = document.createElement("div");
+      metrics.className = "admin-students-card__metrics";
+      mountStudentTileMetrics(metrics, s);
 
       const actions = document.createElement("div");
       actions.className = "admin-students-card__actions";
 
       const journalBtn = document.createElement("button");
       journalBtn.type = "button";
-      journalBtn.className = "btn btn--ghost btn--sm";
-      journalBtn.textContent = "Журнал відвідування";
-      journalBtn.title = "Усі заняття учня";
+      journalBtn.className = "btn btn--ghost btn--sm admin-students-card__journal-btn";
+      journalBtn.textContent = "Журнал";
+      journalBtn.title = "Журнал відвідування";
       journalBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         void openVisitsJournal(String(s.id), formatStudentListLabel(s));
@@ -619,13 +766,28 @@ export async function setupStudentsAdmin() {
       });
 
       actions.append(journalBtn, editBtn);
-      row.append(nameBtn, tail, actions);
-      card.appendChild(row);
+      card.append(head, metrics, actions);
       frag.appendChild(card);
     }
     listEl.appendChild(frag);
     renderStudentsPagination(rows.length);
     listEl.dataset.ready = "true";
+  }
+
+  function syncRiskFilterButton() {
+    if (!riskBtn) return;
+    riskBtn.textContent = studentsRiskFilter ? "Показати всіх" : "Зона ризику";
+    riskBtn.setAttribute("aria-pressed", studentsRiskFilter ? "true" : "false");
+    riskBtn.title = studentsRiskFilter
+      ? "Повернути повний список учнів"
+      : "Учні без жодного заняття або без відвідування понад 2 тижні";
+    riskBtn.classList.toggle("btn--danger", !studentsRiskFilter);
+    riskBtn.classList.toggle("btn--ghost", studentsRiskFilter);
+  }
+
+  function mountStudentsFromCache({ resetPage = false } = {}) {
+    if (resetPage) studentsPage = 1;
+    mountStudentsList(studentRowsForDisplay(cachedAllStudentRows));
   }
 
   async function refreshList({ resetPage = false } = {}) {
@@ -637,6 +799,7 @@ export async function setupStudentsAdmin() {
     listEl.setAttribute("aria-busy", "true");
     listEl.classList.toggle("admin-students-list--loading", hasRenderedList);
     if (reloadBtn) reloadBtn.disabled = true;
+    if (riskBtn) riskBtn.disabled = true;
     if (!hasRenderedList) {
       listEl.innerHTML = `<p class="admin-muted">Завантаження…</p>`;
       el("studentsPagination") && (el("studentsPagination").innerHTML = "");
@@ -648,7 +811,8 @@ export async function setupStudentsAdmin() {
     try {
       const json = await fetchJson(`/api/admin/students${query ? `?${query}` : ""}`);
       if (requestSeq !== listRequestSeq) return;
-      mountStudentsList(json.rows || []);
+      cachedAllStudentRows = json.rows || [];
+      mountStudentsList(studentRowsForDisplay(cachedAllStudentRows));
     } catch (e) {
       if (requestSeq !== listRequestSeq) return;
       if (!hasRenderedList) listEl.innerHTML = "";
@@ -659,6 +823,7 @@ export async function setupStudentsAdmin() {
         listEl.setAttribute("aria-busy", "false");
         listEl.classList.remove("admin-students-list--loading");
         if (reloadBtn) reloadBtn.disabled = false;
+        if (riskBtn) riskBtn.disabled = false;
       }
     }
   }
@@ -666,6 +831,7 @@ export async function setupStudentsAdmin() {
   async function openDetail(id) {
     selectedId = id;
     showStudentsLocalError("");
+    clearStudentEditOk();
     openModal(editModal);
     const title = el("studentDetailTitle");
     if (title) title.textContent = "Завантаження…";
@@ -741,6 +907,11 @@ export async function setupStudentsAdmin() {
     });
 
     reloadBtn?.addEventListener("click", () => void refreshList({ resetPage: true }));
+    riskBtn?.addEventListener("click", () => {
+      studentsRiskFilter = !studentsRiskFilter;
+      syncRiskFilterButton();
+      mountStudentsFromCache({ resetPage: true });
+    });
     searchEl?.addEventListener("keydown", (e) => {
       if (e.key !== "Enter") return;
       e.preventDefault();
@@ -771,17 +942,9 @@ export async function setupStudentsAdmin() {
             admin_note: el("studentAdminNote")?.value.trim() || null,
           }),
         });
-        if (window.showDashOk) {
-          /* admin.js may not export — use dashOk element if present */
-          const ok = el("dashOk");
-          if (ok) {
-            ok.textContent = "Збережено.";
-            ok.classList.remove("admin-hide");
-            setTimeout(() => ok.classList.add("admin-hide"), 2400);
-          }
-        }
         await refreshList();
         await openDetail(id);
+        showStudentEditOk("Контакти збережено.");
       } catch (err) {
         showStudentsLocalError(err?.message || String(err));
       }
@@ -823,18 +986,14 @@ export async function setupStudentsAdmin() {
         });
         await openDetail(sid);
         await refreshList();
-        const ok = el("dashOk");
-        if (ok) {
-          ok.textContent = "Абонемент оновлено.";
-          ok.classList.remove("admin-hide");
-          setTimeout(() => ok.classList.add("admin-hide"), 2400);
-        }
+        showStudentEditOk("Абонемент додано.");
       } catch (err) {
         showStudentsLocalError(err?.message || String(err));
       }
     });
   }
 
+  syncRiskFilterButton();
   await refreshList();
   if (selectedId) await openDetail(selectedId);
 }

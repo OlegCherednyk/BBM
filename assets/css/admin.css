@@ -269,6 +269,7 @@ body[data-admin-page] {
 
 #section-students > .admin-students-toolbar {
   margin-bottom: 16px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 #section-lesson-types > .admin-muted:first-child {
@@ -412,12 +413,20 @@ body[data-admin-page] {
 
 /* ── STUDENTS LIST ── */
 .admin-students-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+  gap: 14px;
   min-height: 56px;
+  margin-top: 14px;
   transition: opacity 0.18s ease;
 }
 
 .admin-students-list--loading {
   opacity: 0.55;
+}
+
+.admin-students-list > .admin-muted {
+  grid-column: 1 / -1;
 }
 
 .admin-students-card__row {
@@ -481,12 +490,158 @@ body[data-admin-page] {
   box-shadow: var(--admin-shadow-xs);
 }
 
+.admin-students-card--tile {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 0;
+  padding: 18px 18px 16px;
+  border: 1px solid var(--admin-panel-border);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.92), rgba(241, 230, 221, 0.42));
+  box-shadow: var(--admin-shadow-xs);
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.admin-students-card--tile::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(to bottom, var(--olive), rgba(116, 134, 47, 0.25));
+}
+
+.admin-students-card--tile.admin-students-card--absent::before {
+  background: linear-gradient(to bottom, #c62828, rgba(198, 40, 40, 0.25));
+}
+
+.admin-students-card--tile:hover {
+  box-shadow: var(--admin-shadow-sm);
+  border-color: rgba(116, 134, 47, 0.4);
+  transform: translateY(-2px);
+}
+
+.admin-students-card--tile.admin-students-card--absent:hover {
+  border-color: rgba(198, 40, 40, 0.45);
+}
+
+.admin-students-card__absent-trigger {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #c62828;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 2px rgba(198, 40, 40, 0.28);
+  flex-shrink: 0;
+  cursor: help;
+}
+
+.admin-students-card__head {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+  padding-right: 18px;
+}
+
+.admin-students-card__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+
+.admin-students-card__metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 11px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(232, 217, 205, 0.75);
+}
+
+.admin-students-card__metric-label {
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--brown-light);
+}
+
+.admin-students-card__metric-value {
+  font-family: var(--ff-display);
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--brown-dark);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.admin-students-card__metric--revenue {
+  background: rgba(116, 134, 47, 0.08);
+  border-color: rgba(116, 134, 47, 0.22);
+}
+
+.admin-students-card__metric--last {
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.admin-students-card__metric--revenue .admin-students-card__metric-value {
+  font-size: 1.12rem;
+  letter-spacing: -0.02em;
+  color: var(--olive);
+}
+
+.admin-students-card--absent .admin-students-card__metric--revenue {
+  background: rgba(198, 40, 40, 0.06);
+  border-color: rgba(198, 40, 40, 0.18);
+}
+
+.admin-students-card--absent .admin-students-card__metric--revenue .admin-students-card__metric-value {
+  color: #a83232;
+}
+
+.admin-students-card__metric--muted .admin-students-card__metric-value {
+  color: var(--brown-light);
+  font-weight: 600;
+}
+
+.admin-students-card__metric-value--abon-active {
+  color: #2e7d32;
+}
+
+.admin-students-card__metric-value--abon-pending {
+  color: #a35f1a;
+}
+
+.admin-students-card__metric-value--abon-exhausted {
+  color: #c62828;
+}
+
 .admin-students-card__actions {
-  display: inline-flex;
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+  margin-top: auto;
+  padding-top: 2px;
+}
+
+.admin-students-card__journal-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: center;
 }
 
 .admin-students-card__edit-btn {
@@ -495,6 +650,7 @@ body[data-admin-page] {
   padding-right: 10px;
   font-size: 1rem;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .admin-students-card__name-btn {
@@ -509,6 +665,14 @@ body[data-admin-page] {
   cursor: pointer;
   min-width: 0;
   flex: 1 1 auto;
+}
+
+.admin-students-card--tile .admin-students-card__name-btn {
+  font-family: var(--ff-display);
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
 }
 
 .admin-students-card__name-btn:hover {
@@ -610,6 +774,10 @@ body.admin-modal-open {
   padding: 20px 22px 24px;
   overflow-y: auto;
   flex: 1 1 auto;
+}
+
+.admin-modal__alert {
+  margin-bottom: 14px;
 }
 
 .admin-modal__sub {
@@ -1245,6 +1413,10 @@ body.admin-modal-open {
 }
 
 @media (max-width: 640px) {
+  .admin-students-list {
+    grid-template-columns: 1fr;
+  }
+
   .admin-students-card__row {
     flex-direction: column;
     align-items: stretch;
@@ -1254,7 +1426,7 @@ body.admin-modal-open {
     justify-content: flex-start;
   }
 
-  .admin-students-card__actions {
+  #subsList .admin-students-card__actions {
     width: 100%;
     justify-content: flex-end;
   }
@@ -1551,10 +1723,12 @@ body.admin-modal-open {
   box-sizing: border-box;
 }
 
-.admin-students-toolbar__action.btn {
+.admin-students-toolbar__action.btn,
+.admin-students-toolbar__risk.btn {
   width: 100%;
   min-height: 40px;
   box-sizing: border-box;
+  white-space: nowrap;
 }
 
 .admin-price-create__head > .admin-students-toolbar {
