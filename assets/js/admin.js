@@ -99,8 +99,8 @@ async function loadPrivateTelegramTargets() {
   cachedPrivateTelegramTargets = (data || []).filter((row) => typeof row.chat_id === "string" && row.chat_id.trim().length > 0);
 }
 
-function populateTeacherChatSelect(selectedChatId = "") {
-  const sel = maybeEl("teacherChatTarget");
+function populateTeacherChatSelect(selectedChatId = "", selectId = "teacherEditChatTarget") {
+  const sel = maybeEl(selectId);
   if (!sel) return;
   sel.innerHTML = "";
   const defaultOpt = document.createElement("option");
@@ -123,8 +123,14 @@ function populateTeacherChatSelect(selectedChatId = "") {
   syncCustomSelect(sel);
 }
 
-function setTeacherFormOpen(isOpen) {
-  const form = maybeEl("teacherForm");
+function teacherRiverBankScopeLabel(scope) {
+  if (scope === "left") return "Лівий";
+  if (scope === "right") return "Правий";
+  return "Будь-який";
+}
+
+function setTeacherCreateFormOpen(isOpen) {
+  const form = maybeEl("teacherCreateForm");
   const toggle = maybeEl("teacherFormToggle");
   if (!form) return;
   form.classList.toggle("admin-hide", !isOpen);
@@ -134,56 +140,116 @@ function setTeacherFormOpen(isOpen) {
   }
 }
 
-function resetTeacherForm() {
-  const form = maybeEl("teacherForm");
-  const editingId = maybeEl("teacherEditingId");
-  const submitBtn = maybeEl("teacherSubmitBtn");
-  const cancelEdit = maybeEl("teacherCancelEdit");
-  const descriptionWrap = maybeEl("teacherDescriptionWrap");
-  const chatWrap = maybeEl("teacherChatWrap");
-  const nameInput = maybeEl("teacherName");
-  const descInput = maybeEl("teacherDescription");
-  const chatSel = maybeEl("teacherChatTarget");
-  if (!form || !editingId || !submitBtn || !nameInput || !descInput) return;
-  editingTeacherId = null;
-  editingId.value = "";
-  nameInput.value = "";
-  descInput.value = "";
-  if (chatSel) chatSel.value = "";
-  submitBtn.textContent = "Додати викладача";
-  cancelEdit?.classList.add("admin-hide");
-  descriptionWrap?.classList.add("admin-hide");
-  chatWrap?.classList.add("admin-hide");
-  setTeacherFormOpen(false);
+function resetTeacherCreateForm() {
+  const nameInput = maybeEl("teacherCreateName");
+  if (nameInput) nameInput.value = "";
+  setTeacherCreateFormOpen(false);
 }
 
-async function beginEditTeacher(teacher) {
-  const editingId = maybeEl("teacherEditingId");
-  const submitBtn = maybeEl("teacherSubmitBtn");
-  const cancelEdit = maybeEl("teacherCancelEdit");
-  const descriptionWrap = maybeEl("teacherDescriptionWrap");
-  const chatWrap = maybeEl("teacherChatWrap");
-  const nameInput = maybeEl("teacherName");
-  const descInput = maybeEl("teacherDescription");
-  const chatSel = maybeEl("teacherChatTarget");
-  if (!editingId || !submitBtn || !nameInput || !descInput) return;
+function closeTeacherEditModal() {
+  const modal = maybeEl("teacherEditModal");
+  if (!modal) return;
+  modal.classList.add("admin-hide");
+  modal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("admin-modal-open");
+  editingTeacherId = null;
+}
+
+async function openTeacherEditModal(teacher) {
+  const modal = maybeEl("teacherEditModal");
+  const titleEl = maybeEl("teacherEditModalTitle");
+  const idInput = maybeEl("teacherEditId");
+  const nameInput = maybeEl("teacherEditName");
+  const descInput = maybeEl("teacherEditDescription");
+  const bankSel = maybeEl("teacherEditRiverBankScope");
+  const digestChk = maybeEl("teacherEditDigestEnabled");
+  if (!modal || !idInput || !nameInput || !descInput) return;
+
   try {
     await loadPrivateTelegramTargets();
   } catch (error) {
     showDashError(error?.message || String(error));
     return;
   }
+
   editingTeacherId = teacher.id;
-  editingId.value = teacher.id;
+  idInput.value = teacher.id;
+  if (titleEl) titleEl.textContent = teacher.name || "Викладач";
   nameInput.value = teacher.name || "";
   descInput.value = teacher.short_description || "";
-  populateTeacherChatSelect(teacher.chat_id || "");
-  if (chatSel && (!teacher.chat_id || chatSel.value !== teacher.chat_id)) chatSel.value = "";
-  submitBtn.textContent = "Зберегти зміни";
-  cancelEdit?.classList.remove("admin-hide");
-  descriptionWrap?.classList.remove("admin-hide");
-  chatWrap?.classList.remove("admin-hide");
-  setTeacherFormOpen(true);
+  populateTeacherChatSelect(teacher.chat_id || "", "teacherEditChatTarget");
+  if (bankSel) bankSel.value = teacher.river_bank_scope || "any";
+  if (digestChk) digestChk.checked = Boolean(teacher.digest_enabled);
+  syncCustomSelect(maybeEl("teacherEditChatTarget"));
+  syncCustomSelect(bankSel);
+
+  modal.classList.remove("admin-hide");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("admin-modal-open");
+  nameInput.focus();
+}
+
+function initTeacherEditModal() {
+  const modal = maybeEl("teacherEditModal");
+  const form = maybeEl("teacherEditForm");
+  if (!modal) return;
+
+  modal.querySelectorAll("[data-admin-modal-close]").forEach((node) => {
+    node.addEventListener("click", () => closeTeacherEditModal());
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (modal.classList.contains("admin-hide")) return;
+    closeTeacherEditModal();
+  });
+
+  if (!form) return;
+  form.noValidate = true;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearDashMessages();
+
+    const id = maybeEl("teacherEditId")?.value ?? "";
+    const name = maybeEl("teacherEditName")?.value.trim() ?? "";
+    const short_description = maybeEl("teacherEditDescription")?.value.trim() ?? "";
+    if (!id) {
+      showDashError("Не знайдено викладача для збереження.");
+      return;
+    }
+    if (!name) {
+      showDashError("Вкажи ім'я викладача.");
+      return;
+    }
+
+    const selectedChatId = maybeEl("teacherEditChatTarget")?.value?.trim() ?? "";
+    const validSelectedChatId =
+      selectedChatId && cachedPrivateTelegramTargets.some((row) => row.chat_id === selectedChatId && row.username?.trim())
+        ? selectedChatId
+        : null;
+    const river_bank_scope = maybeEl("teacherEditRiverBankScope")?.value || "any";
+    const digest_enabled = Boolean(maybeEl("teacherEditDigestEnabled")?.checked);
+
+    const { error: dbError } = await supabase
+      .from("teachers")
+      .update({
+        name,
+        short_description: short_description || null,
+        chat_id: validSelectedChatId,
+        river_bank_scope,
+        digest_enabled,
+      })
+      .eq("id", id);
+
+    if (dbError) {
+      showDashError(dbError.message);
+      return;
+    }
+
+    closeTeacherEditModal();
+    await renderTeachersPanel();
+    showDashOk("Викладача оновлено.");
+  });
 }
 
 async function renderTeachersPanel() {
@@ -192,7 +258,7 @@ async function renderTeachersPanel() {
   root.innerHTML = '<p class="admin-muted">Завантаження…</p>';
   const { data: teachers, error } = await supabase
     .from("teachers")
-    .select("id, name, short_description, sort_order, chat_id")
+    .select("id, name, short_description, sort_order, chat_id, river_bank_scope, digest_enabled")
     .order("sort_order", { ascending: true });
   if (error) {
     root.innerHTML = `<p class="admin-muted">${error.message}</p>`;
@@ -211,22 +277,24 @@ async function renderTeachersPanel() {
 
   const tbl = document.createElement("table");
   tbl.className = "admin-prices-table";
-  tbl.innerHTML = `<thead><tr><th>Ім'я</th><th>Telegram</th><th></th></tr></thead><tbody></tbody>`;
+  tbl.innerHTML = `<thead><tr><th>Ім'я</th><th>Telegram</th><th>Берег</th><th>Дайджest</th><th></th></tr></thead><tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
 
   for (const teacher of teachers) {
     const tr = document.createElement("tr");
     const tgUsername = teacher.chat_id ? tgByChatId.get(String(teacher.chat_id)) : null;
     const tgLabel = tgUsername ? `@${tgUsername}` : "—";
-    tr.innerHTML = `<td>${escapeHtml(teacher.name || "—")}</td><td>${escapeHtml(tgLabel)}</td>`;
+    const bankLabel = teacherRiverBankScopeLabel(teacher.river_bank_scope || "any");
+    const digestLabel = teacher.digest_enabled ? "✓" : "—";
+    tr.innerHTML = `<td>${escapeHtml(teacher.name || "—")}</td><td>${escapeHtml(tgLabel)}</td><td>${escapeHtml(bankLabel)}</td><td>${digestLabel}</td>`;
     const td = document.createElement("td");
 
     const editBtn = document.createElement("button");
     editBtn.type = "button";
-    editBtn.className = "btn btn--ghost btn--sm";
+    editBtn.className = "btn btn--ghost btn--sm admin-teacher-row-edit";
     editBtn.style.padding = "6px 10px";
     editBtn.textContent = "Змінити";
-    editBtn.addEventListener("click", () => beginEditTeacher(teacher));
+    editBtn.addEventListener("click", () => openTeacherEditModal(teacher));
 
     const delBtn = document.createElement("button");
     delBtn.type = "button";
@@ -243,7 +311,7 @@ async function renderTeachersPanel() {
         showDashError(delErr.message);
         return;
       }
-      if (editingTeacherId === teacher.id) resetTeacherForm();
+      if (editingTeacherId === teacher.id) closeTeacherEditModal();
       await renderTeachersPanel();
       showDashOk("Викладача видалено.");
     });
@@ -1155,53 +1223,40 @@ function ensureVotesBatchVoteWired() {
 }
 
 function initTeacherForm() {
-  const form = maybeEl("teacherForm");
+  const form = maybeEl("teacherCreateForm");
   if (!form) return;
   const toggle = maybeEl("teacherFormToggle");
-  const cancel = maybeEl("teacherFormCancel");
-  const cancelEdit = maybeEl("teacherCancelEdit");
+  const cancel = maybeEl("teacherCreateCancel");
   form.noValidate = true;
 
-  toggle?.addEventListener("click", () => setTeacherFormOpen(form.classList.contains("admin-hide")));
-  cancel?.addEventListener("click", () => resetTeacherForm());
-  cancelEdit?.addEventListener("click", () => resetTeacherForm());
+  toggle?.addEventListener("click", () => setTeacherCreateFormOpen(form.classList.contains("admin-hide")));
+  cancel?.addEventListener("click", () => resetTeacherCreateForm());
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     clearDashMessages();
-    const name = maybeEl("teacherName")?.value.trim() ?? "";
-    const short_description = maybeEl("teacherDescription")?.value.trim() ?? "";
+    const name = maybeEl("teacherCreateName")?.value.trim() ?? "";
     if (!name) {
       showDashError("Вкажи ім'я викладача.");
       return;
     }
 
-    const id = maybeEl("teacherEditingId")?.value ?? "";
-    const selectedChatId = maybeEl("teacherChatTarget")?.value?.trim() ?? "";
-    const validSelectedChatId =
-      selectedChatId && cachedPrivateTelegramTargets.some((row) => row.chat_id === selectedChatId && row.username?.trim())
-        ? selectedChatId
-        : null;
-    const payload = id
-      ? { name, short_description: short_description || null, chat_id: validSelectedChatId }
-      : { name, short_description: null, chat_id: null };
-    let dbError;
-    if (id) {
-      const { error } = await supabase.from("teachers").update(payload).eq("id", id);
-      dbError = error;
-    } else {
-      const { error } = await supabase.from("teachers").insert(payload);
-      dbError = error;
-    }
+    const { error: dbError } = await supabase.from("teachers").insert({
+      name,
+      short_description: null,
+      chat_id: null,
+    });
 
     if (dbError) {
       showDashError(dbError.message);
       return;
     }
-    resetTeacherForm();
+    resetTeacherCreateForm();
     await renderTeachersPanel();
-    showDashOk(id ? "Викладача оновлено." : "Викладача додано.");
+    showDashOk("Викладача додано.");
   });
+
+  initTeacherEditModal();
 }
 
 function setPriceFormOpen(isOpen) {
@@ -1906,7 +1961,8 @@ async function refreshDashboard() {
         await loadPlacesHtml();
         break;
       case "teachers":
-        resetTeacherForm();
+        resetTeacherCreateForm();
+        closeTeacherEditModal();
         await renderTeachersPanel();
         break;
       case "students": {

@@ -47,13 +47,16 @@ async function logOpenLessonVotes({ supabaseAdmin }) {
 export function startDailyLessonVoteCron({
   createDailyTimeEnv,
   closeDailyTimeEnv,
+  digestDailyTimeEnv,
   runBatchTeacherVotesInWindow,
   closeOpenVotesForToday,
   supabaseAdmin,
   expireOverdueSubscriptions,
+  runDailyTeacherDigests,
 }) {
   const createDailyTime = normalizeDailyTime(createDailyTimeEnv);
   const closeDailyTime = normalizeDailyTime(closeDailyTimeEnv);
+  const digestDailyTime = normalizeDailyTime(digestDailyTimeEnv || "09:00");
   if (!createDailyTime || !closeDailyTime) {
     console.error(
       "[lesson-vote-daily-cron] disabled: invalid/missing env. Expected LESSON_VOTE_DAILY_CREATE_CRON_TIME and LESSON_VOTE_DAILY_CLOSE_CRON_TIME in HH:MM"
@@ -62,9 +65,10 @@ export function startDailyLessonVoteCron({
   }
   let lastCreateRunDateKyiv = "";
   let lastCloseRunDateKyiv = "";
+  let lastDigestRunDateKyiv = "";
 
   console.log(
-    `[lesson-vote-daily-cron] enabled create_time=${createDailyTime} close_time=${closeDailyTime} tz=${KYIV_TZ}`
+    `[lesson-vote-daily-cron] enabled create_time=${createDailyTime} close_time=${closeDailyTime} digest_time=${digestDailyTime} tz=${KYIV_TZ}`
   );
 
   const tick = async () => {
@@ -112,6 +116,22 @@ export function startDailyLessonVoteCron({
         );
       } catch (error) {
         console.error("[lesson-vote-daily-cron] close exception:", error?.message || error);
+      }
+    }
+
+    if (
+      digestDailyTime &&
+      isSameKyivMinute(nowKyiv, digestDailyTime) &&
+      lastDigestRunDateKyiv !== dateKey
+    ) {
+      lastDigestRunDateKyiv = dateKey;
+      console.log(`[lesson-vote-daily-cron] digest run started kyiv=${nowKyiv.toISO()}`);
+      if (typeof runDailyTeacherDigests === "function") {
+        try {
+          await runDailyTeacherDigests();
+        } catch (error) {
+          console.error("[lesson-vote-daily-cron] digest exception:", error?.message || error);
+        }
       }
     }
   };

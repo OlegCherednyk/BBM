@@ -634,6 +634,217 @@ body.admin-modal-open {
   margin-top: 0.75rem;
 }
 
+/* ── TEACHER EDIT MODAL (orange accent) ── */
+#teacherEditModal.admin-modal {
+  align-items: center;
+  padding: 16px 12px;
+}
+
+.admin-teacher-edit-dialog {
+  width: min(480px, 100%);
+  max-height: calc(100svh - 32px);
+  border-color: rgba(212, 120, 42, 0.35);
+  box-shadow:
+    0 24px 64px rgba(138, 69, 16, 0.18),
+    0 0 0 1px rgba(212, 120, 42, 0.12);
+  overflow: hidden;
+}
+
+.admin-teacher-edit-dialog::before {
+  content: "";
+  display: block;
+  height: 4px;
+  background: linear-gradient(90deg, #b85a18 0%, #e8953f 50%, #b85a18 100%);
+  flex-shrink: 0;
+}
+
+.admin-teacher-edit-dialog__head {
+  background: linear-gradient(180deg, rgba(232, 149, 63, 0.12) 0%, rgba(255, 255, 255, 0.65) 100%);
+  border-bottom-color: rgba(212, 120, 42, 0.28);
+}
+
+.admin-teacher-edit-dialog .admin-modal__title {
+  color: #8a4510;
+}
+
+.admin-teacher-edit-dialog__close {
+  border-color: rgba(212, 120, 42, 0.35);
+  background: rgba(255, 237, 220, 0.85);
+  color: #a35f1a;
+}
+
+.admin-teacher-edit-dialog__close:hover {
+  background: rgba(232, 149, 63, 0.22);
+  color: #7a3a0c;
+}
+
+.admin-teacher-edit-dialog__body {
+  padding: 18px 20px 20px;
+}
+
+.admin-teacher-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.admin-teacher-edit-form .admin-field label {
+  color: #6b4423;
+  font-weight: 600;
+}
+
+.admin-teacher-edit-form input[type="text"],
+.admin-teacher-edit-form textarea,
+.admin-teacher-edit-form select {
+  border-color: rgba(212, 120, 42, 0.28);
+}
+
+.admin-teacher-edit-form input[type="text"]:focus,
+.admin-teacher-edit-form textarea:focus,
+.admin-teacher-edit-form select:focus {
+  border-color: rgba(212, 120, 42, 0.55);
+  box-shadow: 0 0 0 3px rgba(232, 149, 63, 0.2);
+}
+
+.admin-teacher-edit-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.admin-teacher-edit-check-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  margin: 0;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  color: #6b4423;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.admin-teacher-edit-form input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  min-height: 0;
+  min-width: 1rem;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: #d4782a;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.admin-teacher-edit-check-inline span {
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+}
+
+
+.admin-teacher-edit-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(212, 120, 42, 0.18);
+}
+
+.admin-teacher-edit-save {
+  flex: 1 1 auto;
+  min-width: 140px;
+  border: none;
+  border-radius: 999px;
+  padding: 11px 20px;
+  font-family: var(--ff-display);
+  font-weight: 700;
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: linear-gradient(135deg, #c4691f 0%, #e07828 55%, #d4782a 100%);
+  box-shadow: 0 4px 14px rgba(196, 105, 31, 0.35);
+  cursor: pointer;
+  transition: transform var(--admin-transition), box-shadow var(--admin-transition), filter var(--admin-transition);
+}
+
+.admin-teacher-edit-save:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(196, 105, 31, 0.42);
+}
+
+.admin-teacher-edit-save:active {
+  transform: translateY(0);
+}
+
+.admin-teacher-row-edit {
+  color: #a35f1a;
+  border-color: rgba(212, 120, 42, 0.35);
+  background: rgba(255, 243, 232, 0.5);
+}
+
+.admin-teacher-row-edit:hover {
+  color: #7a3a0c;
+  background: rgba(232, 149, 63, 0.16);
+  border-color: rgba(212, 120, 42, 0.5);
+}
+
+@media (max-width: 520px) {
+  #teacherEditModal.admin-modal {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .admin-teacher-edit-dialog {
+    width: 100%;
+    max-height: min(92svh, 720px);
+    margin: 0;
+    border-radius: 20px 20px 0 0;
+    border-bottom: none;
+  }
+
+  .admin-teacher-edit-dialog::before {
+    border-radius: 20px 20px 0 0;
+  }
+
+  .admin-teacher-edit-dialog__head {
+    padding: 16px 16px 12px;
+  }
+
+  .admin-teacher-edit-dialog__body {
+    padding: 14px 16px 16px;
+  }
+
+  .admin-teacher-edit-dialog__actions {
+    position: sticky;
+    bottom: 0;
+    margin: 0 -16px -16px;
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(180deg, rgba(251, 246, 240, 0) 0%, rgba(251, 246, 240, 0.96) 24%);
+    border-top-color: rgba(212, 120, 42, 0.22);
+  }
+
+  .admin-teacher-edit-save {
+    flex: 1 1 100%;
+    min-height: 46px;
+    font-size: 1rem;
+  }
+
+  .admin-teacher-edit-dialog__actions .btn--ghost {
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+}
+
 /* ── VISIT JOURNAL ── */
 .admin-visit-journal {
   display: flex;
@@ -1618,6 +1829,21 @@ body.admin-modal-open {
     border-color var(--admin-transition),
     background var(--admin-transition),
     box-shadow var(--admin-transition);
+}
+
+.admin-teacher-edit-form .admin-field input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  min-height: 0;
+  min-width: 1rem;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  flex-shrink: 0;
+  accent-color: #d4782a;
+  box-shadow: none;
+  cursor: pointer;
 }
 
 .admin-field select {

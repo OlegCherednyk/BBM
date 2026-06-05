@@ -81,32 +81,74 @@
         <div id="dashOk" class="admin-alert admin-alert--ok admin-hide" role="status"></div>
 
         <div id="section-teachers">
-          <form id="teacherForm" class="admin-grid admin-grid--2 admin-hide">
-            <input type="hidden" id="teacherEditingId" value="" />
+          <form id="teacherCreateForm" class="admin-grid admin-grid--2 admin-hide">
             <div class="admin-field admin-grid-span-2">
-              <label for="teacherName">Ім'я</label>
-              <input id="teacherName" type="text" required />
-            </div>
-            <div id="teacherDescriptionWrap" class="admin-field admin-grid-span-2 admin-hide">
-              <label for="teacherDescription">Короткий опис (необов'язково)</label>
-              <textarea id="teacherDescription" placeholder="Цей текст видно лише в редагуванні"></textarea>
-            </div>
-            <div id="teacherChatWrap" class="admin-field admin-grid-span-2 admin-hide">
-              <label for="teacherChatTarget">Telegram</label>
-              <select id="teacherChatTarget">
-                <option value="">— не вибрано —</option>
-              </select>
+              <label for="teacherCreateName">Ім'я</label>
+              <input id="teacherCreateName" type="text" required />
             </div>
             <div class="admin-actions admin-grid-span-2">
-              <button type="submit" class="btn btn--primary btn--sm" id="teacherSubmitBtn">Додати викладача</button>
-              <button type="button" class="btn btn--ghost btn--sm" id="teacherFormCancel">Скасувати</button>
-              <button type="button" class="btn btn--ghost btn--sm admin-hide" id="teacherCancelEdit">Скасувати редагування</button>
+              <button type="submit" class="btn btn--primary btn--sm">Додати викладача</button>
+              <button type="button" class="btn btn--ghost btn--sm" id="teacherCreateCancel">Скасувати</button>
             </div>
           </form>
           <div id="teachersList"><p class="admin-muted">Завантаження…</p></div>
         </div>
       </div>
     </main>
+
+    <div id="teacherEditModal" class="admin-modal admin-hide" aria-hidden="true">
+      <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+      <div
+        class="admin-modal__dialog admin-teacher-edit-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="teacherEditModalTitle"
+      >
+        <div class="admin-modal__head admin-teacher-edit-dialog__head">
+          <h3 id="teacherEditModalTitle" class="admin-modal__title">Викладач</h3>
+          <button type="button" class="admin-modal__close admin-teacher-edit-dialog__close" data-admin-modal-close aria-label="Закрити">
+            ✕
+          </button>
+        </div>
+        <div class="admin-modal__body admin-teacher-edit-dialog__body">
+          <form id="teacherEditForm" class="admin-teacher-edit-form">
+            <input type="hidden" id="teacherEditId" value="" />
+            <div class="admin-field">
+              <label for="teacherEditName">Ім'я</label>
+              <input id="teacherEditName" type="text" required autocomplete="name" />
+            </div>
+            <div class="admin-field">
+              <label for="teacherEditDescription">Короткий опис</label>
+              <textarea id="teacherEditDescription" rows="2" placeholder="Необовʼязково"></textarea>
+            </div>
+            <div class="admin-field">
+              <label for="teacherEditChatTarget">Telegram</label>
+              <select id="teacherEditChatTarget">
+                <option value="">— не вибрано —</option>
+              </select>
+            </div>
+            <div class="admin-field">
+              <label for="teacherEditRiverBankScope">Берег (Telegram)</label>
+              <select id="teacherEditRiverBankScope">
+                <option value="any">Будь-який</option>
+                <option value="left">Лівий берег</option>
+                <option value="right">Правий берег</option>
+              </select>
+              <div class="admin-teacher-edit-meta-row">
+                <label class="admin-teacher-edit-check-inline" for="teacherEditDigestEnabled" title="Потрібен привʼязаний Telegram-чат">
+                  <input type="checkbox" id="teacherEditDigestEnabled" />
+                  <span>Дайджest · 09:00</span>
+                </label>
+              </div>
+            </div>
+            <div class="admin-teacher-edit-dialog__actions">
+              <button type="submit" class="btn btn--sm admin-teacher-edit-save">Зберегти</button>
+              <button type="button" class="btn btn--ghost btn--sm" data-admin-modal-close>Скасувати</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
 
     <footer class="footer">
       <span>mozok.tilo.ruh — адмін</span>

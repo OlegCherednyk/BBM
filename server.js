@@ -12,6 +12,7 @@ import {
   expireOverdueSubscriptions,
   registerStudentRoutes,
 } from "./students-api.js";
+import { parsePlaceRiverBank, runDailyTeacherDigests, teacherMatchesBank } from "./admin-notifications.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
@@ -58,6 +59,7 @@ const VOTE_SCHED_CLOSE_MAX_HOURS_BEFORE = 1;
 const SCHEDULER_TICK_MS = 60 * 1000;
 const lessonVoteDailyCreateCronTime = process.env.LESSON_VOTE_DAILY_CREATE_CRON_TIME;
 const lessonVoteDailyCloseCronTime = process.env.LESSON_VOTE_DAILY_CLOSE_CRON_TIME;
+const adminDigestCronTime = process.env.ADMIN_DIGEST_CRON_TIME || "09:00";
 
 /** Вікно для створення бойових голосувань: (1; 120] год до початку заняття (Київ). */
 function isOccurrenceInScheduledVoteWindow(occurrenceKyiv, nowKyiv) {
@@ -118,20 +120,6 @@ function dualBankGroupChatIds() {
   if (!left && !right) return { mode: "off", left: "", right: "" };
   if (left && right) return { mode: "dual", left, right };
   return { mode: "partial", left, right };
-}
-
-/**
- * Значення з адмінки (places.river_bank), напр. «Лівий берег» / «Правий берег»
- * @returns {"left"|"right"|null}
- */
-function parsePlaceRiverBank(riverBankRaw) {
-  const s = String(riverBankRaw || "")
-    .trim()
-    .toLowerCase();
-  if (!s) return null;
-  if (s.includes("лів")) return "left";
-  if (s.includes("прав")) return "right";
-  return null;
 }
 
 /**
@@ -1482,21 +1470,28 @@ async function resolveTeacherIdByTelegramChatId(chatIdRaw) {
   }
 }
 
-async function loadTeacherTargetsWithChatId() {
+/**
+ * @param {{ lessonBank?: "left"|"right"|null }} [opts]
+ */
+async function loadTeacherTargetsWithChatId(opts = {}) {
   if (!supabaseAdmin) return [];
 
   const { data, error } = await supabaseAdmin
     .from("teachers")
-    .select("id, name, chat_id")
+    .select("id, name, chat_id, river_bank_scope")
     .not("chat_id", "is", null);
 
   if (error) {
     throw new Error(`Failed to load teachers with chat_id: ${error.message}`);
   }
 
+  const lessonBank = opts.lessonBank ?? null;
   const seen = new Set();
   const result = [];
   for (const row of data || []) {
+    const scope = row.river_bank_scope || "any";
+    if (lessonBank != null && !teacherMatchesBank(scope, lessonBank)) continue;
+
     const chatId = String(row.chat_id || "").trim();
     if (!chatId || seen.has(chatId)) continue;
     seen.add(chatId);
@@ -1504,6 +1499,7 @@ async function loadTeacherTargetsWithChatId() {
       id: row.id,
       name: row.name || "Викладач",
       chatId,
+      river_bank_scope: scope,
     });
   }
   return result;
@@ -1706,10 +1702,7 @@ async function executeLessonAttendanceVote(opts) {
     return { success: false, error: "Supabase admin client is not configured.", httpStatus: 500 };
   }
 
-  const [teachers, lessonContext] = await Promise.all([
-    loadTeacherTargetsWithChatId(),
-    loadLessonContext(lessonTimeId, placeId),
-  ]);
+  const lessonContext = await loadLessonContext(lessonTimeId, placeId);
 
   const resolvedGroup = resolveGroupVoteChatIdForLessonPlace(lessonContext.riverBank);
   if (resolvedGroup.error || !resolvedGroup.chatId) {
@@ -1720,6 +1713,8 @@ async function executeLessonAttendanceVote(opts) {
     };
   }
   const groupChatId = resolvedGroup.chatId;
+  const lessonBank = resolvedGroup.bank || parsePlaceRiverBank(lessonContext.riverBank);
+  const teachers = await loadTeacherTargetsWithChatId({ lessonBank });
 
   const voteId = `v_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const lessonSnapshot = {
@@ -3294,10 +3289,12 @@ if (bot) {
 startDailyLessonVoteCron({
   createDailyTimeEnv: lessonVoteDailyCreateCronTime,
   closeDailyTimeEnv: lessonVoteDailyCloseCronTime,
+  digestDailyTimeEnv: adminDigestCronTime,
   runBatchTeacherVotesInWindow,
   closeOpenVotesForToday,
   supabaseAdmin,
   expireOverdueSubscriptions,
+  runDailyTeacherDigests: () => runDailyTeacherDigests(supabaseAdmin, bot),
 });
 
 registerStudentRoutes(app, supabaseAdmin);
