@@ -645,6 +645,57 @@ async function attendedVisitsCountForStudents(supabaseAdmin, studentIds) {
  * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
  * @param {string[]} studentIds
  */
+/**
+ * Скільки разів учень натискав «Пропускаю» у finalized голосуваннях (votes_snapshot.skip).
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {Array<{ id: string, telegram_user_id?: number | string | null }>} students
+ */
+async function skipVotesCountForStudents(supabaseAdmin, students) {
+  /** @type {Map<string, number>} */
+  const m = new Map();
+  for (const s of students || []) m.set(String(s.id), 0);
+  if (!students?.length) return m;
+
+  /** @type {Map<string, string>} */
+  const uidToStudentId = new Map();
+  for (const s of students) {
+    const tid = s.telegram_user_id;
+    if (tid == null || tid === "") continue;
+    const sid = String(s.id);
+    const raw = String(tid).trim();
+    if (!raw) continue;
+    uidToStudentId.set(raw, sid);
+    try {
+      const big = BigInt(raw);
+      uidToStudentId.set(big.toString(), sid);
+      const n = Number(raw);
+      if (Number.isSafeInteger(n)) uidToStudentId.set(String(n), sid);
+    } catch {
+      // ignore invalid telegram id
+    }
+  }
+  if (uidToStudentId.size === 0) return m;
+
+  const { data: occs, error } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .select("votes_snapshot")
+    .eq("status", "finalized");
+  if (error) throw new Error(error.message);
+
+  for (const row of occs || []) {
+    const snap = row?.votes_snapshot;
+    if (!snap || typeof snap !== "object" || Array.isArray(snap)) continue;
+    const skip = snap.skip;
+    if (!skip || typeof skip !== "object" || Array.isArray(skip)) continue;
+    for (const uidStr of Object.keys(skip)) {
+      const studentId = uidToStudentId.get(String(uidStr));
+      if (!studentId) continue;
+      m.set(studentId, (m.get(studentId) || 0) + 1);
+    }
+  }
+  return m;
+}
+
 async function lastVisitAtForStudents(supabaseAdmin, studentIds) {
   if (studentIds.length === 0) return new Map();
   const { data, error } = await supabaseAdmin
@@ -968,6 +1019,7 @@ export function registerStudentRoutes(app, supabaseAdmin) {
       const ids = (students || []).map((s) => s.id);
       const summaryMap = await subscriptionSummaryForStudents(supabaseAdmin, ids);
       const attendedMap = await attendedVisitsCountForStudents(supabaseAdmin, ids);
+      const skipMap = await skipVotesCountForStudents(supabaseAdmin, students || []);
       const lastVisitMap = await lastVisitAtForStudents(supabaseAdmin, ids);
       const revenueMap = await totalRevenueForStudents(supabaseAdmin, ids);
       const rows = (students || []).map((s) => ({
@@ -981,6 +1033,7 @@ export function registerStudentRoutes(app, supabaseAdmin) {
           abon_visits_remaining: 0,
         },
         attended_visits_count: attendedMap.get(String(s.id)) || 0,
+        skip_votes_count: skipMap.get(String(s.id)) || 0,
         last_visit_at: lastVisitMap.get(String(s.id)) || null,
         total_revenue_uah: revenueMap.get(String(s.id)) || 0,
       }));

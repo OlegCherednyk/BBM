@@ -81,9 +81,63 @@
 
         <div id="section-prices">
           <div class="admin-price-create__head">
-            <button id="priceFormToggle" class="btn btn--primary btn--sm btn--price-add" type="button">+ Нова ціна</button>
+            <h2>Напрями</h2>
+            <button
+              id="priceFormToggle"
+              class="btn btn--primary btn--sm btn--price-add"
+              type="button"
+              title="Нова ціна"
+              aria-label="Нова ціна"
+            >
+              +
+            </button>
           </div>
-          <form id="priceForm" class="admin-grid admin-grid--2 admin-hide">
+          <div id="pricesList"><p class="admin-muted">Завантаження…</p></div>
+        </div>
+
+        <div id="section-smm-prices">
+          <div class="admin-price-create__head">
+            <h2>Гроші краде Віка (грн)</h2>
+            <button
+              id="smmPriceFormToggle"
+              class="btn btn--primary btn--sm btn--price-add"
+              type="button"
+              title="Нова ціна"
+              aria-label="Нова ціна"
+            >
+              +
+            </button>
+          </div>
+          <div id="smmPricesList"><p class="admin-muted">Завантаження…</p></div>
+        </div>
+
+        <div id="section-place-prices">
+          <div class="admin-price-create__head">
+            <h2>Оренда (грн)</h2>
+            <button
+              id="placePriceFormToggle"
+              class="btn btn--primary btn--sm btn--price-add"
+              type="button"
+              title="Новий тариф"
+              aria-label="Новий тариф"
+            >
+              +
+            </button>
+          </div>
+          <div id="placePricesList"><p class="admin-muted">Завантаження…</p></div>
+        </div>
+      </div>
+    </main>
+
+    <div id="priceModal" class="admin-modal admin-hide" aria-hidden="true">
+      <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+      <div class="admin-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="priceModalTitle">
+        <div class="admin-modal__head">
+          <h3 id="priceModalTitle" class="admin-modal__title">Ціна</h3>
+          <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
+        </div>
+        <div class="admin-modal__body">
+          <form id="priceForm" class="admin-grid admin-grid--2">
             <input type="hidden" id="priceEditingId" value="" />
             <div class="admin-field admin-grid-span-2">
               <label for="priceLessonType">Напрям</label>
@@ -107,20 +161,23 @@
               <input id="priceAmount" type="number" min="0" step="1" required />
             </div>
             <div class="admin-actions admin-grid-span-2">
-              <button type="submit" class="btn btn--primary btn--sm" id="priceSubmitBtn">Додати ціну</button>
-              <button type="button" class="btn btn--ghost btn--sm" id="priceFormCancel">Скасувати</button>
-              <button type="button" class="btn btn--ghost btn--sm admin-hide" id="priceCancelEdit">Скасувати редагування</button>
+              <button type="submit" class="btn btn--primary btn--sm" id="priceSubmitBtn">Додати</button>
+              <button type="button" class="btn btn--ghost btn--sm" data-admin-modal-close>Скасувати</button>
             </div>
           </form>
-          <div id="pricesList"><p class="admin-muted">Завантаження…</p></div>
         </div>
+      </div>
+    </div>
 
-        <div id="section-smm-prices">
-          <div class="admin-price-create__head">
-            <h2>Гроші краде Віка (грн)</h2>
-            <button id="smmPriceFormToggle" class="btn btn--primary btn--sm btn--price-add" type="button">+ Нова ціна</button>
-          </div>
-          <form id="smmPriceForm" class="admin-grid admin-grid--2 admin-hide">
+    <div id="smmPriceModal" class="admin-modal admin-hide" aria-hidden="true">
+      <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+      <div class="admin-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="smmPriceModalTitle">
+        <div class="admin-modal__head">
+          <h3 id="smmPriceModalTitle" class="admin-modal__title">SMM прайс</h3>
+          <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
+        </div>
+        <div class="admin-modal__body">
+          <form id="smmPriceForm" class="admin-grid admin-grid--2">
             <input type="hidden" id="smmPriceEditingId" value="" />
             <div class="admin-field">
               <label for="smmPricePeopleFrom">Людей від</label>
@@ -135,24 +192,23 @@
               <input id="smmPriceAmount" type="number" min="0" step="1" required />
             </div>
             <div class="admin-actions admin-grid-span-2">
-              <button type="submit" class="btn btn--primary btn--sm" id="smmPriceSubmitBtn">Додати ціну</button>
-              <button type="button" class="btn btn--ghost btn--sm" id="smmPriceFormCancel">Скасувати</button>
-              <button type="button" class="btn btn--ghost btn--sm admin-hide" id="smmPriceCancelEdit">
-                Скасувати редагування
-              </button>
+              <button type="submit" class="btn btn--primary btn--sm" id="smmPriceSubmitBtn">Додати</button>
+              <button type="button" class="btn btn--ghost btn--sm" data-admin-modal-close>Скасувати</button>
             </div>
           </form>
-          <div id="smmPricesList"><p class="admin-muted">Завантаження…</p></div>
         </div>
+      </div>
+    </div>
 
-        <div id="section-place-prices">
-          <div class="admin-price-create__head">
-            <h2>Оренда (грн)</h2>
-            <button id="placePriceFormToggle" class="btn btn--primary btn--sm btn--price-add" type="button">
-              + Новий тариф
-            </button>
-          </div>
-          <form id="placePriceForm" class="admin-grid admin-grid--2 admin-hide">
+    <div id="placePriceModal" class="admin-modal admin-hide" aria-hidden="true">
+      <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+      <div class="admin-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="placePriceModalTitle">
+        <div class="admin-modal__head">
+          <h3 id="placePriceModalTitle" class="admin-modal__title">Тариф оренди</h3>
+          <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
+        </div>
+        <div class="admin-modal__body">
+          <form id="placePriceForm" class="admin-grid admin-grid--2">
             <input type="hidden" id="placePriceEditingId" value="" />
             <div class="admin-field admin-grid-span-2">
               <label for="placePricePlaceId">Місце</label>
@@ -170,17 +226,13 @@
               <input id="placePriceAmount" type="number" min="0" step="1" required />
             </div>
             <div class="admin-actions admin-grid-span-2">
-              <button type="submit" class="btn btn--primary btn--sm" id="placePriceSubmitBtn">Додати тариф</button>
-              <button type="button" class="btn btn--ghost btn--sm" id="placePriceFormCancel">Скасувати</button>
-              <button type="button" class="btn btn--ghost btn--sm admin-hide" id="placePriceCancelEdit">
-                Скасувати редагування
-              </button>
+              <button type="submit" class="btn btn--primary btn--sm" id="placePriceSubmitBtn">Додати</button>
+              <button type="button" class="btn btn--ghost btn--sm" data-admin-modal-close>Скасувати</button>
             </div>
           </form>
-          <div id="placePricesList"><p class="admin-muted">Завантаження…</p></div>
         </div>
       </div>
-    </main>
+    </div>
 
     <footer class="footer">
       <span>mozok.tilo.ruh — адмін</span>

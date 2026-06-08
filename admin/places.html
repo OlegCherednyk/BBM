@@ -116,6 +116,88 @@
       </div>
     </main>
 
+    <div id="placeEditModal" class="admin-modal admin-hide" aria-hidden="true">
+      <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+      <div
+        class="admin-modal__dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="placeEditModalTitle"
+      >
+        <div class="admin-modal__head">
+          <h3 id="placeEditModalTitle" class="admin-modal__title">Місце</h3>
+          <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
+        </div>
+        <div class="admin-modal__body">
+          <form id="placeEditForm" class="admin-grid admin-grid--2">
+            <input type="hidden" id="placeEditId" value="" />
+            <div class="admin-field">
+              <label for="placeEditName">Назва</label>
+              <input id="placeEditName" type="text" required />
+            </div>
+            <div class="admin-field">
+              <label for="placeEditAddress">Адреса</label>
+              <input id="placeEditAddress" type="text" />
+            </div>
+            <div class="admin-field admin-grid-span-2">
+              <label for="placeEditRiver">Берег Дніпра</label>
+              <select id="placeEditRiver">
+                <option value="">— не вказано —</option>
+                <option value="Правий берег">Правий берег</option>
+                <option value="Лівий берег">Лівий берег</option>
+              </select>
+            </div>
+            <div class="admin-field admin-grid-span-2">
+              <label for="placeEditNotes">Нотатки</label>
+              <textarea id="placeEditNotes"></textarea>
+            </div>
+            <div class="admin-actions admin-grid-span-2">
+              <button type="submit" class="btn btn--primary btn--sm">Зберегти</button>
+              <button type="button" class="btn btn--ghost btn--sm" data-admin-modal-close>Скасувати</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div id="placeLessonModal" class="admin-modal admin-hide" aria-hidden="true">
+      <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+      <div
+        class="admin-modal__dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="placeLessonModalTitle"
+      >
+        <div class="admin-modal__head">
+          <h3 id="placeLessonModalTitle" class="admin-modal__title">Заняття</h3>
+          <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
+        </div>
+        <div class="admin-modal__body">
+          <p id="placeLessonModalSub" class="admin-muted admin-modal__sub"></p>
+          <form id="placeLessonForm" class="admin-grid admin-grid--2">
+            <input type="hidden" id="placeLessonPlaceId" value="" />
+            <input type="hidden" id="placeLessonTimeId" value="" />
+            <div class="admin-field admin-grid-span-2">
+              <label for="placeLessonType">Тип заняття</label>
+              <select id="placeLessonType" required></select>
+            </div>
+            <div class="admin-field">
+              <label for="placeLessonDay">День тижня</label>
+              <select id="placeLessonDay" aria-label="День тижня"></select>
+            </div>
+            <div class="admin-field">
+              <label for="placeLessonTime">Початок</label>
+              <input id="placeLessonTime" type="time" aria-label="Час заняття" required />
+            </div>
+            <div class="admin-actions admin-grid-span-2">
+              <button type="submit" class="btn btn--primary btn--sm" id="placeLessonSaveBtn">Зберегти</button>
+              <button type="button" class="btn btn--ghost btn--sm" data-admin-modal-close>Скасувати</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <footer class="footer">
       <span>mozok.tilo.ruh — адмін</span>
       <a href="../index.html">Сайт</a>

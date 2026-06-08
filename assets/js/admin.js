@@ -3,6 +3,7 @@ import { getSupabaseConfig } from "./runtime-supabase-config.js";
 
 /** 0 = Sunday … 6 = Saturday (Date.getDay) */
 const DAYS_UK = ["Неділя", "Понеділок", "Вівторок", "Середа", "Четвер", "Пʼятниця", "Субота"];
+const DAYS_SHORT_UK = ["Нд", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
 
 function maybeEl(id) {
   return document.getElementById(id);
@@ -24,6 +25,23 @@ function fmtTime(timeStr) {
   if (!timeStr || typeof timeStr !== "string") return "";
   const part = timeStr.slice(0, 5);
   return part;
+}
+
+function lessonTypeShortLabel(lt) {
+  const full = lt?.lesson_types?.name?.trim() || lt?.lesson_types?.slug?.trim() || "—";
+  const short = full.split(/\s+/)[0];
+  return short || full;
+}
+
+function makeAdminIconBtn(symbol, title, className, onClick) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = className;
+  btn.textContent = symbol;
+  btn.title = title;
+  btn.setAttribute("aria-label", title);
+  btn.addEventListener("click", onClick);
+  return btn;
 }
 
 function fmtMoney(amount) {
@@ -1259,15 +1277,131 @@ function initTeacherForm() {
   initTeacherEditModal();
 }
 
-function setPriceFormOpen(isOpen) {
-  const form = maybeEl("priceForm");
-  const toggle = maybeEl("priceFormToggle");
-  if (!form) return;
-  form.classList.toggle("admin-hide", !isOpen);
-  if (toggle) {
-    toggle.textContent = isOpen ? "Закрити форму" : "+ Нова ціна";
-    toggle.setAttribute("aria-expanded", String(isOpen));
+const PRICE_MODAL_IDS = ["priceModal", "smmPriceModal", "placePriceModal"];
+let pricePageModalsWired = false;
+
+function isAnyPriceModalOpen() {
+  return PRICE_MODAL_IDS.some((id) => !maybeEl(id)?.classList.contains("admin-hide"));
+}
+
+function syncPriceModalBodyLock() {
+  if (!isAnyPriceModalOpen()) document.body.classList.remove("admin-modal-open");
+}
+
+function wirePriceModalClose(modalId, closeFn) {
+  const modal = maybeEl(modalId);
+  if (!modal) return;
+  modal.querySelectorAll("[data-admin-modal-close]").forEach((node) => {
+    node.addEventListener("click", () => closeFn());
+  });
+}
+
+function openPriceModal(row = null) {
+  const modal = maybeEl("priceModal");
+  const titleEl = maybeEl("priceModalTitle");
+  const submitBtn = maybeEl("priceSubmitBtn");
+  if (!modal) return;
+
+  if (row) {
+    beginEditPrice(row);
+    return;
   }
+
+  resetPriceForm({ closeModal: false });
+  editingPriceId = null;
+  if (titleEl) titleEl.textContent = "Нова ціна";
+  if (submitBtn) submitBtn.textContent = "Додати";
+  populatePriceLessonTypeSelect();
+  refreshPriceKindUI();
+
+  modal.classList.remove("admin-hide");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("admin-modal-open");
+  maybeEl("priceLessonType")?.focus();
+}
+
+function closePriceModal() {
+  const modal = maybeEl("priceModal");
+  if (!modal) return;
+  modal.classList.add("admin-hide");
+  modal.setAttribute("aria-hidden", "true");
+  syncPriceModalBodyLock();
+}
+
+function openSmmPriceModal(row = null) {
+  const modal = maybeEl("smmPriceModal");
+  const titleEl = maybeEl("smmPriceModalTitle");
+  const submitBtn = maybeEl("smmPriceSubmitBtn");
+  if (!modal) return;
+
+  if (row) {
+    beginEditSmmPrice(row);
+    return;
+  }
+
+  resetSmmPriceForm({ closeModal: false });
+  if (titleEl) titleEl.textContent = "Новий SMM прайс";
+  if (submitBtn) submitBtn.textContent = "Додати";
+
+  modal.classList.remove("admin-hide");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("admin-modal-open");
+  maybeEl("smmPricePeopleFrom")?.focus();
+}
+
+function closeSmmPriceModal() {
+  const modal = maybeEl("smmPriceModal");
+  if (!modal) return;
+  modal.classList.add("admin-hide");
+  modal.setAttribute("aria-hidden", "true");
+  syncPriceModalBodyLock();
+}
+
+function openPlacePriceModal(row = null) {
+  const modal = maybeEl("placePriceModal");
+  const titleEl = maybeEl("placePriceModalTitle");
+  const submitBtn = maybeEl("placePriceSubmitBtn");
+  if (!modal) return;
+
+  if (row) {
+    beginEditPlacePrice(row);
+    return;
+  }
+
+  resetPlacePriceForm({ closeModal: false });
+  if (titleEl) titleEl.textContent = "Новий тариф";
+  if (submitBtn) submitBtn.textContent = "Додати";
+  populatePlacePricePlaceSelect();
+
+  modal.classList.remove("admin-hide");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("admin-modal-open");
+  maybeEl("placePricePlaceId")?.focus();
+}
+
+function closePlacePriceModal() {
+  const modal = maybeEl("placePriceModal");
+  if (!modal) return;
+  modal.classList.add("admin-hide");
+  modal.setAttribute("aria-hidden", "true");
+  syncPriceModalBodyLock();
+}
+
+function initPricePageModals() {
+  if (pricePageModalsWired) return;
+  if (!maybeEl("priceModal") && !maybeEl("smmPriceModal") && !maybeEl("placePriceModal")) return;
+  pricePageModalsWired = true;
+
+  wirePriceModalClose("priceModal", closePriceModal);
+  wirePriceModalClose("smmPriceModal", closeSmmPriceModal);
+  wirePriceModalClose("placePriceModal", closePlacePriceModal);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (!maybeEl("priceModal")?.classList.contains("admin-hide")) closePriceModal();
+    else if (!maybeEl("smmPriceModal")?.classList.contains("admin-hide")) closeSmmPriceModal();
+    else if (!maybeEl("placePriceModal")?.classList.contains("admin-hide")) closePlacePriceModal();
+  });
 }
 
 function refreshPriceKindUI() {
@@ -1304,43 +1438,41 @@ function populatePriceLessonTypeSelect() {
   syncCustomSelect(sel);
 }
 
-function resetPriceForm() {
+function resetPriceForm({ closeModal = true } = {}) {
   if (!maybeEl("priceForm")) return;
   editingPriceId = null;
   const priceEditingId = maybeEl("priceEditingId");
   const priceSubmitBtn = maybeEl("priceSubmitBtn");
-  const priceCancelEdit = maybeEl("priceCancelEdit");
   const priceKindSingle = maybeEl("priceKindSingle");
   const priceAmount = maybeEl("priceAmount");
   const priceVisits = maybeEl("priceVisits");
   if (!priceEditingId || !priceSubmitBtn || !priceKindSingle || !priceAmount || !priceVisits) return;
   priceEditingId.value = "";
-  priceSubmitBtn.textContent = "Додати ціну";
-  if (priceCancelEdit) priceCancelEdit.classList.add("admin-hide");
+  priceSubmitBtn.textContent = "Додати";
   priceKindSingle.checked = true;
   priceAmount.value = "";
   priceVisits.value = "8";
   populatePriceLessonTypeSelect();
   refreshPriceKindUI();
-  setPriceFormOpen(false);
+  if (closeModal) closePriceModal();
 }
 
 function beginEditPrice(p) {
   if (!maybeEl("priceForm")) return;
+  const modal = maybeEl("priceModal");
+  const titleEl = maybeEl("priceModalTitle");
   editingPriceId = p.id;
   const priceEditingId = maybeEl("priceEditingId");
   const priceSubmitBtn = maybeEl("priceSubmitBtn");
-  const priceCancelEdit = maybeEl("priceCancelEdit");
   const ltSel = maybeEl("priceLessonType");
   const kSingle = maybeEl("priceKindSingle");
   const kAbon = maybeEl("priceKindAbon");
   const priceVisits = maybeEl("priceVisits");
   const priceAmount = maybeEl("priceAmount");
   if (!priceEditingId || !priceSubmitBtn || !ltSel || !kSingle || !kAbon || !priceVisits || !priceAmount) return;
-  setPriceFormOpen(true);
   priceEditingId.value = p.id;
-  priceSubmitBtn.textContent = "Зберегти зміни";
-  if (priceCancelEdit) priceCancelEdit.classList.remove("admin-hide");
+  if (titleEl) titleEl.textContent = "Редагування ціни";
+  priceSubmitBtn.textContent = "Зберегти";
   populatePriceLessonTypeSelect();
   ltSel.value = p.lesson_type_id;
   syncCustomSelect(ltSel);
@@ -1349,6 +1481,12 @@ function beginEditPrice(p) {
   priceVisits.value = String(p.visits_count || 8);
   priceAmount.value = String(p.amount_uah);
   refreshPriceKindUI();
+  if (modal) {
+    modal.classList.remove("admin-hide");
+    modal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("admin-modal-open");
+    priceAmount.focus();
+  }
 }
 
 async function loadLessonTypesIntoCache() {
@@ -1407,6 +1545,95 @@ function renderLessonTypesPanel() {
   }
 }
 
+function priceKindLabel(row) {
+  return row.price_kind === "single" ? "Разове" : "Абонемент";
+}
+
+function priceVisitsLabel(row) {
+  return row.price_kind === "single" ? "1 заняття" : `${row.visits_count} у пакеті`;
+}
+
+function renderPriceItemCard(row) {
+  const card = document.createElement("article");
+  card.className = "price-item-card";
+  card.dataset.priceId = row.id;
+
+  const rowEl = document.createElement("div");
+  rowEl.className = "price-item-card__row";
+
+  const info = document.createElement("div");
+  info.className = "price-item-card__info";
+
+  const kindEl = document.createElement("span");
+  kindEl.className = `price-item-card__kind price-item-card__kind--${row.price_kind}`;
+  kindEl.textContent = priceKindLabel(row);
+
+  const detailEl = document.createElement("span");
+  detailEl.className = "price-item-card__detail";
+  detailEl.textContent = priceVisitsLabel(row);
+
+  const amountEl = document.createElement("span");
+  amountEl.className = "price-item-card__amount";
+  amountEl.textContent = fmtMoney(row.amount_uah);
+
+  info.append(kindEl, detailEl, amountEl);
+
+  const actions = document.createElement("div");
+  actions.className = "price-item-card__actions";
+  actions.append(
+    makeAdminIconBtn(
+      "✏️",
+      "Редагувати",
+      "btn btn--ghost btn--sm price-item-card__btn",
+      () => beginEditPrice(row),
+    ),
+    makeAdminIconBtn(
+      "✕",
+      "Видалити",
+      "btn btn--danger btn--sm price-item-card__btn price-item-card__btn--del",
+      async () => {
+        if (!confirm("Видалити цю ціну?")) return;
+        clearDashMessages();
+        const { error: delErr } = await supabase.from("prices").delete().eq("id", row.id);
+        if (delErr) {
+          showDashError(delErr.message);
+          return;
+        }
+        if (editingPriceId === row.id) resetPriceForm();
+        await renderPricesPanel();
+        showDashOk("Ціну видалено.");
+      },
+    ),
+  );
+
+  rowEl.append(info, actions);
+  card.append(rowEl);
+  return card;
+}
+
+function renderPriceGroupCard(group) {
+  const card = document.createElement("article");
+  card.className = "price-group-card";
+
+  const head = document.createElement("div");
+  head.className = "price-group-card__head";
+  const titleEl = document.createElement("h3");
+  titleEl.className = "price-group-card__title";
+  const fullName = group.lesson_types?.name || group.lesson_types?.slug || "—";
+  titleEl.textContent = lessonTypeShortLabel(group);
+  titleEl.title = fullName;
+  head.appendChild(titleEl);
+  card.appendChild(head);
+
+  const items = document.createElement("div");
+  items.className = "price-item-cards";
+  for (const row of group.prices) {
+    items.appendChild(renderPriceItemCard(row));
+  }
+  card.appendChild(items);
+  return card;
+}
+
 async function renderPricesPanel() {
   const root = maybeEl("pricesList");
   if (!root) return;
@@ -1431,57 +1658,23 @@ async function renderPricesPanel() {
     return;
   }
 
-  const tbl = document.createElement("table");
-  tbl.className = "admin-prices-table";
-  tbl.innerHTML = `<thead><tr>
-    <th>Напрям</th><th>Тип</th><th>Занять</th><th>₴</th><th></th></tr></thead><tbody></tbody>`;
-  const tbody = tbl.querySelector("tbody");
-
+  /** @type {Map<string, { lesson_types: any, prices: any[] }>} */
+  const groups = new Map();
   for (const row of sorted) {
-    const tr = document.createElement("tr");
-    const tn = row.lesson_types?.name || "—";
-    const kindUk = row.price_kind === "single" ? "Разове" : "Абонемент";
-    const visits = row.price_kind === "single" ? "1" : `${row.visits_count} у пакеті`;
-    tr.innerHTML = `<td>${escapeHtml(tn)}</td><td>${kindUk}</td><td>${visits}</td><td>${row.amount_uah}</td>`;
-    const td = document.createElement("td");
-
-    const ed = document.createElement("button");
-    ed.type = "button";
-    ed.className = "btn btn--ghost btn--sm";
-    ed.style.padding = "6px 10px";
-    ed.textContent = "Змінити";
-    ed.addEventListener("click", () => beginEditPrice(row));
-
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "btn btn--danger btn--sm";
-    del.style.padding = "6px 10px";
-    del.style.marginLeft = "6px";
-    del.textContent = "✕";
-    del.title = "Видалити";
-    del.addEventListener("click", async () => {
-      if (!confirm("Видалити цю ціну?")) return;
-      clearDashMessages();
-      const { error: delErr } = await supabase.from("prices").delete().eq("id", row.id);
-      if (delErr) {
-        showDashError(delErr.message);
-        return;
-      }
-      if (editingPriceId === row.id) resetPriceForm();
-      await renderPricesPanel();
-      showDashOk("Ціну видалено.");
-    });
-
-    td.append(ed, del);
-    tr.appendChild(td);
-    tbody.appendChild(tr);
+    const key = row.lesson_type_id || row.lesson_types?.slug || row.id;
+    if (!groups.has(key)) {
+      groups.set(key, { lesson_types: row.lesson_types, prices: [] });
+    }
+    groups.get(key).prices.push(row);
   }
 
-  const wrap = document.createElement("div");
-  wrap.className = "prices-table-wrap";
-  wrap.appendChild(tbl);
+  const grid = document.createElement("div");
+  grid.className = "price-cards";
+  for (const group of groups.values()) {
+    grid.appendChild(renderPriceGroupCard(group));
+  }
   root.innerHTML = "";
-  root.appendChild(wrap);
+  root.appendChild(grid);
 }
 
 function fmtSmmPeopleRange(minPeople, maxPeople) {
@@ -1492,23 +1685,11 @@ function fmtSmmPeopleRange(minPeople, maxPeople) {
   return `${minVal}-${maxVal}`;
 }
 
-function setSmmPriceFormOpen(isOpen) {
-  const form = maybeEl("smmPriceForm");
-  const toggle = maybeEl("smmPriceFormToggle");
-  if (!form) return;
-  form.classList.toggle("admin-hide", !isOpen);
-  if (toggle) {
-    toggle.textContent = isOpen ? "Закрити форму" : "+ Нова ціна";
-    toggle.setAttribute("aria-expanded", String(isOpen));
-  }
-}
-
-function resetSmmPriceForm() {
+function resetSmmPriceForm({ closeModal = true } = {}) {
   if (!maybeEl("smmPriceForm")) return;
   editingSmmPriceId = null;
   const editingId = maybeEl("smmPriceEditingId");
   const submitBtn = maybeEl("smmPriceSubmitBtn");
-  const cancelEdit = maybeEl("smmPriceCancelEdit");
   const peopleFrom = maybeEl("smmPricePeopleFrom");
   const peopleTo = maybeEl("smmPricePeopleTo");
   const amount = maybeEl("smmPriceAmount");
@@ -1517,15 +1698,15 @@ function resetSmmPriceForm() {
   peopleFrom.value = "";
   peopleTo.value = "";
   amount.value = "";
-  submitBtn.textContent = "Додати ціну";
-  cancelEdit?.classList.add("admin-hide");
-  setSmmPriceFormOpen(false);
+  submitBtn.textContent = "Додати";
+  if (closeModal) closeSmmPriceModal();
 }
 
 function beginEditSmmPrice(row) {
+  const modal = maybeEl("smmPriceModal");
+  const titleEl = maybeEl("smmPriceModalTitle");
   const editingId = maybeEl("smmPriceEditingId");
   const submitBtn = maybeEl("smmPriceSubmitBtn");
-  const cancelEdit = maybeEl("smmPriceCancelEdit");
   const peopleFrom = maybeEl("smmPricePeopleFrom");
   const peopleTo = maybeEl("smmPricePeopleTo");
   const amount = maybeEl("smmPriceAmount");
@@ -1535,9 +1716,69 @@ function beginEditSmmPrice(row) {
   peopleFrom.value = String(row.people_from ?? "");
   peopleTo.value = row.people_to == null ? "" : String(row.people_to);
   amount.value = String(row.amount_uah ?? 0);
-  submitBtn.textContent = "Зберегти зміни";
-  cancelEdit?.classList.remove("admin-hide");
-  setSmmPriceFormOpen(true);
+  if (titleEl) titleEl.textContent = "Редагування SMM прайсу";
+  submitBtn.textContent = "Зберегти";
+  if (modal) {
+    modal.classList.remove("admin-hide");
+    modal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("admin-modal-open");
+    amount.focus();
+  }
+}
+
+function renderSmmPriceCard(row) {
+  const card = document.createElement("article");
+  card.className = "price-flat-card";
+  card.dataset.smmPriceId = row.id;
+
+  const rowEl = document.createElement("div");
+  rowEl.className = "price-flat-card__row";
+
+  const info = document.createElement("div");
+  info.className = "price-flat-card__info";
+
+  const rangeEl = document.createElement("span");
+  rangeEl.className = "price-flat-card__label";
+  rangeEl.textContent = fmtSmmPeopleRange(row.people_from, row.people_to);
+  rangeEl.title = "Кількість людей";
+
+  const amountEl = document.createElement("span");
+  amountEl.className = "price-flat-card__amount";
+  amountEl.textContent = fmtMoney(row.amount_uah);
+
+  info.append(rangeEl, amountEl);
+
+  const actions = document.createElement("div");
+  actions.className = "price-flat-card__actions";
+  actions.append(
+    makeAdminIconBtn(
+      "✏️",
+      "Редагувати",
+      "btn btn--ghost btn--sm price-flat-card__btn",
+      () => beginEditSmmPrice(row),
+    ),
+    makeAdminIconBtn(
+      "✕",
+      "Видалити",
+      "btn btn--danger btn--sm price-flat-card__btn price-flat-card__btn--del",
+      async () => {
+        if (!confirm("Видалити цей SMM прайс?")) return;
+        clearDashMessages();
+        const { error: delErr } = await supabase.from("smm_prices").delete().eq("id", row.id);
+        if (delErr) {
+          showDashError(delErr.message);
+          return;
+        }
+        if (editingSmmPriceId === row.id) resetSmmPriceForm();
+        await renderSmmPricesPanel();
+        showDashOk("SMM прайс видалено.");
+      },
+    ),
+  );
+
+  rowEl.append(info, actions);
+  card.append(rowEl);
+  return card;
 }
 
 async function renderSmmPricesPanel() {
@@ -1556,70 +1797,19 @@ async function renderSmmPricesPanel() {
     return;
   }
 
-  const tbl = document.createElement("table");
-  tbl.className = "admin-prices-table";
-  tbl.innerHTML = `<thead><tr><th>К-сть людей</th><th>₴</th><th></th></tr></thead><tbody></tbody>`;
-  const tbody = tbl.querySelector("tbody");
-
+  const grid = document.createElement("div");
+  grid.className = "price-flat-cards";
   for (const row of rows) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${escapeHtml(fmtSmmPeopleRange(row.people_from, row.people_to))}</td><td>${row.amount_uah}</td>`;
-    const td = document.createElement("td");
-
-    const ed = document.createElement("button");
-    ed.type = "button";
-    ed.className = "btn btn--ghost btn--sm";
-    ed.style.padding = "6px 10px";
-    ed.textContent = "Змінити";
-    ed.addEventListener("click", () => beginEditSmmPrice(row));
-
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "btn btn--danger btn--sm";
-    del.style.padding = "6px 10px";
-    del.style.marginLeft = "6px";
-    del.textContent = "✕";
-    del.title = "Видалити";
-    del.addEventListener("click", async () => {
-      if (!confirm("Видалити цей SMM прайс?")) return;
-      clearDashMessages();
-      const { error: delErr } = await supabase.from("smm_prices").delete().eq("id", row.id);
-      if (delErr) {
-        showDashError(delErr.message);
-        return;
-      }
-      if (editingSmmPriceId === row.id) resetSmmPriceForm();
-      await renderSmmPricesPanel();
-      showDashOk("SMM прайс видалено.");
-    });
-
-    td.append(ed, del);
-    tr.appendChild(td);
-    tbody.appendChild(tr);
+    grid.appendChild(renderSmmPriceCard(row));
   }
-
-  const wrap = document.createElement("div");
-  wrap.className = "prices-table-wrap";
-  wrap.appendChild(tbl);
   root.innerHTML = "";
-  root.appendChild(wrap);
+  root.appendChild(grid);
 }
 
 function fmtPlacePriceDuration(durationMinutes) {
   const d = Number(durationMinutes);
   if (d === 90) return "1.5 години";
   return "1 година";
-}
-
-function setPlacePriceFormOpen(isOpen) {
-  const form = maybeEl("placePriceForm");
-  const toggle = maybeEl("placePriceFormToggle");
-  if (!form) return;
-  form.classList.toggle("admin-hide", !isOpen);
-  if (toggle) {
-    toggle.textContent = isOpen ? "Закрити форму" : "+ Новий тариф";
-    toggle.setAttribute("aria-expanded", String(isOpen));
-  }
 }
 
 function populatePlacePricePlaceSelect(selectedPlaceId = "") {
@@ -1643,28 +1833,28 @@ function populatePlacePricePlaceSelect(selectedPlaceId = "") {
   syncCustomSelect(sel);
 }
 
-function resetPlacePriceForm() {
+function resetPlacePriceForm({ closeModal = true } = {}) {
   if (!maybeEl("placePriceForm")) return;
   editingPlacePriceId = null;
   const editingId = maybeEl("placePriceEditingId");
   const submitBtn = maybeEl("placePriceSubmitBtn");
-  const cancelEdit = maybeEl("placePriceCancelEdit");
   const duration = maybeEl("placePriceDuration");
   const amount = maybeEl("placePriceAmount");
   if (!editingId || !submitBtn || !duration || !amount) return;
   editingId.value = "";
   amount.value = "";
   duration.value = "60";
-  submitBtn.textContent = "Додати тариф";
-  cancelEdit?.classList.add("admin-hide");
+  submitBtn.textContent = "Додати";
   populatePlacePricePlaceSelect();
-  setPlacePriceFormOpen(false);
+  syncCustomSelect(maybeEl("placePriceDuration"));
+  if (closeModal) closePlacePriceModal();
 }
 
 function beginEditPlacePrice(row) {
+  const modal = maybeEl("placePriceModal");
+  const titleEl = maybeEl("placePriceModalTitle");
   const editingId = maybeEl("placePriceEditingId");
   const submitBtn = maybeEl("placePriceSubmitBtn");
-  const cancelEdit = maybeEl("placePriceCancelEdit");
   const placeSel = maybeEl("placePricePlaceId");
   const duration = maybeEl("placePriceDuration");
   const amount = maybeEl("placePriceAmount");
@@ -1672,12 +1862,18 @@ function beginEditPlacePrice(row) {
 
   editingPlacePriceId = row.id;
   editingId.value = row.id;
-  submitBtn.textContent = "Зберегти зміни";
-  cancelEdit?.classList.remove("admin-hide");
+  if (titleEl) titleEl.textContent = "Редагування тарифу";
+  submitBtn.textContent = "Зберегти";
   populatePlacePricePlaceSelect(row.place_id);
   duration.value = String(row.duration_minutes || 60);
   amount.value = String(row.amount_uah ?? 0);
-  setPlacePriceFormOpen(true);
+  syncCustomSelect(duration);
+  if (modal) {
+    modal.classList.remove("admin-hide");
+    modal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("admin-modal-open");
+    amount.focus();
+  }
 }
 
 async function renderPlacePricesPanel() {
@@ -1717,53 +1913,91 @@ async function renderPlacePricesPanel() {
     return;
   }
 
-  const tbl = document.createElement("table");
-  tbl.className = "admin-prices-table";
-  tbl.innerHTML = `<thead><tr><th>Місце</th><th>Тривалість</th><th>₴</th><th></th></tr></thead><tbody></tbody>`;
-  const tbody = tbl.querySelector("tbody");
-
+  /** @type {Map<string, { placeName: string, prices: any[] }>} */
+  const groups = new Map();
   for (const row of sorted) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${escapeHtml(row.places?.name || "—")}</td><td>${fmtPlacePriceDuration(row.duration_minutes)}</td><td>${row.amount_uah}</td>`;
-    const td = document.createElement("td");
-
-    const ed = document.createElement("button");
-    ed.type = "button";
-    ed.className = "btn btn--ghost btn--sm";
-    ed.style.padding = "6px 10px";
-    ed.textContent = "Змінити";
-    ed.addEventListener("click", () => beginEditPlacePrice(row));
-
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "btn btn--danger btn--sm";
-    del.style.padding = "6px 10px";
-    del.style.marginLeft = "6px";
-    del.textContent = "✕";
-    del.title = "Видалити";
-    del.addEventListener("click", async () => {
-      if (!confirm("Видалити цей тариф оренди?")) return;
-      clearDashMessages();
-      const { error: delErr } = await supabase.from("places_prices").delete().eq("id", row.id);
-      if (delErr) {
-        showDashError(delErr.message);
-        return;
-      }
-      if (editingPlacePriceId === row.id) resetPlacePriceForm();
-      await renderPlacePricesPanel();
-      showDashOk("Тариф оренди видалено.");
-    });
-
-    td.append(ed, del);
-    tr.appendChild(td);
-    tbody.appendChild(tr);
+    const key = row.place_id || row.places?.name || row.id;
+    if (!groups.has(key)) {
+      groups.set(key, { placeName: row.places?.name || "—", prices: [] });
+    }
+    groups.get(key).prices.push(row);
   }
 
-  const wrap = document.createElement("div");
-  wrap.className = "prices-table-wrap";
-  wrap.appendChild(tbl);
+  const grid = document.createElement("div");
+  grid.className = "price-cards";
+  for (const group of groups.values()) {
+    const card = document.createElement("article");
+    card.className = "price-group-card";
+
+    const head = document.createElement("div");
+    head.className = "price-group-card__head";
+    const titleEl = document.createElement("h3");
+    titleEl.className = "price-group-card__title price-group-card__title--place";
+    titleEl.textContent = group.placeName;
+    head.appendChild(titleEl);
+    card.appendChild(head);
+
+    const items = document.createElement("div");
+    items.className = "price-item-cards";
+    for (const row of group.prices) {
+      const item = document.createElement("article");
+      item.className = "price-item-card";
+      item.dataset.placePriceId = row.id;
+
+      const rowEl = document.createElement("div");
+      rowEl.className = "price-item-card__row";
+
+      const info = document.createElement("div");
+      info.className = "price-item-card__info";
+
+      const kindEl = document.createElement("span");
+      kindEl.className = "price-item-card__kind price-item-card__kind--rent";
+      kindEl.textContent = fmtPlacePriceDuration(row.duration_minutes);
+
+      const amountEl = document.createElement("span");
+      amountEl.className = "price-item-card__amount";
+      amountEl.textContent = fmtMoney(row.amount_uah);
+
+      info.append(kindEl, amountEl);
+
+      const actions = document.createElement("div");
+      actions.className = "price-item-card__actions";
+      actions.append(
+        makeAdminIconBtn(
+          "✏️",
+          "Редагувати",
+          "btn btn--ghost btn--sm price-item-card__btn",
+          () => beginEditPlacePrice(row),
+        ),
+        makeAdminIconBtn(
+          "✕",
+          "Видалити",
+          "btn btn--danger btn--sm price-item-card__btn price-item-card__btn--del",
+          async () => {
+            if (!confirm("Видалити цей тариф оренди?")) return;
+            clearDashMessages();
+            const { error: delErr } = await supabase.from("places_prices").delete().eq("id", row.id);
+            if (delErr) {
+              showDashError(delErr.message);
+              return;
+            }
+            if (editingPlacePriceId === row.id) resetPlacePriceForm();
+            await renderPlacePricesPanel();
+            showDashOk("Тариф оренди видалено.");
+          },
+        ),
+      );
+
+      rowEl.append(info, actions);
+      item.append(rowEl);
+      items.appendChild(item);
+    }
+    card.appendChild(items);
+    grid.appendChild(card);
+  }
+
   root.innerHTML = "";
-  root.appendChild(wrap);
+  root.appendChild(grid);
 }
 
 function escapeHtml(text) {
@@ -1773,19 +2007,16 @@ function escapeHtml(text) {
 }
 
 function initPriceForm() {
+  initPricePageModals();
   const form = maybeEl("priceForm");
   if (!form) return;
   // We validate in JS to avoid native validation conflicts with custom-select UI.
   form.noValidate = true;
   const toggle = maybeEl("priceFormToggle");
-  const cancel = maybeEl("priceFormCancel");
   document.querySelectorAll('input[name="priceKind"]').forEach((r) => r.addEventListener("change", refreshPriceKindUI));
   refreshPriceKindUI();
 
-  const cancelEdit = maybeEl("priceCancelEdit");
-  if (cancelEdit) cancelEdit.addEventListener("click", () => resetPriceForm());
-  toggle?.addEventListener("click", () => setPriceFormOpen(form.classList.contains("admin-hide")));
-  cancel?.addEventListener("click", () => resetPriceForm());
+  toggle?.addEventListener("click", () => openPriceModal());
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1827,7 +2058,7 @@ function initPriceForm() {
     }
 
     resetPriceForm();
-    setPriceFormOpen(false);
+    closePriceModal();
     await renderPricesPanel();
     showDashOk(id ? "Ціну оновлено." : "Ціну додано.");
   });
@@ -1838,11 +2069,7 @@ function initSmmPriceForm() {
   if (!form) return;
   form.noValidate = true;
   const toggle = maybeEl("smmPriceFormToggle");
-  const cancel = maybeEl("smmPriceFormCancel");
-  const cancelEdit = maybeEl("smmPriceCancelEdit");
-  toggle?.addEventListener("click", () => setSmmPriceFormOpen(form.classList.contains("admin-hide")));
-  cancel?.addEventListener("click", () => resetSmmPriceForm());
-  cancelEdit?.addEventListener("click", () => resetSmmPriceForm());
+  toggle?.addEventListener("click", () => openSmmPriceModal());
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1882,6 +2109,7 @@ function initSmmPriceForm() {
     }
 
     resetSmmPriceForm();
+    closeSmmPriceModal();
     await renderSmmPricesPanel();
     showDashOk(id ? "SMM прайс оновлено." : "SMM прайс додано.");
   });
@@ -1892,11 +2120,7 @@ function initPlacePriceForm() {
   if (!form) return;
   form.noValidate = true;
   const toggle = maybeEl("placePriceFormToggle");
-  const cancel = maybeEl("placePriceFormCancel");
-  const cancelEdit = maybeEl("placePriceCancelEdit");
-  toggle?.addEventListener("click", () => setPlacePriceFormOpen(form.classList.contains("admin-hide")));
-  cancel?.addEventListener("click", () => resetPlacePriceForm());
-  cancelEdit?.addEventListener("click", () => resetPlacePriceForm());
+  toggle?.addEventListener("click", () => openPlacePriceModal());
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1934,6 +2158,7 @@ function initPlacePriceForm() {
     }
 
     resetPlacePriceForm();
+    closePlacePriceModal();
     await renderPlacePricesPanel();
     showDashOk(id ? "Тариф оренди оновлено." : "Тариф оренди додано.");
   });
@@ -1958,6 +2183,8 @@ async function refreshDashboard() {
         break;
       case "places":
         await loadLessonTypesIntoCache();
+        closePlaceEditModal();
+        closePlaceLessonModal();
         await loadPlacesHtml();
         break;
       case "teachers":
@@ -2725,6 +2952,238 @@ async function isAdminUser(userId) {
   return !!data;
 }
 
+/** @type {object | null} */
+let editingPlaceRow = null;
+let placeModalsWired = false;
+
+function closePlaceEditModal() {
+  const modal = maybeEl("placeEditModal");
+  if (!modal) return;
+  modal.classList.add("admin-hide");
+  modal.setAttribute("aria-hidden", "true");
+  if (maybeEl("placeLessonModal")?.classList.contains("admin-hide")) {
+    document.body.classList.remove("admin-modal-open");
+  }
+  editingPlaceRow = null;
+}
+
+function closePlaceLessonModal() {
+  const modal = maybeEl("placeLessonModal");
+  if (!modal) return;
+  modal.classList.add("admin-hide");
+  modal.setAttribute("aria-hidden", "true");
+  if (maybeEl("placeEditModal")?.classList.contains("admin-hide")) {
+    document.body.classList.remove("admin-modal-open");
+  }
+}
+
+function populatePlaceLessonTypeSelect() {
+  const sel = maybeEl("placeLessonType");
+  if (!sel) return;
+  sel.innerHTML = "";
+  for (const lt of cachedLessonTypes) {
+    const opt = document.createElement("option");
+    opt.value = lt.id;
+    opt.textContent = lt.name || lt.slug;
+    sel.appendChild(opt);
+  }
+  syncCustomSelect(sel);
+}
+
+function populatePlaceLessonDaySelect() {
+  const sel = maybeEl("placeLessonDay");
+  if (!sel) return;
+  sel.innerHTML = DAYS_UK.map((d, i) => `<option value="${i}">${d}</option>`).join("");
+  syncCustomSelect(sel);
+}
+
+function openPlaceEditModal(place) {
+  const modal = maybeEl("placeEditModal");
+  const titleEl = maybeEl("placeEditModalTitle");
+  const idInput = maybeEl("placeEditId");
+  const nameInput = maybeEl("placeEditName");
+  const addressInput = maybeEl("placeEditAddress");
+  const notesInput = maybeEl("placeEditNotes");
+  const riverSel = maybeEl("placeEditRiver");
+  if (!modal || !idInput || !nameInput || !addressInput || !notesInput) return;
+
+  editingPlaceRow = place;
+  idInput.value = place.id;
+  if (titleEl) titleEl.textContent = place.name || "Місце";
+  nameInput.value = place.name || "";
+  addressInput.value = place.address || "";
+  notesInput.value = place.notes || "";
+  if (riverSel) {
+    riverSel.value = place.river_bank || "";
+    syncCustomSelect(riverSel);
+  }
+
+  modal.classList.remove("admin-hide");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("admin-modal-open");
+  nameInput.focus();
+}
+
+function openPlaceLessonModal(place, lessonTime = null) {
+  const modal = maybeEl("placeLessonModal");
+  const titleEl = maybeEl("placeLessonModalTitle");
+  const subEl = maybeEl("placeLessonModalSub");
+  const placeIdInput = maybeEl("placeLessonPlaceId");
+  const timeIdInput = maybeEl("placeLessonTimeId");
+  const typeSel = maybeEl("placeLessonType");
+  const daySel = maybeEl("placeLessonDay");
+  const timeInput = maybeEl("placeLessonTime");
+  const saveBtn = maybeEl("placeLessonSaveBtn");
+  if (!modal || !placeIdInput || !timeIdInput || !typeSel || !daySel || !timeInput) return;
+
+  populatePlaceLessonTypeSelect();
+  populatePlaceLessonDaySelect();
+
+  const isEdit = Boolean(lessonTime?.id);
+  placeIdInput.value = place.id;
+  timeIdInput.value = isEdit ? lessonTime.id : "";
+
+  if (titleEl) titleEl.textContent = isEdit ? "Редагування заняття" : "Нове заняття";
+  if (subEl) {
+    subEl.textContent = [place.name, place.address].filter(Boolean).join(" · ");
+  }
+  if (saveBtn) saveBtn.textContent = isEdit ? "Оновити" : "Додати";
+
+  if (isEdit) {
+    typeSel.value = lessonTime.lesson_type_id || "";
+    daySel.value = String(lessonTime.day_of_week ?? 0);
+    timeInput.value = fmtTime(lessonTime.start_time);
+  } else {
+    typeSel.selectedIndex = 0;
+    daySel.value = "0";
+    timeInput.value = "";
+  }
+  syncCustomSelect(typeSel);
+  syncCustomSelect(daySel);
+
+  modal.classList.remove("admin-hide");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("admin-modal-open");
+  (isEdit ? timeInput : typeSel).focus();
+}
+
+function initPlaceModals() {
+  if (placeModalsWired) return;
+  const editModal = maybeEl("placeEditModal");
+  const lessonModal = maybeEl("placeLessonModal");
+  const editForm = maybeEl("placeEditForm");
+  const lessonForm = maybeEl("placeLessonForm");
+  if (!editModal && !lessonModal) return;
+  placeModalsWired = true;
+
+  const wireClose = (modal, closeFn) => {
+    if (!modal) return;
+    modal.querySelectorAll("[data-admin-modal-close]").forEach((node) => {
+      node.addEventListener("click", () => closeFn());
+    });
+  };
+
+  wireClose(editModal, closePlaceEditModal);
+  wireClose(lessonModal, closePlaceLessonModal);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (editModal && !editModal.classList.contains("admin-hide")) closePlaceEditModal();
+    else if (lessonModal && !lessonModal.classList.contains("admin-hide")) closePlaceLessonModal();
+  });
+
+  populatePlaceLessonDaySelect();
+
+  if (editForm) {
+    editForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearDashMessages();
+      const id = maybeEl("placeEditId")?.value ?? "";
+      const name = maybeEl("placeEditName")?.value.trim() ?? "";
+      const address = maybeEl("placeEditAddress")?.value.trim() ?? "";
+      const notes = maybeEl("placeEditNotes")?.value.trim() ?? "";
+      const river_bank = maybeEl("placeEditRiver")?.value.trim() || null;
+      if (!id || !name) {
+        showDashError("Вкажи назву місця.");
+        return;
+      }
+      const sort_order = editingPlaceRow?.sort_order ?? 0;
+      const { error } = await supabase
+        .from("places")
+        .update({
+          name,
+          sort_order,
+          address: address || null,
+          notes: notes || null,
+          river_bank,
+        })
+        .eq("id", id);
+      if (error) {
+        showDashError(error.message);
+        return;
+      }
+      closePlaceEditModal();
+      await loadPlacesHtml();
+      showDashOk("Місце оновлено.");
+    });
+  }
+
+  if (lessonForm) {
+    lessonForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearDashMessages();
+      const placeId = maybeEl("placeLessonPlaceId")?.value ?? "";
+      const timeId = maybeEl("placeLessonTimeId")?.value ?? "";
+      const lesson_type_id = maybeEl("placeLessonType")?.value ?? "";
+      const day_of_week = parseInt(maybeEl("placeLessonDay")?.value ?? "0", 10);
+      const tm = String(maybeEl("placeLessonTime")?.value ?? "").trim();
+      const saveBtn = maybeEl("placeLessonSaveBtn");
+
+      if (!placeId) {
+        showDashError("Не знайдено місце.");
+        return;
+      }
+      if (!lesson_type_id) {
+        showDashError("Обери тип заняття.");
+        return;
+      }
+      if (!/^\d{2}:\d{2}$/.test(tm)) {
+        showDashError("Обери час заняття.");
+        return;
+      }
+
+      if (saveBtn) saveBtn.disabled = true;
+      let error;
+      if (timeId) {
+        ({ error } = await supabase
+          .from("lesson_times")
+          .update({
+            lesson_type_id,
+            day_of_week,
+            start_time: `${tm}:00`,
+          })
+          .eq("id", timeId));
+      } else {
+        ({ error } = await supabase.from("lesson_times").insert({
+          place_id: placeId,
+          lesson_type_id,
+          day_of_week,
+          start_time: `${tm}:00`,
+        }));
+      }
+      if (saveBtn) saveBtn.disabled = false;
+
+      if (error) {
+        showDashError(error.message);
+        return;
+      }
+      closePlaceLessonModal();
+      await loadPlacesHtml();
+      showDashOk(timeId ? "Слот оновлено." : "Заняття додано.");
+    });
+  }
+}
+
 async function loadPlacesHtml() {
   const placesList = maybeEl("placesList");
   if (!placesList) return;
@@ -2757,392 +3216,159 @@ async function loadPlacesHtml() {
     return;
   }
 
-  placesList.innerHTML = "";
+  const grid = document.createElement("div");
+  grid.className = "place-cards";
   for (const p of places) {
-    placesList.appendChild(renderPlaceCard(p));
+    grid.appendChild(renderPlaceCard(p));
   }
+  placesList.innerHTML = "";
+  placesList.appendChild(grid);
+}
+
+function renderPlaceSlotCard(lt, place) {
+  const card = document.createElement("article");
+  card.className = "place-slot-card";
+  card.dataset.lessonTimeId = lt.id;
+
+  const row = document.createElement("div");
+  row.className = "place-slot-card__row";
+
+  const info = document.createElement("div");
+  info.className = "place-slot-card__info";
+
+  const whenEl = document.createElement("div");
+  whenEl.className = "place-slot-card__when";
+  const dowEl = document.createElement("span");
+  dowEl.className = "place-slot-card__dow";
+  dowEl.textContent = DAYS_SHORT_UK[lt.day_of_week] || "—";
+  const timeEl = document.createElement("span");
+  timeEl.className = "place-slot-card__time";
+  timeEl.textContent = fmtTime(lt.start_time) || "—";
+  whenEl.append(dowEl, timeEl);
+
+  const typeEl = document.createElement("span");
+  typeEl.className = "place-slot-card__type";
+  const typeFull = lt.lesson_types?.name || lt.lesson_types?.slug || "—";
+  typeEl.textContent = lessonTypeShortLabel(lt);
+  typeEl.title = typeFull;
+
+  info.append(whenEl, typeEl);
+
+  const actions = document.createElement("div");
+  actions.className = "place-slot-card__actions";
+  actions.append(
+    makeAdminIconBtn(
+      "✏️",
+      "Редагувати",
+      "btn btn--ghost btn--sm place-slot-card__btn",
+      () => openPlaceLessonModal(place, lt),
+    ),
+    makeAdminIconBtn(
+      "✕",
+      "Видалити",
+      "btn btn--danger btn--sm place-slot-card__btn place-slot-card__btn--del",
+      () => deleteLesson(lt.id),
+    ),
+  );
+
+  row.append(info, actions);
+  card.append(row);
+  return card;
 }
 
 function renderPlaceCard(place) {
   const lessons = Array.isArray(place.lesson_times) ? place.lesson_times : [];
 
-  const wrap = document.createElement("div");
-  wrap.className = "admin-place";
-  wrap.dataset.placeId = place.id;
+  const card = document.createElement("article");
+  card.className = "place-card";
+  card.dataset.placeId = place.id;
 
   const head = document.createElement("div");
-  head.className = "admin-place__head";
+  head.className = "place-card__head";
 
-  const left = document.createElement("div");
-  left.innerHTML =
-    `<div class="admin-place__title"></div>` +
-    `<div class="admin-meta"></div>`;
-  left.querySelector(".admin-place__title").textContent = place.name || "Без назви";
-  const metaBits = [];
-  if (place.river_bank) metaBits.unshift(place.river_bank);
-  if (place.address) metaBits.push(place.address);
-  left.querySelector(".admin-meta").textContent = metaBits.join(" · ");
+  const titleWrap = document.createElement("div");
+  titleWrap.className = "place-card__title-wrap";
+  const titleEl = document.createElement("h3");
+  titleEl.className = "place-card__title";
+  titleEl.textContent = place.name || "Без назви";
+  titleWrap.appendChild(titleEl);
+  if (place.river_bank) {
+    const bankEl = document.createElement("span");
+    bankEl.className = "place-card__bank";
+    bankEl.textContent = place.river_bank;
+    titleWrap.appendChild(bankEl);
+  }
 
   const headActions = document.createElement("div");
-  headActions.className = "admin-actions";
+  headActions.className = "place-card__head-actions";
+  headActions.append(
+    makeAdminIconBtn(
+      "✏️",
+      "Редагувати місце",
+      "btn btn--ghost btn--sm place-card__icon-btn",
+      () => openPlaceEditModal(place),
+    ),
+    makeAdminIconBtn(
+      "✕",
+      "Видалити місце",
+      "btn btn--danger btn--sm place-card__icon-btn place-card__icon-btn--del",
+      () => deletePlace(place.id),
+    ),
+  );
 
-  const delPlace = document.createElement("button");
-  delPlace.type = "button";
-  delPlace.className = "btn btn--danger btn--sm";
-  delPlace.textContent = "Видалити місце";
-  delPlace.addEventListener("click", () => deletePlace(place.id));
+  head.append(titleWrap, headActions);
+  card.appendChild(head);
 
-  headActions.append(delPlace);
-
-  head.append(left, headActions);
-  wrap.appendChild(head);
+  const meta = document.createElement("div");
+  meta.className = "place-card__meta";
+  if (place.address) {
+    const addrEl = document.createElement("span");
+    addrEl.className = "place-card__meta-item place-card__meta-item--address";
+    addrEl.textContent = place.address;
+    addrEl.title = place.address;
+    meta.appendChild(addrEl);
+  }
+  if (meta.childElementCount) card.appendChild(meta);
 
   if (place.notes) {
-    const n = document.createElement("p");
-    n.className = "admin-muted";
-    n.style.marginBottom = "8px";
-    n.textContent = place.notes;
-    wrap.appendChild(n);
+    const notesEl = document.createElement("p");
+    notesEl.className = "place-card__notes";
+    notesEl.textContent = place.notes;
+    card.appendChild(notesEl);
   }
 
-  const lessonsHead = document.createElement("div");
-  lessonsHead.className = "admin-place__lessons-head";
+  const schedule = document.createElement("div");
+  schedule.className = "place-card__schedule";
 
-  const lessonsTitle = document.createElement("p");
-  lessonsTitle.className = "admin-sub";
-  lessonsTitle.textContent = "Час занять";
+  const scheduleHead = document.createElement("div");
+  scheduleHead.className = "place-card__schedule-head";
+  const scheduleLabel = document.createElement("span");
+  scheduleLabel.className = "place-card__schedule-label";
+  scheduleLabel.textContent = "Розклад";
+  const addBtn = makeAdminIconBtn(
+    "+",
+    "Додати заняття",
+    "btn btn--ghost btn--sm place-card__add-btn",
+    () => openPlaceLessonModal(place),
+  );
+  scheduleHead.append(scheduleLabel, addBtn);
 
-  const lessonFormToggle = document.createElement("button");
-  lessonFormToggle.type = "button";
-  lessonFormToggle.className = "btn btn--ghost btn--sm";
-  lessonFormToggle.textContent = "+ Заняття";
-
-  lessonsHead.append(lessonsTitle, lessonFormToggle);
-
-  const rows = document.createElement("div");
-  rows.className = "lesson-rows";
-
+  const slots = document.createElement("div");
+  slots.className = "place-slot-cards";
   if (lessons.length === 0) {
-    rows.innerHTML = '<p class="admin-muted">Ще немає слотів — додай перший нижче.</p>';
+    const empty = document.createElement("p");
+    empty.className = "place-card__empty";
+    empty.textContent = "Ще немає слотів";
+    slots.appendChild(empty);
   } else {
     for (const lt of lessons) {
-      rows.appendChild(lessonRow(lt));
+      slots.appendChild(renderPlaceSlotCard(lt, place));
     }
   }
 
-  wrap.appendChild(lessonsHead);
-  wrap.appendChild(rows);
-
-  const addForm = document.createElement("div");
-  addForm.className = "admin-grid admin-grid--2 admin-hide";
-  addForm.style.marginTop = "12px";
-
-  addForm.innerHTML = `
-    <div class="admin-field admin-grid-span-2">
-      <label>Тип заняття</label>
-      <select data-role="ltype"></select>
-    </div>
-    <div class="admin-field">
-      <label>День тижня</label>
-      <select data-role="day" aria-label="День тижня">${DAYS_UK.map((d, i) => `<option value="${i}">${d}</option>`).join("")}</select>
-    </div>
-    <div class="admin-field">
-      <label>Початок</label>
-      <input data-role="time" type="time" aria-label="Час заняття" />
-    </div>
-    <div class="admin-actions admin-grid-span-2">
-      <button type="button" class="btn btn--primary btn--sm" data-role="add-lesson">Додати заняття</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-role="cancel-add-lesson">Скасувати</button>
-    </div>
-  `;
-
-  const ltypeSel = addForm.querySelector('[data-role="ltype"]');
-  ltypeSel.innerHTML = "";
-  for (const lt of cachedLessonTypes) {
-    const opt = document.createElement("option");
-    opt.value = lt.id;
-    opt.textContent = lt.name || lt.slug;
-    ltypeSel.appendChild(opt);
-  }
-
-  wrap.appendChild(addForm);
-
-  const daySel = addForm.querySelector('[data-role="day"]');
-  const timeIn = addForm.querySelector('[data-role="time"]');
-  const cancelAddLessonBtn = addForm.querySelector('[data-role="cancel-add-lesson"]');
-
-  const setLessonFormOpen = (isOpen) => {
-    addForm.classList.toggle("admin-hide", !isOpen);
-    lessonFormToggle.textContent = isOpen ? "Закрити" : "+ Заняття";
-    lessonFormToggle.setAttribute("aria-expanded", String(isOpen));
-    if (isOpen) timeIn?.focus();
-  };
-
-  lessonFormToggle.addEventListener("click", () => {
-    const isOpen = addForm.classList.contains("admin-hide");
-    setLessonFormOpen(isOpen);
-  });
-
-  cancelAddLessonBtn?.addEventListener("click", () => {
-    if (ltypeSel) ltypeSel.selectedIndex = 0;
-    if (daySel) daySel.value = "0";
-    if (timeIn) timeIn.value = "";
-    setLessonFormOpen(false);
-  });
-
-  addForm.querySelector('[data-role="add-lesson"]').addEventListener("click", async () => {
-    clearDashMessages();
-    const lesson_type_id = ltypeSel.value;
-    if (!lesson_type_id) {
-      showDashError("Обери тип заняття.");
-      return;
-    }
-    const dow = parseInt(daySel.value, 10);
-    const tm = timeIn.value;
-    if (!tm) {
-      showDashError("Обери час заняття.");
-      return;
-    }
-    const { error: insErr } = await supabase.from("lesson_times").insert({
-      place_id: place.id,
-      lesson_type_id,
-      day_of_week: dow,
-      start_time: tm + ":00",
-    });
-    if (insErr) {
-      showDashError(insErr.message);
-      return;
-    }
-    setLessonFormOpen(false);
-    await loadPlacesHtml();
-    showDashOk("Заняття додано.");
-  });
-
-  const editHead = document.createElement("div");
-  editHead.className = "admin-place__edit-head";
-  editHead.style.marginTop = "18px";
-
-  const editTitle = document.createElement("div");
-  editTitle.className = "admin-sub";
-  editTitle.textContent = "Налаштування місця";
-
-  const editToggle = document.createElement("button");
-  editToggle.type = "button";
-  editToggle.className = "btn btn--ghost btn--sm";
-  editToggle.textContent = "Редагувати місце";
-
-  editHead.append(editTitle, editToggle);
-  wrap.appendChild(editHead);
-
-  const editForm = document.createElement("form");
-  editForm.className = "admin-grid admin-grid--2";
-  editForm.innerHTML = `
-    <div class="admin-field">
-      <label>Назва</label>
-      <input data-e="name" type="text" required />
-    </div>
-    <div class="admin-field">
-      <label>Адреса</label>
-      <input data-e="address" type="text" />
-    </div>
-    <div class="admin-field admin-grid-span-2">
-      <label>Берег Дніпра</label>
-      <select data-e="river">
-        <option value="">— не вказано —</option>
-        <option value="Правий берег">Правий берег</option>
-        <option value="Лівий берег">Лівий берег</option>
-      </select>
-    </div>
-    <div class="admin-field admin-grid-span-2">
-      <label>Нотатки</label>
-      <textarea data-e="notes"></textarea>
-    </div>
-    <div class="admin-actions admin-grid-span-2">
-      <button type="submit" class="btn btn--primary btn--sm">Оновити місце</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-e="cancel">Скасувати</button>
-    </div>
-  `;
-  editForm.classList.add("admin-hide");
-  editForm.querySelector('[data-e="name"]').value = place.name || "";
-  editForm.querySelector('[data-e="address"]').value = place.address || "";
-  editForm.querySelector('[data-e="notes"]').value = place.notes || "";
-  const riverSel = editForm.querySelector('[data-e="river"]');
-  if (riverSel) riverSel.value = place.river_bank || "";
-
-  const setEditFormOpen = (isOpen) => {
-    editForm.classList.toggle("admin-hide", !isOpen);
-    editToggle.textContent = isOpen ? "Закрити редагування" : "Редагувати місце";
-    editToggle.setAttribute("aria-expanded", String(isOpen));
-  };
-
-  editToggle.addEventListener("click", () => {
-    const isOpen = editForm.classList.contains("admin-hide");
-    setEditFormOpen(isOpen);
-  });
-
-  editForm.querySelector('[data-e="cancel"]')?.addEventListener("click", () => {
-    editForm.querySelector('[data-e="name"]').value = place.name || "";
-    editForm.querySelector('[data-e="address"]').value = place.address || "";
-    editForm.querySelector('[data-e="notes"]').value = place.notes || "";
-    if (riverSel) riverSel.value = place.river_bank || "";
-    setEditFormOpen(false);
-  });
-
-  editForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    clearDashMessages();
-    const name = editForm.querySelector('[data-e="name"]').value.trim();
-    const sort_order = place.sort_order ?? 0;
-    const address = editForm.querySelector('[data-e="address"]').value.trim();
-    const notes = editForm.querySelector('[data-e="notes"]').value.trim();
-    const river_bank = riverSel ? riverSel.value.trim() || null : null;
-    const { error } = await supabase
-      .from("places")
-      .update({
-        name,
-        sort_order,
-        address: address || null,
-        notes: notes || null,
-        river_bank,
-      })
-      .eq("id", place.id);
-    if (error) {
-      showDashError(error.message);
-      return;
-    }
-    setEditFormOpen(false);
-    await loadPlacesHtml();
-    showDashOk("Місце оновлено.");
-  });
-
-  wrap.appendChild(editForm);
-  return wrap;
-}
-
-function lessonRow(lt) {
-  const row = document.createElement("div");
-  row.className = "lesson-row";
-  row.innerHTML = `<span></span><div class="admin-actions"></div>`;
-  const labelEl = row.querySelector("span");
-  const actions = row.querySelector(".admin-actions");
-  let isEditing = false;
-
-  const renderView = () => {
-    isEditing = false;
-    const typeName = lt.lesson_types?.name || lt.lesson_types?.slug || "—";
-    labelEl.textContent = `${typeName} · ${DAYS_UK[lt.day_of_week]}, ${fmtTime(lt.start_time)}`;
-    actions.innerHTML = "";
-
-    const editBtn = document.createElement("button");
-    editBtn.type = "button";
-    editBtn.className = "btn btn--ghost btn--sm";
-    editBtn.textContent = "Змінити";
-    editBtn.addEventListener("click", () => renderEdit());
-
-    const delBtn = document.createElement("button");
-    delBtn.type = "button";
-    delBtn.className = "btn btn--danger btn--sm";
-    delBtn.textContent = "Видалити";
-    delBtn.addEventListener("click", () => deleteLesson(lt.id));
-
-    actions.append(editBtn, delBtn);
-  };
-
-  const renderEdit = () => {
-    if (isEditing) return;
-    isEditing = true;
-    actions.innerHTML = "";
-
-    const wrap = document.createElement("div");
-    wrap.className = "lesson-row__editor";
-
-    const typeSel = document.createElement("select");
-    typeSel.className = "lesson-row__input";
-    for (const t of cachedLessonTypes) {
-      const opt = document.createElement("option");
-      opt.value = t.id;
-      opt.textContent = t.name || t.slug;
-      typeSel.appendChild(opt);
-    }
-    typeSel.value = lt.lesson_type_id || "";
-
-    const daySel = document.createElement("select");
-    daySel.className = "lesson-row__input";
-    for (let i = 0; i < DAYS_UK.length; i++) {
-      const opt = document.createElement("option");
-      opt.value = String(i);
-      opt.textContent = DAYS_UK[i];
-      daySel.appendChild(opt);
-    }
-    daySel.value = String(lt.day_of_week ?? 0);
-
-    const timeIn = document.createElement("input");
-    timeIn.className = "lesson-row__input lesson-row__time";
-    timeIn.type = "time";
-    timeIn.step = "60";
-    timeIn.lang = "uk-UA";
-    timeIn.setAttribute("aria-label", "Час заняття у форматі 24 години");
-    timeIn.value = fmtTime(lt.start_time);
-
-    const saveBtn = document.createElement("button");
-    saveBtn.type = "button";
-    saveBtn.className = "btn btn--primary btn--sm";
-    saveBtn.textContent = "Зберегти";
-
-    const cancelBtn = document.createElement("button");
-    cancelBtn.type = "button";
-    cancelBtn.className = "btn btn--ghost btn--sm";
-    cancelBtn.textContent = "Скасувати";
-    cancelBtn.addEventListener("click", () => renderView());
-
-    saveBtn.addEventListener("click", async () => {
-      clearDashMessages();
-      const lesson_type_id = typeSel.value;
-      const day_of_week = parseInt(daySel.value, 10);
-      const tm = String(timeIn.value || "").trim();
-      if (!lesson_type_id) {
-        showDashError("Обери тип заняття.");
-        return;
-      }
-      if (!/^\d{2}:\d{2}$/.test(tm)) {
-        showDashError("Вкажи час у форматі 24 години (HH:mm).");
-        return;
-      }
-
-      saveBtn.disabled = true;
-      cancelBtn.disabled = true;
-      const { data, error } = await supabase
-        .from("lesson_times")
-        .update({
-          lesson_type_id,
-          day_of_week,
-          start_time: `${tm}:00`,
-        })
-        .eq("id", lt.id)
-        .select("id, lesson_type_id, day_of_week, start_time, lesson_types(id, slug, name)")
-        .single();
-
-      if (error) {
-        showDashError(error.message);
-        saveBtn.disabled = false;
-        cancelBtn.disabled = false;
-        return;
-      }
-
-      lt.lesson_type_id = data.lesson_type_id;
-      lt.day_of_week = data.day_of_week;
-      lt.start_time = data.start_time;
-      lt.lesson_types = data.lesson_types;
-      renderView();
-      showDashOk("Слот оновлено.");
-    });
-
-    wrap.append(typeSel, daySel, timeIn, saveBtn, cancelBtn);
-    actions.appendChild(wrap);
-  };
-
-  renderView();
-  return row;
+  schedule.append(scheduleHead, slots);
+  card.appendChild(schedule);
+  return card;
 }
 
 async function deletePlace(id) {
@@ -3255,6 +3481,8 @@ async function routeAfterAuth(user) {
   lastSuccessfulDashBootstrapUserId = user.id;
   await refreshDashboard();
 }
+
+initPlaceModals();
 
 const placeFormEl = maybeEl("placeForm");
 if (placeFormEl) {

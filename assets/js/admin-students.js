@@ -149,35 +149,70 @@ function appendStudentMetric(container, label, value, extraClass = "", title = "
   container.appendChild(tile);
 }
 
+/** @param {number} n @param {string} one @param {string} few @param {string} many */
+function ukPluralCount(n, one, few, many) {
+  const abs = Math.abs(Math.floor(n));
+  const mod10 = abs % 10;
+  const mod100 = abs % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+  return many;
+}
+
 /** @param {HTMLElement} container @param {any} student */
 function mountStudentTileMetrics(container, student) {
   container.innerHTML = "";
   const summary = student.subscription_summary;
-  const visits = Math.max(0, Math.floor(Number(student.attended_visits_count) || 0));
-  const visitsTitle =
-    visits === 0 ? "Немає відвіданих занять" : visits === 1 ? "1 відвідане заняття" : `${visits} відвіданих занять`;
+  const attended = Math.max(0, Math.floor(Number(student.attended_visits_count) || 0));
+  const skipped = Math.max(0, Math.floor(Number(student.skip_votes_count) || 0));
+  const attendedTitle =
+    attended === 0
+      ? "Ще не приходив на заняття"
+      : `${attended} ${ukPluralCount(attended, "раз прийшов", "рази прийшов", "разів прийшов")} (абонемент або разове)`;
+  const skippedTitle =
+    skipped === 0
+      ? "Ще не натискав «Пропускаю»"
+      : `${skipped} ${ukPluralCount(skipped, "раз натиснув «Пропускаю»", "рази натиснув «Пропускаю»", "разів натиснув «Пропускаю»")}`;
 
   const lastVisit = formatStudentLastVisitShort(student.last_visit_at);
   const lastTitle = student.last_visit_at
     ? `Останнє відвідане заняття: ${lastVisit}`
     : "Ще не був на занятті";
 
+  const topRow = document.createElement("div");
+  topRow.className = "admin-students-card__metrics-row";
   appendStudentMetric(
-    container,
+    topRow,
     "Виручка",
     fmtStudentMoney(student.total_revenue_uah),
     "admin-students-card__metric--revenue",
     "Сума куплених абонементів (у т.ч. вичерпаних) + разові відвідування",
   );
-  appendStudentMetric(container, "Останнє", lastVisit, "admin-students-card__metric--last", lastTitle);
-  appendStudentMetric(container, "Візити", String(visits), "", visitsTitle);
+  appendStudentMetric(topRow, "Останнє", lastVisit, "admin-students-card__metric--last", lastTitle);
+
+  const voteRow = document.createElement("div");
+  voteRow.className = "admin-students-card__metrics-row admin-students-card__metrics-row--triple";
+  appendStudentMetric(
+    voteRow,
+    "Прийшов",
+    String(attended),
+    "admin-students-card__metric--attended",
+    attendedTitle,
+  );
+  appendStudentMetric(
+    voteRow,
+    "Пропускаю",
+    String(skipped),
+    "admin-students-card__metric--skip",
+    skippedTitle,
+  );
 
   const abonStatus = studentAbonStatus(summary);
   const abonVisits = studentAbonVisitsText(summary);
   if (abonStatus) {
     const abonTitle = abonVisits?.title ? `${abonStatus.title}. ${abonVisits.title}` : abonStatus.title;
     appendStudentMetric(
-      container,
+      voteRow,
       "Абонемент",
       abonVisits?.text || "—",
       "admin-students-card__metric--abon",
@@ -185,8 +220,10 @@ function mountStudentTileMetrics(container, student) {
       abonStatus.valueClass,
     );
   } else {
-    appendStudentMetric(container, "Абонемент", "—", "admin-students-card__metric--muted");
+    appendStudentMetric(voteRow, "Абонемент", "—", "admin-students-card__metric--muted");
   }
+
+  container.append(topRow, voteRow);
 }
 
 /** Кількість абонементів і дроб Р/Т по візитах — один блок у рядку картки списку. */
