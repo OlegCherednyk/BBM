@@ -1170,30 +1170,16 @@ async function deleteAdminLessonRecord(lessonId) {
     return { ok: false, error: "Запис заняття не знайдено." };
   }
 
+  const linkedOccurrenceId = String(lessonRow.lesson_vote_occurrence_id || "").trim() || null;
+
   const { error: delLessonErr } = await supabaseAdmin.from("lessons").delete().eq("id", id);
   if (delLessonErr) {
     return { ok: false, error: delLessonErr.message };
   }
 
-  let deletedOccurrenceId = null;
-  const linkedOccurrenceId = String(lessonRow.lesson_vote_occurrence_id || "").trim();
-  if (linkedOccurrenceId) {
-    const { error: delOccErr } = await supabaseAdmin
-      .from("lesson_vote_occurrences")
-      .delete()
-      .eq("id", linkedOccurrenceId)
-      .eq("status", "finalized");
-    if (delOccErr) {
-      return {
-        ok: false,
-        error: `Заняття видалено, але не вдалося видалити пов'язане голосування: ${delOccErr.message}`,
-        lessonDeleted: true,
-      };
-    }
-    deletedOccurrenceId = linkedOccurrenceId;
-  }
-
-  return { ok: true, lessonId: id, deletedOccurrenceId };
+  // Рядок lesson_vote_occurrences лишається finalized — інакше планувальник знову створить
+  // голосування на той самий слот і дату (loadOccupiedOccurrenceAtByLessonTimeId).
+  return { ok: true, lessonId: id, linkedOccurrenceId };
 }
 
 function buildTwoStudentReviewMessage(lessonContext, abonCount, singleCount, netIncome) {
@@ -1295,14 +1281,6 @@ async function handlePostFinalizeTeacherNotifications({
     conductingDisplayName,
     conductingTelegramChatId,
   };
-
-  if (peopleCount === 1 && lessonId) {
-    const del = await deleteAdminLessonRecord(lessonId);
-    if (!del.ok) {
-      console.warn("auto-delete 1-student lesson:", del.error);
-    }
-    return;
-  }
 
   if (peopleCount === 2) {
     await notifyTeacherTwoStudentReview({
@@ -2455,6 +2433,47 @@ async function persistFinalizedVotesToLessonRow(row, votesByKind, conductingDisp
   }
 }
 
+/** Бойове голосування з <2 учасниками (абон+разове): заняття не створюємо, лише закриваємо голосування. */
+function shouldSkipLessonRecordAfterFinalize(row, votesByKind) {
+  if (row?.is_test) return false;
+  const { peopleCount } = countAttendingFromVotes(votesByKind);
+  return peopleCount < 2;
+}
+
+async function persistLessonAndNotifyAfterFinalize({
+  row,
+  lessonContext,
+  votesByKind,
+  conductingDisplayName,
+  conductingTelegramChatId,
+}) {
+  if (shouldSkipLessonRecordAfterFinalize(row, votesByKind)) {
+    return;
+  }
+
+  try {
+    await applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow: row, votesByKind });
+  } catch (e) {
+    console.error("applyVisitsAfterFinalize:", e?.message || e);
+  }
+
+  const lessonId = await persistFinalizedVotesToLessonRow(
+    row,
+    votesByKind,
+    conductingDisplayName,
+    conductingTelegramChatId,
+  );
+
+  await handlePostFinalizeTeacherNotifications({
+    row,
+    lessonContext,
+    votesByKind,
+    conductingDisplayName,
+    conductingTelegramChatId,
+    lessonId,
+  });
+}
+
 async function finalizeLessonVoteOccurrence(row) {
   if (!bot || !supabaseAdmin) return;
 
@@ -2477,6 +2496,7 @@ async function finalizeLessonVoteOccurrence(row) {
   const live = activeLessonVotes.get(stateKey);
   const votesByKind = live?.votesByKind || snapshotToVotesByKind(row.votes_snapshot);
   const conductingDisplayName = live?.conductingDisplayName ?? row.conducting_display_name ?? null;
+  const conductingTelegramChatId = live?.conductingTelegramChatId ?? row.conducting_telegram_chat_id;
 
   const conductChatTargets = collectConductChatTargets(stateKey, row.conduct_messages);
 
@@ -2499,26 +2519,12 @@ async function finalizeLessonVoteOccurrence(row) {
     return;
   }
 
-  try {
-    await applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow: row, votesByKind });
-  } catch (e) {
-    console.error("applyVisitsAfterFinalize:", e?.message || e);
-  }
-
-  const lessonId = await persistFinalizedVotesToLessonRow(
-    row,
-    votesByKind,
-    conductingDisplayName,
-    live?.conductingTelegramChatId ?? row.conducting_telegram_chat_id,
-  );
-
-  await handlePostFinalizeTeacherNotifications({
+  await persistLessonAndNotifyAfterFinalize({
     row,
     lessonContext,
     votesByKind,
     conductingDisplayName,
-    conductingTelegramChatId: live?.conductingTelegramChatId ?? row.conducting_telegram_chat_id,
-    lessonId,
+    conductingTelegramChatId,
   });
 }
 
@@ -2792,24 +2798,12 @@ async function closeSingleTeacherTestVote(voteIdRaw) {
       if (occFetchErr) {
         console.warn("test-vote/close load occurrence for lessons:", occFetchErr.message);
       } else if (occRow) {
-        try {
-          await applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow: occRow, votesByKind: votesSnap });
-        } catch (e) {
-          console.error("applyVisitsAfterFinalize (test-vote close):", e?.message || e);
-        }
-        const lessonId = await persistFinalizedVotesToLessonRow(
-          occRow,
-          votesSnap,
-          conductingDisplayName,
-          found.state.conductingTelegramChatId ?? occRow.conducting_telegram_chat_id,
-        );
-        await handlePostFinalizeTeacherNotifications({
+        await persistLessonAndNotifyAfterFinalize({
           row: occRow,
           lessonContext: found.state.lessonContext,
           votesByKind: votesSnap,
           conductingDisplayName,
           conductingTelegramChatId: found.state.conductingTelegramChatId ?? occRow.conducting_telegram_chat_id,
-          lessonId,
         });
       }
     }
@@ -3117,7 +3111,7 @@ app.post("/api/admin/lessons/delete", async (req, res) => {
       return res.status(status).json({ ok: false, error: result.error, lessonDeleted: result.lessonDeleted ?? false });
     }
 
-    return res.status(200).json({ ok: true, lessonId: result.lessonId, deletedOccurrenceId: result.deletedOccurrenceId });
+    return res.status(200).json({ ok: true, lessonId: result.lessonId, linkedOccurrenceId: result.linkedOccurrenceId });
   } catch (error) {
     console.error("admin lessons delete failed:", error);
     return res.status(500).json({ ok: false, error: error?.message || "Failed to delete lesson." });

@@ -1053,7 +1053,7 @@ async function renderLessonsPanel() {
               return;
             }
             await renderLessonsPanel();
-            showDashOk("Запис заняття (і пов'язане голосування) видалено.");
+            showDashOk("Запис заняття видалено.");
           },
         );
       };
