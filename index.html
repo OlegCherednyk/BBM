@@ -12,6 +12,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="assets/css/styles.css" />
+    <link rel="stylesheet" href="assets/css/testimonials.css" />
     <script>
       window.__bbmPublicConfig = fetch("/api/public-config", {
         headers: { Accept: "application/json" },
@@ -281,6 +282,38 @@
       </div>
     </section>
 
+    <!-- ── TESTIMONIALS ── -->
+    <section class="section testimonials" id="testimonials" aria-labelledby="testimonials-heading">
+      <div class="section__inner testimonials__inner">
+        <h2 class="section__title reveal" id="testimonials-heading">Відгуки</h2>
+        <p class="testimonials__hint reveal reveal--delay-1">10 історій про досвід</p>
+        <div class="testimonials__carousel reveal reveal--delay-2" id="testimonialsCarousel">
+          <div class="testimonials__stack" aria-hidden="true">
+            <span class="testimonials__stack-layer"></span>
+            <span class="testimonials__stack-layer"></span>
+          </div>
+          <button type="button" class="testimonials__nav testimonials__nav--prev" id="testimonialsPrev" aria-label="Попередній відгук">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div class="testimonials__viewport" id="testimonialsViewport">
+            <div class="testimonials__track" id="testimonialsTrack" role="list"></div>
+          </div>
+          <button type="button" class="testimonials__nav testimonials__nav--next" id="testimonialsNext" aria-label="Наступний відгук">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <p class="testimonials__swipe-hint" id="testimonialsSwipeHint" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11l5-5 5 5"/><path d="M12 6v12"/></svg>
+            свайпни, щоб читати далі
+          </p>
+        </div>
+        <div class="testimonials__footer reveal reveal--delay-3">
+          <div class="testimonials__progress" aria-hidden="true"><span class="testimonials__progress-fill" id="testimonialsProgress"></span></div>
+          <div class="testimonials__dots" id="testimonialsDots" role="tablist" aria-label="Відгуки"></div>
+          <p class="testimonials__counter" aria-live="polite"><span id="testimonialsCurrent">1</span><span class="testimonials__counter-sep">/</span><span id="testimonialsTotal">10</span></p>
+        </div>
+      </div>
+    </section>
+
     <!-- ── PRICING ── -->
     <section class="section pricing" id="pricing" aria-labelledby="pricing-heading">
       <div class="section__inner">
@@ -380,6 +413,7 @@
     </button>
 
     <script src="assets/js/custom-select.js"></script>
+    <script src="assets/js/testimonials.js" defer></script>
     <script type="module" src="assets/js/script.js"></script>
   </body>
 </html>
