@@ -974,6 +974,41 @@ export async function adminUpsertLessonVisit(supabaseAdmin, { occurrenceId, stud
  * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
  * @param {string} visitId
  */
+/**
+ * Відкотити всі attended-візити по occurrence (наприклад, коли заняття скасовано).
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {string} occurrenceId
+ */
+export async function rollbackVisitsForOccurrence(supabaseAdmin, occurrenceId) {
+  const occId = String(occurrenceId || "").trim();
+  if (!occId) return { rolledBack: 0 };
+
+  const { data: visits, error: vErr } = await supabaseAdmin
+    .from("visits")
+    .select("id, subscription_id, visit_status")
+    .eq("lesson_vote_occurrence_id", occId)
+    .eq("visit_status", "attended");
+  if (vErr) throw new Error(vErr.message);
+
+  let rolledBack = 0;
+  const subIds = new Set();
+  for (const v of visits || []) {
+    const { error: upErr } = await supabaseAdmin
+      .from("visits")
+      .update({ visit_status: "rolled_back", rolled_back_at: new Date().toISOString() })
+      .eq("id", v.id);
+    if (upErr) throw new Error(upErr.message);
+    rolledBack += 1;
+    if (v.subscription_id) subIds.add(String(v.subscription_id));
+  }
+
+  for (const subId of subIds) {
+    await recomputeSubscriptionStatus(supabaseAdmin, subId);
+  }
+
+  return { rolledBack };
+}
+
 export async function adminRemoveLessonVisit(supabaseAdmin, visitId) {
   const { data: v, error: vErr } = await supabaseAdmin.from("visits").select("*").eq("id", visitId).maybeSingle();
   if (vErr) throw new Error(vErr.message);

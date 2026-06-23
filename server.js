@@ -11,6 +11,7 @@ import {
   backfillStudentsFromSkipVotes,
   expireOverdueSubscriptions,
   registerStudentRoutes,
+  rollbackVisitsForOccurrence,
 } from "./students-api.js";
 import { parsePlaceRiverBank, runDailyTeacherDigests, teacherMatchesBank } from "./admin-notifications.js";
 
@@ -670,7 +671,8 @@ async function computeLessonAbonRevenueForStats(supabaseAdmin, {
   const prices = priceByType.get(lessonTypeId) || { single: 0, abonUnit: 0 };
   const staticAbonUnit = prices.abonUnit;
   const occurrenceId = String(lessonRow?.lesson_vote_occurrence_id || "").trim();
-  const abonVisits = (occurrenceId ? visitsByOccurrence.get(occurrenceId) : null) || [];
+  const attendedVisits = (occurrenceId ? visitsByOccurrence.get(occurrenceId) : null) || [];
+  const abonVisits = attendedVisits.filter((visit) => visit.vote_choice === "abon");
 
   if (abonVisits.length > 0) {
     let abonRevenue = 0;
@@ -951,15 +953,14 @@ async function loadAdminStatsLessonsContext(supabaseAdmin, { fromIso, toIso }) {
     ),
   ];
 
-  /** @type {Map<string, Array<{ subscriptions?: { amount_uah?: number | null, total_visits?: number | null } | null }>>} */
+  /** @type {Map<string, Array<{ vote_choice: string, subscriptions?: { amount_uah?: number | null, total_visits?: number | null } | null }>>} */
   const visitsByOccurrence = new Map();
   if (occurrenceIds.length > 0) {
     const { data: visitRows, error: visitErr } = await supabaseAdmin
       .from("visits")
       .select("lesson_vote_occurrence_id, vote_choice, visit_status, subscriptions(amount_uah, total_visits)")
       .in("lesson_vote_occurrence_id", occurrenceIds)
-      .eq("visit_status", "attended")
-      .eq("vote_choice", "abon");
+      .eq("visit_status", "attended");
     if (visitErr) throw new Error(visitErr.message);
     for (const visit of visitRows || []) {
       const oid = String(visit.lesson_vote_occurrence_id);
@@ -988,16 +989,22 @@ async function computeLessonFinancialsForStats(supabaseAdmin, row, ctx) {
   const duration = Number(lessonType?.duration_minutes) || 60;
   const prices = ctx.priceByType.get(lessonTypeId) || { single: 0, abonUnit: 0 };
 
-  const votesByKind = snapshotToVotesByKind(row.vote_snapshot);
-  const hasSnapshot =
-    votesByKind.abon.size + votesByKind.single.size + votesByKind.skip.size > 0;
-  const singleCount = hasSnapshot
-    ? votesByKind.single.size
-    : Math.max(0, Number(row.single_visitors_count) || 0);
-  const abonPeopleCount = hasSnapshot ? votesByKind.abon.size : Math.max(0, Number(row.abon_count) || 0);
+  const occurrenceId = String(row.lesson_vote_occurrence_id || "").trim();
+  const attendedVisits = occurrenceId ? ctx.visitsByOccurrence.get(occurrenceId) || [] : [];
+
+  let singleCount;
+  let abonPeopleCount;
+  if (attendedVisits.length > 0) {
+    singleCount = attendedVisits.filter((visit) => visit.vote_choice === "single").length;
+    abonPeopleCount = attendedVisits.filter((visit) => visit.vote_choice === "abon").length;
+  } else {
+    singleCount = Math.max(0, Number(row.single_visitors_count) || 0);
+    abonPeopleCount = Math.max(0, Number(row.abon_count) || 0);
+  }
   const peopleCount = singleCount + abonPeopleCount;
 
   const singleRevenue = singleCount * prices.single;
+  const votesByKind = snapshotToVotesByKind(row.vote_snapshot);
   const abonRevenue = await computeLessonAbonRevenueForStats(supabaseAdmin, {
     lessonRow: row,
     lessonTypeId,
@@ -1172,6 +1179,14 @@ async function deleteAdminLessonRecord(lessonId) {
 
   const linkedOccurrenceId = String(lessonRow.lesson_vote_occurrence_id || "").trim() || null;
 
+  if (linkedOccurrenceId) {
+    try {
+      await rollbackVisitsForOccurrence(supabaseAdmin, linkedOccurrenceId);
+    } catch (e) {
+      return { ok: false, error: e?.message || "Failed to rollback visits." };
+    }
+  }
+
   const { error: delLessonErr } = await supabaseAdmin.from("lessons").delete().eq("id", id);
   if (delLessonErr) {
     return { ok: false, error: delLessonErr.message };
@@ -1257,6 +1272,7 @@ async function notifyTeacherTwoStudentReview({
       conductingTelegramChatId: teacherChatId,
       netIncome,
     });
+    await persistTwoStudentReviewMessage(row.id, sent.chat.id, sent.message_id, reviewId);
   } catch (e) {
     console.warn("notifyTeacherTwoStudentReview:", e?.description || e?.message || e);
     await notifyConductingTeacherPayout(payoutArgs);
@@ -2433,11 +2449,155 @@ async function persistFinalizedVotesToLessonRow(row, votesByKind, conductingDisp
   }
 }
 
+function needsTwoStudentTeacherReview(row, votesByKind) {
+  if (row?.is_test) return false;
+  const { peopleCount } = countAttendingFromVotes(votesByKind);
+  return peopleCount === 2;
+}
+
 /** Бойове голосування з <2 учасниками (абон+разове): заняття не створюємо, лише закриваємо голосування. */
 function shouldSkipLessonRecordAfterFinalize(row, votesByKind) {
   if (row?.is_test) return false;
   const { peopleCount } = countAttendingFromVotes(votesByKind);
   return peopleCount < 2;
+}
+
+function buildReviewStateFromOccurrenceRow(row, reviewId, lessonId = null) {
+  return {
+    reviewId,
+    lessonId,
+    row,
+    lessonContext: lessonContextFromOccurrenceRow(row),
+    votesByKind: snapshotToVotesByKind(row.votes_snapshot),
+    conductingDisplayName: row.conducting_display_name ?? null,
+    conductingTelegramChatId:
+      row.conducting_telegram_chat_id != null && String(row.conducting_telegram_chat_id).trim() !== ""
+        ? String(row.conducting_telegram_chat_id).trim()
+        : null,
+    netIncome: null,
+  };
+}
+
+async function markTwoStudentReviewPending(occurrenceId) {
+  if (!supabaseAdmin || !occurrenceId) return;
+  const { error } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .update({ two_student_review_status: "pending" })
+    .eq("id", occurrenceId)
+    .eq("status", "finalized");
+  if (error) console.error("markTwoStudentReviewPending:", error.message);
+}
+
+async function persistTwoStudentReviewMessage(occurrenceId, chatId, messageId, reviewId) {
+  if (!supabaseAdmin || !occurrenceId) return;
+  const { error } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .update({
+      two_student_review_message: {
+        chat_id: String(chatId),
+        message_id: Number(messageId),
+        review_id: String(reviewId),
+      },
+    })
+    .eq("id", occurrenceId);
+  if (error) console.error("persistTwoStudentReviewMessage:", error.message);
+}
+
+async function markTwoStudentReviewResolved(occurrenceId, status) {
+  if (!supabaseAdmin || !occurrenceId) return { ok: false };
+  const { error } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .update({ two_student_review_status: status })
+    .eq("id", occurrenceId)
+    .eq("status", "finalized");
+  if (error) {
+    console.error("markTwoStudentReviewResolved:", error.message);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+async function findLessonIdByOccurrenceId(occurrenceId) {
+  if (!supabaseAdmin || !occurrenceId) return null;
+  const { data, error } = await supabaseAdmin
+    .from("lessons")
+    .select("id")
+    .eq("lesson_vote_occurrence_id", occurrenceId)
+    .maybeSingle();
+  if (error) {
+    console.warn("findLessonIdByOccurrenceId:", error.message);
+    return null;
+  }
+  return data?.id ? String(data.id) : null;
+}
+
+async function confirmTwoStudentLesson(reviewState) {
+  const { row, lessonContext, votesByKind, conductingDisplayName, conductingTelegramChatId } = reviewState;
+  if (!supabaseAdmin || !row?.id) return { ok: false, error: "Missing occurrence." };
+
+  const { data: current, error: curErr } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .select("two_student_review_status")
+    .eq("id", row.id)
+    .maybeSingle();
+  if (curErr) return { ok: false, error: curErr.message };
+  if (current?.two_student_review_status === "confirmed") return { ok: true, alreadyConfirmed: true };
+  if (current?.two_student_review_status === "cancelled") {
+    return { ok: false, error: "Заняття вже скасовано." };
+  }
+
+  const mark = await markTwoStudentReviewResolved(row.id, "confirmed");
+  if (!mark.ok) return mark;
+
+  try {
+    await applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow: row, votesByKind });
+  } catch (e) {
+    console.error("confirmTwoStudentLesson applyVisitsAfterFinalize:", e?.message || e);
+  }
+
+  await persistFinalizedVotesToLessonRow(row, votesByKind, conductingDisplayName, conductingTelegramChatId);
+  await notifyConductingTeacherPayout({
+    row,
+    lessonContext,
+    votesByKind,
+    conductingDisplayName,
+    conductingTelegramChatId,
+  });
+
+  return { ok: true };
+}
+
+async function cancelTwoStudentLesson(reviewState) {
+  const { row } = reviewState;
+  if (!supabaseAdmin || !row?.id) return { ok: false, error: "Missing occurrence." };
+
+  const { data: current, error: curErr } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .select("two_student_review_status")
+    .eq("id", row.id)
+    .maybeSingle();
+  if (curErr) return { ok: false, error: curErr.message };
+  if (current?.two_student_review_status === "cancelled") return { ok: true, alreadyCancelled: true };
+  if (current?.two_student_review_status === "confirmed") {
+    return { ok: false, error: "Заняття вже підтверджено." };
+  }
+
+  const mark = await markTwoStudentReviewResolved(row.id, "cancelled");
+  if (!mark.ok) return mark;
+
+  try {
+    await rollbackVisitsForOccurrence(supabaseAdmin, row.id);
+  } catch (e) {
+    return { ok: false, error: e?.message || "Failed to rollback visits." };
+  }
+
+  const lessonId = reviewState.lessonId || (await findLessonIdByOccurrenceId(row.id));
+  if (lessonId) {
+    const { error: delErr } = await supabaseAdmin.from("lessons").delete().eq("id", lessonId);
+    if (delErr) return { ok: false, error: delErr.message };
+  }
+
+  return { ok: true };
 }
 
 async function persistLessonAndNotifyAfterFinalize({
@@ -2448,6 +2608,21 @@ async function persistLessonAndNotifyAfterFinalize({
   conductingTelegramChatId,
 }) {
   if (shouldSkipLessonRecordAfterFinalize(row, votesByKind)) {
+    return;
+  }
+
+  if (needsTwoStudentTeacherReview(row, votesByKind)) {
+    await markTwoStudentReviewPending(row.id);
+    await notifyTeacherTwoStudentReview({
+      row,
+      lessonContext,
+      votesByKind,
+      conductingDisplayName,
+      conductingTelegramChatId,
+      lessonId: null,
+      abonCount: votesByKind.abon.size,
+      singleCount: votesByKind.single.size,
+    });
     return;
   }
 
@@ -2659,6 +2834,73 @@ async function ensureActiveConductVote(chatId, messageId, conductId) {
     if (restored && restored.conductId === conductId) return restored;
   }
   return null;
+}
+
+/** Якщо підтвердження «2 учні» немає в RAM — шукає pending-occurrence з two_student_review_message. */
+async function ensureActiveLessonReview(chatId, messageId, reviewId) {
+  const stateKey = attendanceGroupMemoryKey(chatId, messageId);
+  const cached = activeLessonReviews.get(stateKey);
+  if (cached && cached.reviewId === reviewId) return cached;
+  if (!supabaseAdmin) return null;
+
+  const { data: rows, error } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .select("*")
+    .eq("status", "finalized")
+    .eq("two_student_review_status", "pending");
+
+  if (error) {
+    console.warn("ensureActiveLessonReview:", error.message);
+    return null;
+  }
+
+  for (const row of rows || []) {
+    const msg = row.two_student_review_message;
+    if (
+      String(msg?.chat_id) !== String(chatId) ||
+      Number(msg?.message_id) !== Number(messageId) ||
+      String(msg?.review_id) !== String(reviewId)
+    ) {
+      continue;
+    }
+    const lessonId = await findLessonIdByOccurrenceId(row.id);
+    const reviewState = buildReviewStateFromOccurrenceRow(row, reviewId, lessonId);
+    activeLessonReviews.set(stateKey, reviewState);
+    return reviewState;
+  }
+  return null;
+}
+
+/** Після рестарту відновлює in-memory стан для pending «2 учні». */
+async function hydratePendingTwoStudentReviewsFromDb() {
+  if (!supabaseAdmin) return 0;
+  try {
+    const { data: rows, error } = await supabaseAdmin
+      .from("lesson_vote_occurrences")
+      .select("*")
+      .eq("status", "finalized")
+      .eq("two_student_review_status", "pending");
+
+    if (error) {
+      console.error("hydratePendingTwoStudentReviewsFromDb:", error.message);
+      return 0;
+    }
+
+    let count = 0;
+    for (const row of rows || []) {
+      const msg = row.two_student_review_message;
+      if (!msg?.chat_id || !Number.isFinite(Number(msg?.message_id)) || !msg?.review_id) continue;
+      const stateKey = attendanceGroupMemoryKey(msg.chat_id, msg.message_id);
+      if (activeLessonReviews.has(stateKey)) continue;
+      const lessonId = await findLessonIdByOccurrenceId(row.id);
+      activeLessonReviews.set(stateKey, buildReviewStateFromOccurrenceRow(row, msg.review_id, lessonId));
+      count += 1;
+    }
+    return count;
+  } catch (e) {
+    console.error("hydratePendingTwoStudentReviewsFromDb:", e?.message || e);
+    return 0;
+  }
 }
 
 /** Після рестарту відновлює in-memory стан для відкритих голосувань (callback-и знову працюють). */
@@ -3282,10 +3524,13 @@ if (bot) {
   /** Callback-и чекають завершення hydrate після рестарту; fallback з БД — у handler. */
   let voteHydrationPromise = Promise.resolve();
   if (supabaseAdmin) {
-    voteHydrationPromise = hydrateOpenLessonVotesFromDb()
-      .then((counts) => {
+    voteHydrationPromise = Promise.all([
+      hydrateOpenLessonVotesFromDb(),
+      hydratePendingTwoStudentReviewsFromDb(),
+    ])
+      .then(([openCounts, reviewCount]) => {
         console.log(
-          `[lesson-vote-scheduler] hydrated open votes: lesson=${counts.lesson} conduct=${counts.conduct}`,
+          `[lesson-vote-scheduler] hydrated open votes: lesson=${openCounts.lesson} conduct=${openCounts.conduct} twoStudentReviews=${reviewCount}`,
         );
       })
       .catch((e) => {
@@ -3367,42 +3612,46 @@ if (bot) {
         }
 
         const stateKey = attendanceGroupMemoryKey(chatId, messageId);
-        const reviewState = activeLessonReviews.get(stateKey);
+        let reviewState = activeLessonReviews.get(stateKey);
+        if (!reviewState || reviewState.reviewId !== reviewId) {
+          reviewState = await ensureActiveLessonReview(chatId, messageId, reviewId);
+        }
         if (!reviewState || reviewState.reviewId !== reviewId) {
           await ctx.answerCbQuery("Оновлення вже неактивне.");
           return;
         }
 
         if (isKeep) {
+          const confirmed = await confirmTwoStudentLesson(reviewState);
           const keptText = `${buildTwoStudentReviewMessage(
             reviewState.lessonContext,
             reviewState.votesByKind?.abon?.size ?? 0,
             reviewState.votesByKind?.single?.size ?? 0,
             reviewState.netIncome,
-          )}\n\n✅ Заняття підтверджено.`;
+          )}\n\n${confirmed.ok ? "✅ Заняття підтверджено." : "⚠️ Не вдалося підтвердити заняття."}`;
           await ctx.editMessageText(keptText, { reply_markup: { inline_keyboard: [] } });
           activeLessonReviews.delete(stateKey);
-          await ctx.answerCbQuery("Заняття підтверджено");
+          await ctx.answerCbQuery(confirmed.ok ? "Заняття підтверджено" : confirmed.error || "Помилка");
           return;
         }
 
-        const del = reviewState.lessonId ? await deleteAdminLessonRecord(reviewState.lessonId) : { ok: false };
-        const deletedText = del.ok
+        const cancelled = await cancelTwoStudentLesson(reviewState);
+        const deletedText = cancelled.ok
           ? `${buildTwoStudentReviewMessage(
               reviewState.lessonContext,
               reviewState.votesByKind?.abon?.size ?? 0,
               reviewState.votesByKind?.single?.size ?? 0,
               reviewState.netIncome,
-            )}\n\n🗑 Заняття видалено.`
+            )}\n\n🗑 Заняття скасовано.`
           : `${buildTwoStudentReviewMessage(
               reviewState.lessonContext,
               reviewState.votesByKind?.abon?.size ?? 0,
               reviewState.votesByKind?.single?.size ?? 0,
               reviewState.netIncome,
-            )}\n\n⚠️ Не вдалося видалити заняття.`;
+            )}\n\n⚠️ ${cancelled.error || "Не вдалося скасувати заняття."}`;
         await ctx.editMessageText(deletedText, { reply_markup: { inline_keyboard: [] } });
         activeLessonReviews.delete(stateKey);
-        await ctx.answerCbQuery(del.ok ? "Заняття видалено" : "Помилка видалення");
+        await ctx.answerCbQuery(cancelled.ok ? "Заняття скасовано" : cancelled.error || "Помилка");
         return;
       }
 
