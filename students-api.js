@@ -3,6 +3,15 @@ import { DateTime } from "luxon";
 const KYIV_TZ = "Europe/Kyiv";
 
 /**
+ * Учень з абонементом сучасного танцю може відвідувати тренаж за один урок з цього абону.
+ * Ключ — slug заняття, значення — slugи типів, з абонементів яких дозволено списувати.
+ * Правило одностороннє: зворотне не діє.
+ */
+const CROSS_ABON_ACCESS = {
+  training: ["contemporary"],
+};
+
+/**
  * Скільки візитів уже використано по абонементу.
  * Без override — лише журнал. З override — вже використані до журналу + attended у журналі.
  * @param {number} fromVisits
@@ -388,57 +397,12 @@ export async function applyVisitsAfterFinalize(supabaseAdmin, { occurrenceRow, v
       }
       if (existingVisit) continue;
 
-      const { data: activeSub, error: actErr } = await supabaseAdmin
-        .from("subscriptions")
-        .select("id")
-        .eq("student_id", studentId)
-        .eq("lesson_type_id", lessonTypeId)
-        .eq("status", "active")
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (actErr) {
-        appendError("subscription_lookup_failed", actErr.message);
+      let subscriptionId;
+      try {
+        subscriptionId = await resolveSubscriptionForAbonVisit(supabaseAdmin, studentId, lessonTypeId);
+      } catch (e) {
+        appendError("subscription_lookup_failed", e instanceof Error ? e.message : String(e));
         continue;
-      }
-
-      let subscriptionId = null;
-      if (activeSub) {
-        subscriptionId = activeSub.id;
-      } else {
-        const { data: pendingSub, error: penErr } = await supabaseAdmin
-          .from("subscriptions")
-          .select("id")
-          .eq("student_id", studentId)
-          .eq("lesson_type_id", lessonTypeId)
-          .eq("status", "pending")
-          .order("created_at", { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        if (penErr) {
-          appendError("subscription_lookup_failed", penErr.message);
-          continue;
-        }
-        if (pendingSub) {
-          subscriptionId = pendingSub.id;
-        } else {
-          const { data: newSub, error: insErr } = await supabaseAdmin
-            .from("subscriptions")
-            .insert({
-              student_id: studentId,
-              lesson_type_id: lessonTypeId,
-              total_visits: null,
-              status: "pending",
-              updated_at: new Date().toISOString(),
-            })
-            .select("id")
-            .single();
-          if (insErr) {
-            appendError("subscription_insert_failed", insErr.message);
-            continue;
-          }
-          subscriptionId = newSub.id;
-        }
       }
 
       const { error: viErr } = await supabaseAdmin.from("visits").insert({
@@ -807,6 +771,30 @@ async function totalRevenueForStudents(supabaseAdmin, studentIds) {
 }
 
 /**
+ * Повертає lesson_type_id-и, з абонементів яких дозволено списувати заняття даного типу.
+ * Наприклад, для тренажу — повертає ID типу «сучасний танець».
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {string} lessonTypeId
+ * @returns {Promise<string[]>}
+ */
+async function resolveCrossTypeIds(supabaseAdmin, lessonTypeId) {
+  const { data: lt, error } = await supabaseAdmin
+    .from("lesson_types")
+    .select("slug")
+    .eq("id", lessonTypeId)
+    .maybeSingle();
+  if (error || !lt?.slug) return [];
+  const crossSlugs = CROSS_ABON_ACCESS[lt.slug] || [];
+  if (!crossSlugs.length) return [];
+  const { data: crossTypes, error: ctErr } = await supabaseAdmin
+    .from("lesson_types")
+    .select("id")
+    .in("slug", crossSlugs);
+  if (ctErr || !crossTypes?.length) return [];
+  return crossTypes.map((t) => String(t.id));
+}
+
+/**
  * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
  * @param {string} studentId
  * @param {string} lessonTypeId
@@ -823,6 +811,23 @@ async function resolveSubscriptionForAbonVisit(supabaseAdmin, studentId, lessonT
     .maybeSingle();
   if (actErr) throw new Error(actErr.message);
   if (activeSub) return activeSub.id;
+
+  // Якщо власного активного абону немає — шукаємо активний абон дозволеного типу
+  // (наприклад, сучасний танець замість тренажу)
+  const crossTypeIds = await resolveCrossTypeIds(supabaseAdmin, lessonTypeId);
+  if (crossTypeIds.length > 0) {
+    const { data: crossSub, error: crossErr } = await supabaseAdmin
+      .from("subscriptions")
+      .select("id")
+      .eq("student_id", studentId)
+      .in("lesson_type_id", crossTypeIds)
+      .eq("status", "active")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (crossErr) throw new Error(crossErr.message);
+    if (crossSub) return crossSub.id;
+  }
 
   const { data: pendingSub, error: penErr } = await supabaseAdmin
     .from("subscriptions")
@@ -852,7 +857,7 @@ async function resolveSubscriptionForAbonVisit(supabaseAdmin, studentId, lessonT
 }
 
 const visitWithStudentSelect =
-  "id, student_id, vote_choice, subscription_id, visit_status, rolled_back_at, created_at, students ( display_name, telegram_username, telegram_user_id )";
+  "id, student_id, vote_choice, subscription_id, visit_status, rolled_back_at, created_at, students ( display_name, telegram_username, telegram_user_id ), subscriptions ( id, lesson_type_id, lesson_types ( id, name, slug ) )";
 
 /**
  * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
@@ -884,9 +889,9 @@ export async function recomputeLessonCountsFromVisits(supabaseAdmin, occurrenceI
 
 /**
  * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
- * @param {{ occurrenceId: string, studentId: string, voteChoice: string }} args
+ * @param {{ occurrenceId: string, studentId: string, voteChoice: string, subscriptionId?: string | null }} args
  */
-export async function adminUpsertLessonVisit(supabaseAdmin, { occurrenceId, studentId, voteChoice }) {
+export async function adminUpsertLessonVisit(supabaseAdmin, { occurrenceId, studentId, voteChoice, subscriptionId: overrideSubId = null }) {
   const choice = voteChoice === "single" ? "single" : voteChoice === "abon" ? "abon" : null;
   if (!choice) throw new Error("vote_choice must be 'abon' or 'single'.");
 
@@ -924,7 +929,20 @@ export async function adminUpsertLessonVisit(supabaseAdmin, { occurrenceId, stud
   let subscriptionId = null;
   const oldSubId = existing?.subscription_id ? String(existing.subscription_id) : null;
   if (choice === "abon") {
-    subscriptionId = await resolveSubscriptionForAbonVisit(supabaseAdmin, studentId, lessonTypeId);
+    if (overrideSubId) {
+      const overrideIdStr = String(overrideSubId).trim();
+      const { data: sub, error: subCheck } = await supabaseAdmin
+        .from("subscriptions")
+        .select("id")
+        .eq("id", overrideIdStr)
+        .eq("student_id", studentId)
+        .maybeSingle();
+      if (subCheck) throw new Error(subCheck.message);
+      if (!sub) throw new Error("Вказаний абонемент не знайдено або не належить цьому учню.");
+      subscriptionId = overrideIdStr;
+    } else {
+      subscriptionId = await resolveSubscriptionForAbonVisit(supabaseAdmin, studentId, lessonTypeId);
+    }
   }
 
   /** @type {Record<string, unknown>} */
@@ -1585,9 +1603,15 @@ export function registerStudentRoutes(app, supabaseAdmin) {
 
       const studentId = String(req.body?.student_id ?? req.body?.studentId ?? "").trim();
       const voteChoice = String(req.body?.vote_choice ?? req.body?.voteChoice ?? "").trim();
+      const subscriptionId = req.body?.subscription_id ?? req.body?.subscriptionId ?? null;
       if (!studentId) return res.status(400).json({ ok: false, error: "Missing student_id." });
 
-      const result = await adminUpsertLessonVisit(supabaseAdmin, { occurrenceId, studentId, voteChoice });
+      const result = await adminUpsertLessonVisit(supabaseAdmin, {
+        occurrenceId,
+        studentId,
+        voteChoice,
+        subscriptionId: subscriptionId ? String(subscriptionId).trim() || null : null,
+      });
       return res.status(200).json({ ok: true, ...result });
     } catch (e) {
       console.error("POST /api/admin/lessons/:occurrenceId/visits:", e?.message || e);
@@ -1607,6 +1631,57 @@ export function registerStudentRoutes(app, supabaseAdmin) {
       return res.status(200).json({ ok: true, ...result });
     } catch (e) {
       console.error("POST /api/admin/visits/:id/remove:", e?.message || e);
+      return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  /**
+   * Активні абонементи учня з кількістю залишених занять.
+   * Використовується у формі додавання учня на заняття для вибору абонементу вручну.
+   */
+  app.get("/api/admin/students/:id/active-subscriptions", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+      }
+      const id = String(req.params.id || "").trim();
+      if (!id) return res.status(400).json({ ok: false, error: "Missing student id." });
+
+      const { data: subs, error: subErr } = await supabaseAdmin
+        .from("subscriptions")
+        .select("id, lesson_type_id, status, total_visits, used_visits_override, lesson_types ( id, name, slug )")
+        .eq("student_id", id)
+        .eq("status", "active")
+        .order("created_at", { ascending: true });
+      if (subErr) return res.status(500).json({ ok: false, error: subErr.message });
+
+      const subIds = (subs || []).map((s) => s.id);
+      const usedBySubId = new Map();
+      if (subIds.length > 0) {
+        const { data: vRows, error: vErr } = await supabaseAdmin
+          .from("visits")
+          .select("subscription_id")
+          .in("subscription_id", subIds)
+          .eq("visit_status", "attended");
+        if (vErr) return res.status(500).json({ ok: false, error: vErr.message });
+        for (const v of vRows || []) {
+          if (!v.subscription_id) continue;
+          const sid = String(v.subscription_id);
+          usedBySubId.set(sid, (usedBySubId.get(sid) || 0) + 1);
+        }
+      }
+
+      const enriched = (subs || []).map((sub) => {
+        const fromVisits = usedBySubId.get(String(sub.id)) || 0;
+        const visits_used = computeSubscriptionUsedVisits(fromVisits, sub.used_visits_override, sub.total_visits);
+        const visits_remaining =
+          sub.total_visits != null ? Math.max(0, Number(sub.total_visits) - visits_used) : null;
+        return { ...sub, visits_used, visits_remaining };
+      });
+
+      return res.status(200).json({ ok: true, rows: enriched });
+    } catch (e) {
+      console.error("GET /api/admin/students/:id/active-subscriptions:", e?.message || e);
       return res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
     }
   });

@@ -1173,6 +1173,34 @@ body.admin-modal-open {
   accent-color: var(--olive, #74862f);
 }
 
+.admin-lesson-edit-add__sub-label {
+  flex-shrink: 0;
+  font-size: 0.88rem;
+  color: var(--brown-light);
+  white-space: nowrap;
+}
+
+/* ── VISIT JOURNAL — cross-type subscription badge ── */
+.admin-visit-journal__kind--cross {
+  color: #6a4c2b;
+  background: rgba(180, 130, 60, 0.14);
+  border-color: rgba(180, 130, 60, 0.4);
+}
+
+.admin-visit-journal__cross-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 3px;
+  background: rgba(180, 130, 60, 0.15);
+  color: #6a4c2b;
+  border: 1px solid rgba(180, 130, 60, 0.35);
+  vertical-align: middle;
+  letter-spacing: 0.01em;
+}
+
 /* ── LESSON FINANCE MODAL ── */
 .admin-lesson-finance-btn {
   font-family: var(--ff-display);

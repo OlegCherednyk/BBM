@@ -440,7 +440,7 @@ function populateLessonTeacherSelect(selectEl, teachers, selectedId) {
   syncCustomSelect(selectEl);
 }
 
-function mountLessonVisitsList(container, visits, onRemove) {
+function mountLessonVisitsList(container, visits, onRemove, lessonTypeSlug) {
   container.innerHTML = "";
   if (!visits.length) {
     container.innerHTML = `<p class="admin-muted" style="margin:0">Немає відвідувачів.</p>`;
@@ -456,13 +456,29 @@ function mountLessonVisitsList(container, visits, onRemove) {
     const kind = document.createElement("span");
     kind.className = `admin-visit-journal__kind admin-visit-journal__kind--${isAbon ? "abon" : "single"}`;
     kind.textContent = isAbon ? "Абон" : "Раз";
-    kind.title = isAbon ? "Абонемент" : "Разове";
+
+    const subSlug = visit.subscriptions?.lesson_types?.slug || null;
+    const subName = visit.subscriptions?.lesson_types?.name || null;
+    const isCrossType = isAbon && subSlug && lessonTypeSlug && subSlug !== lessonTypeSlug;
+    if (isCrossType) {
+      kind.title = `Абонемент: ${subName || subSlug}`;
+      kind.classList.add("admin-visit-journal__kind--cross");
+    } else {
+      kind.title = isAbon ? "Абонемент" : "Разове";
+    }
 
     const main = document.createElement("div");
     main.className = "admin-visit-journal__main";
     const label = document.createElement("div");
     label.className = "admin-visit-journal__label";
     label.textContent = studentDisplayName(visit);
+    if (isCrossType) {
+      const badge = document.createElement("span");
+      badge.className = "admin-visit-journal__cross-badge";
+      badge.textContent = subName || subSlug;
+      badge.title = `Списано з абонементу «${subName || subSlug}»`;
+      label.appendChild(badge);
+    }
     main.appendChild(label);
 
     const removeBtn = document.createElement("button");
@@ -476,6 +492,58 @@ function mountLessonVisitsList(container, visits, onRemove) {
     frag.appendChild(item);
   }
   container.appendChild(frag);
+}
+
+function resetLessonSubSelect() {
+  const subRow = maybeEl("lessonAddStudentSubRow");
+  const subSel = maybeEl("lessonAddStudentSubSelect");
+  if (subRow) subRow.classList.add("admin-hide");
+  if (subSel) {
+    subSel.innerHTML = '<option value="">Автоматично</option>';
+    subSel.value = "";
+  }
+}
+
+async function refreshLessonSubSelect() {
+  const studentSel = maybeEl("lessonAddStudentSelect");
+  const isSingleEl = maybeEl("lessonAddStudentIsSingle");
+  const subRow = maybeEl("lessonAddStudentSubRow");
+  const subSel = maybeEl("lessonAddStudentSubSelect");
+  if (!subRow || !subSel) return;
+
+  const studentId = studentSel?.value?.trim() || "";
+  const isSingle = isSingleEl?.checked ?? false;
+
+  if (!studentId || isSingle) {
+    subRow.classList.add("admin-hide");
+    subSel.innerHTML = '<option value="">Автоматично</option>';
+    subSel.value = "";
+    return;
+  }
+
+  subRow.classList.add("admin-hide");
+  subSel.innerHTML = '<option value="">Завантаження…</option>';
+
+  try {
+    const data = await fetchAdminJson(`/api/admin/students/${encodeURIComponent(studentId)}/active-subscriptions`);
+    const subs = data.rows || [];
+    subSel.innerHTML = '<option value="">Автоматично</option>';
+    for (const sub of subs) {
+      const opt = document.createElement("option");
+      opt.value = sub.id;
+      const name = sub.lesson_types?.name || sub.lesson_type_id || "—";
+      const rem = sub.visits_remaining != null ? ` (залишилось ${sub.visits_remaining})` : "";
+      opt.textContent = `${name}${rem}`;
+      subSel.appendChild(opt);
+    }
+    subSel.value = "";
+    subRow.classList.remove("admin-hide");
+    syncCustomSelect(subSel);
+  } catch {
+    subSel.innerHTML = '<option value="">Автоматично</option>';
+    subSel.value = "";
+    subRow.classList.remove("admin-hide");
+  }
 }
 
 function populateLessonAddStudentSelect(selectEl, allStudents, attendedStudentIds) {
@@ -531,6 +599,11 @@ function ensureLessonEditModalWired() {
     e.preventDefault();
     await saveLessonEdit();
   });
+
+  const studentSel = maybeEl("lessonAddStudentSelect");
+  const isSingleEl = maybeEl("lessonAddStudentIsSingle");
+  studentSel?.addEventListener("change", () => refreshLessonSubSelect());
+  isSingleEl?.addEventListener("change", () => refreshLessonSubSelect());
 }
 
 const lessonEditSelectFields = `id, starts_at, abon_count, single_visitors_count, skip_visitors_count,
@@ -564,11 +637,13 @@ async function saveLessonEdit() {
     const studentId = selectEl?.value?.trim() || "";
     if (studentId) {
       const voteChoice = isSingleEl?.checked ? "single" : "abon";
+      const subOverrideEl = maybeEl("lessonAddStudentSubSelect");
+      const subscriptionId = voteChoice === "abon" ? (subOverrideEl?.value?.trim() || null) : null;
       const body = await fetchAdminJson(
         `/api/admin/lessons/${encodeURIComponent(editingLessonRow.lesson_vote_occurrence_id)}/visits`,
         {
           method: "POST",
-          body: JSON.stringify({ student_id: studentId, vote_choice: voteChoice }),
+          body: JSON.stringify({ student_id: studentId, vote_choice: voteChoice, subscription_id: subscriptionId }),
         },
       );
       if (body.counts) {
@@ -616,7 +691,8 @@ async function removeLessonVisit(visit) {
     );
     const visits = visitsRes.rows || [];
 
-    mountLessonVisitsList(visitsList, visits, (v) => removeLessonVisit(v));
+    const lessonTypeSlug = editingLessonRow?.lesson_times?.lesson_types?.slug || null;
+    mountLessonVisitsList(visitsList, visits, (v) => removeLessonVisit(v), lessonTypeSlug);
     populateLessonAddStudentSelect(
       selectEl,
       cachedAllStudents,
@@ -666,6 +742,8 @@ async function openLessonEditModal(row, onSaved) {
   if (form) form.classList.add("admin-hide");
   if (teacherSel) teacherSel.disabled = true;
 
+  resetLessonSubSelect();
+
   try {
     const [visitsRes, studentsRes, teachersRes] = await Promise.all([
       fetchAdminJson(`/api/admin/lessons/${encodeURIComponent(occurrenceId)}/visits`),
@@ -678,11 +756,12 @@ async function openLessonEditModal(row, onSaved) {
     cachedAllStudents = studentsRes.rows || [];
     cachedAllTeachers = teachersRes.data || [];
     const visits = visitsRes.rows || [];
+    const lessonTypeSlug = row.lesson_times?.lesson_types?.slug || null;
 
     populateLessonTeacherSelect(teacherSel, cachedAllTeachers, row.teachers?.id || "");
     if (teacherSel) teacherSel.disabled = false;
 
-    mountLessonVisitsList(visitsList, visits, (visit) => removeLessonVisit(visit));
+    mountLessonVisitsList(visitsList, visits, (visit) => removeLessonVisit(visit), lessonTypeSlug);
     populateLessonAddStudentSelect(
       selectEl,
       cachedAllStudents,
