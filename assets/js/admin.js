@@ -2349,13 +2349,18 @@ let statsBreakdownChartInstance = null;
 
 /**
  * Render the 4 KPI cards on the stats page.
- * @param {{ totalLessons: number, totalPeople: number, totalNetAfterRent: number, totalSmm: number }} summary
+ * @param {{ totalLessons: number, totalScheduledLessons?: number | null, totalPeople: number, totalNetAfterRent: number, totalSmm: number }} summary — totalPeople = unique students in period
  */
 function renderStatsKpiCards(summary) {
   const root = maybeEl("statsSummaryCards");
   if (!root) return;
-  const { totalLessons, totalPeople, totalNetAfterRent, totalSmm } = summary;
+  const { totalLessons, totalScheduledLessons, totalPeople, totalNetAfterRent, totalSmm } = summary;
   const netColor = totalNetAfterRent >= 0 ? "green" : "red";
+
+  const lessonsValueHtml =
+    totalScheduledLessons != null && totalScheduledLessons > 0
+      ? `${escapeHtml(String(totalLessons))}<span class="admin-stats-kpi-card__value-total"> / ${escapeHtml(String(totalScheduledLessons))}</span>`
+      : escapeHtml(String(totalLessons));
 
   const ICON_CALENDAR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>`;
   const ICON_PEOPLE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
@@ -2363,8 +2368,8 @@ function renderStatsKpiCards(summary) {
   const ICON_SEND = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2 15 22 11 13 2 9l20-7z"/></svg>`;
 
   const cards = [
-    { color: "olive", icon: ICON_CALENDAR, label: "Проведено занять",    value: String(totalLessons) },
-    { color: "blue",  icon: ICON_PEOPLE,   label: "Всього відвідало", value: String(totalPeople) },
+    { color: "olive", icon: ICON_CALENDAR, label: "Проведено занять",    valueHtml: lessonsValueHtml },
+    { color: "blue",  icon: ICON_PEOPLE,   label: "Унікальних учнів", value: String(totalPeople) },
     { color: netColor, icon: ICON_MONEY,   label: "Чистий після оренди", value: fmtMoney(totalNetAfterRent) },
     { color: "amber", icon: ICON_SEND,     label: "Загальні SMM витрати",value: fmtMoney(totalSmm) },
   ];
@@ -2374,7 +2379,7 @@ function renderStatsKpiCards(summary) {
       <div class="admin-stats-kpi-card__icon">${c.icon}</div>
       <div class="admin-stats-kpi-card__body">
         <div class="admin-stats-kpi-card__label">${escapeHtml(c.label)}</div>
-        <div class="admin-stats-kpi-card__value">${escapeHtml(c.value)}</div>
+        <div class="admin-stats-kpi-card__value">${c.valueHtml ?? escapeHtml(c.value ?? "")}</div>
       </div>
     </div>
   `).join("");
@@ -2794,7 +2799,7 @@ async function renderStatsDashboard() {
 
   updateStatsPeriodLabel(fromInput, toInput);
 
-  /** @type {{ ok?: boolean, error?: string, summary?: { totalLessons: number, totalPeople: number, totalNetAfterRent: number, totalSmm: number }, teachers?: Array<{ name: string, lessonsCount: number, peopleCount: number, revenue: number, rent: number, smm: number, payout: number }> }} */
+  /** @type {{ ok?: boolean, error?: string, summary?: { totalLessons: number, totalScheduledLessons?: number | null, totalPeople: number, totalNetAfterRent: number, totalSmm: number }, teachers?: Array<{ name: string, lessonsCount: number, peopleCount: number, revenue: number, rent: number, smm: number, payout: number }> }} */
   let json;
   try {
     const res = await fetch(`/api/admin/stats?${params.toString()}`);

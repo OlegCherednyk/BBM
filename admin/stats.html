@@ -107,15 +107,17 @@
             </div>
           </div>
           <form id="statsRangeForm" class="admin-stats-range-form">
-            <div class="admin-field">
-              <label for="statsDateFrom">Від</label>
-              <input id="statsDateFrom" type="date" />
+            <div class="admin-stats-date-range">
+              <div class="admin-field admin-stats-date-field">
+                <label for="statsDateFrom">Від</label>
+                <input id="statsDateFrom" type="date" />
+              </div>
+              <div class="admin-field admin-stats-date-field">
+                <label for="statsDateTo">До</label>
+                <input id="statsDateTo" type="date" />
+              </div>
             </div>
-            <div class="admin-field">
-              <label for="statsDateTo">До</label>
-              <input id="statsDateTo" type="date" />
-            </div>
-            <div class="admin-actions">
+            <div class="admin-actions admin-stats-range-actions">
               <button type="submit" class="btn btn--primary btn--sm">Застосувати</button>
               <button type="button" id="statsRangeReset" class="btn btn--ghost btn--sm">Скинути</button>
             </div>

@@ -658,6 +658,35 @@ function statsDateToEndIso(dateInput) {
 }
 
 /**
+ * Скільки разів кожен слот розкладу (lesson_times) потрапляє у календарний період (дати yyyy-mm-dd, Київ).
+ * @param {Array<{ day_of_week: number, start_time: string }>} slots
+ * @param {string | null | undefined} fromDate
+ * @param {string | null | undefined} toDate
+ */
+function countScheduledLessonOccurrencesInRange(slots, fromDate, toDate) {
+  if (!fromDate || !toDate || !slots?.length) return null;
+
+  const fromKyiv = DateTime.fromISO(fromDate, { zone: KYIV_TZ }).startOf("day");
+  const toKyiv = DateTime.fromISO(toDate, { zone: KYIV_TZ }).endOf("day");
+  if (!fromKyiv.isValid || !toKyiv.isValid || fromKyiv > toKyiv) return 0;
+
+  const fromMs = fromKyiv.toUTC().toMillis();
+  const toMs = toKyiv.toUTC().toMillis();
+  let count = 0;
+
+  for (let day = fromKyiv; day <= toKyiv; day = day.plus({ days: 1 })) {
+    for (const row of slots) {
+      if (day.weekday !== dbDayToLuxonWeekday(row.day_of_week)) continue;
+      const { hour, minute, second } = parseTimeHms(row.start_time);
+      const occMs = day.set({ hour, minute, second, millisecond: 0 }).toUTC().toMillis();
+      if (occMs >= fromMs && occMs <= toMs) count += 1;
+    }
+  }
+
+  return count;
+}
+
+/**
  * Абонементна виручка: спочатку фактичні візити з subscriptions; інакше голоси; інакше статичний прайс.
  * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
  */
@@ -953,12 +982,12 @@ async function loadAdminStatsLessonsContext(supabaseAdmin, { fromIso, toIso }) {
     ),
   ];
 
-  /** @type {Map<string, Array<{ vote_choice: string, subscriptions?: { amount_uah?: number | null, total_visits?: number | null } | null }>>} */
+  /** @type {Map<string, Array<{ student_id?: string, vote_choice: string, subscriptions?: { amount_uah?: number | null, total_visits?: number | null } | null }>>} */
   const visitsByOccurrence = new Map();
   if (occurrenceIds.length > 0) {
     const { data: visitRows, error: visitErr } = await supabaseAdmin
       .from("visits")
-      .select("lesson_vote_occurrence_id, vote_choice, visit_status, subscriptions(amount_uah, total_visits)")
+      .select("student_id, lesson_vote_occurrence_id, vote_choice, visit_status, subscriptions(amount_uah, total_visits)")
       .in("lesson_vote_occurrence_id", occurrenceIds)
       .eq("visit_status", "attended");
     if (visitErr) throw new Error(visitErr.message);
@@ -1055,9 +1084,9 @@ function lessonMatchesTeacherFilter(row, { teacherId, teacherName }) {
 
 /**
  * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
- * @param {{ fromIso?: string | null, toIso?: string | null }} range
+ * @param {{ fromIso?: string | null, toIso?: string | null, fromDate?: string | null, toDate?: string | null }} range
  */
-async function computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso }) {
+async function computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso, fromDate, toDate }) {
   const ctx = await loadAdminStatsLessonsContext(supabaseAdmin, { fromIso, toIso });
 
   /** @type {Map<string, { id: string | null, name: string, lessonsCount: number, peopleCount: number, revenue: number, rent: number, smm: number, payout: number }>} */
@@ -1087,14 +1116,32 @@ async function computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso }) {
 
   const teachers = [...byTeacher.values()].sort((a, b) => b.payout - a.payout);
   const totalLessons = teachers.reduce((sum, row) => sum + row.lessonsCount, 0);
-  const totalPeople = teachers.reduce((sum, row) => sum + row.peopleCount, 0);
+  const uniqueStudentIds = new Set();
+  for (const visits of ctx.visitsByOccurrence.values()) {
+    for (const visit of visits) {
+      const sid = String(visit.student_id || "").trim();
+      if (sid) uniqueStudentIds.add(sid);
+    }
+  }
+  const totalPeople = uniqueStudentIds.size;
   const totalRevenue = teachers.reduce((sum, row) => sum + row.revenue, 0);
   const totalRent = teachers.reduce((sum, row) => sum + row.rent, 0);
   const totalSmm = teachers.reduce((sum, row) => sum + row.smm, 0);
 
+  let totalScheduledLessons = null;
+  if (fromDate && toDate) {
+    const { data: scheduleSlots, error: scheduleErr } = await supabaseAdmin
+      .from("lesson_times")
+      .select("day_of_week, start_time")
+      .not("place_id", "is", null);
+    if (scheduleErr) throw new Error(scheduleErr.message);
+    totalScheduledLessons = countScheduledLessonOccurrencesInRange(scheduleSlots || [], fromDate, toDate);
+  }
+
   return {
     summary: {
       totalLessons,
+      totalScheduledLessons,
       totalPeople,
       totalNetAfterRent: totalRevenue - totalRent,
       totalSmm,
@@ -3253,7 +3300,12 @@ app.get("/api/admin/stats", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Дата «від» має бути не пізніше за «до»." });
     }
 
-    const payload = await computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso });
+    const payload = await computeAdminStatsDashboard(supabaseAdmin, {
+      fromIso,
+      toIso,
+      fromDate: fromRaw || null,
+      toDate: toRaw || null,
+    });
     return res.status(200).json({ ok: true, ...payload });
   } catch (error) {
     console.error("admin stats failed:", error);
