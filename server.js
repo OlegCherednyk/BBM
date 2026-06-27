@@ -10,10 +10,12 @@ import {
   applyVisitsAfterFinalize,
   backfillStudentsFromSkipVotes,
   expireOverdueSubscriptions,
+  pickSubscriptionForAbonLesson,
   registerStudentRoutes,
+  resolveCrossTypeLessonTypeIds,
   rollbackVisitsForOccurrence,
 } from "./students-api.js";
-import { parsePlaceRiverBank, runDailyTeacherDigests, teacherMatchesBank } from "./admin-notifications.js";
+import { parsePlaceRiverBank, runDailyTeacherDigests, runWeeklyTeacherStatsDigests, teacherMatchesBank } from "./admin-notifications.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
@@ -63,6 +65,7 @@ const SCHEDULER_TICK_MS = 60 * 1000;
 const lessonVoteDailyCreateCronTime = process.env.LESSON_VOTE_DAILY_CREATE_CRON_TIME;
 const lessonVoteDailyCloseCronTime = process.env.LESSON_VOTE_DAILY_CLOSE_CRON_TIME;
 const adminDigestCronTime = process.env.ADMIN_DIGEST_CRON_TIME || "09:00";
+const adminWeeklyDigestCronTime = process.env.ADMIN_WEEKLY_DIGEST_CRON_TIME || adminDigestCronTime;
 
 /** Вікно для створення бойових голосувань: (1; 120] год до початку заняття (Київ). */
 function isOccurrenceInScheduledVoteWindow(occurrenceKyiv, nowKyiv) {
@@ -79,6 +82,28 @@ function normalizeOccurrenceAtIso(raw) {
 function isTelegramMessageNotModifiedError(err) {
   const msg = String(err?.description || err?.message || err || "");
   return /message is not modified/i.test(msg);
+}
+
+function isTelegramStaleCallbackQueryError(err) {
+  const msg = String(err?.description || err?.message || err || "");
+  return /query is too old|query ID is invalid|response timeout expired/i.test(msg);
+}
+
+/** Telegram дає ~10–15 с на answerCbQuery; прострочені callback не повинні валити polling. */
+async function safeAnswerCbQuery(ctx, text) {
+  try {
+    if (text !== undefined && text !== null) {
+      await ctx.answerCbQuery(text);
+    } else {
+      await ctx.answerCbQuery();
+    }
+  } catch (err) {
+    if (isTelegramStaleCallbackQueryError(err)) {
+      console.warn("Telegram callback query expired:", err?.description || err?.message || err);
+      return;
+    }
+    throw err;
+  }
 }
 
 /** Уже існуючі (lesson_time_id → Set occurrence_at ISO) для бойових голосувань. */
@@ -550,17 +575,102 @@ function subscriptionVisitUnitPrice(sub) {
   return amount / visits;
 }
 
-/** @param {Array<{ status?: string, created_at?: string }>} subs */
-function pickOpenSubscriptionForStudent(subs) {
-  const list = subs || [];
-  const active = list
-    .filter((s) => s.status === "active")
-    .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
-  if (active.length > 0) return active[0];
-  const pending = list
-    .filter((s) => s.status === "pending")
-    .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
-  return pending[0] || null;
+/**
+ * Абонементи учнів для розрахунку виручки (власний тип + cross-type, напр. сучасний для тренажу).
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {string[]} studentIds
+ * @param {string} lessonTypeId
+ */
+async function loadAbonSubsByStudentForRevenue(supabaseAdmin, studentIds, lessonTypeId) {
+  /** @type {Map<string, Array<{ status?: string, created_at?: string, amount_uah?: number | null, total_visits?: number | null }>>} */
+  const ownByStudent = new Map();
+  /** @type {Map<string, Array<{ status?: string, created_at?: string, amount_uah?: number | null, total_visits?: number | null }>>} */
+  const crossByStudent = new Map();
+  if (!studentIds.length) return { ownByStudent, crossByStudent };
+
+  const crossTypeIds = await resolveCrossTypeLessonTypeIds(supabaseAdmin, lessonTypeId);
+  const typeIds = [lessonTypeId, ...crossTypeIds.filter((id) => id !== lessonTypeId)];
+  const crossSet = new Set(crossTypeIds.map(String));
+  const lessonTypeStr = String(lessonTypeId);
+
+  const { data: subs, error: subErr } = await supabaseAdmin
+    .from("subscriptions")
+    .select("id, student_id, lesson_type_id, status, amount_uah, total_visits, created_at")
+    .in("student_id", studentIds)
+    .in("lesson_type_id", typeIds)
+    .in("status", ["active", "pending"]);
+  if (subErr) throw new Error(subErr.message);
+
+  for (const sub of subs || []) {
+    const sid = String(sub.student_id);
+    const ltId = String(sub.lesson_type_id);
+    const bucket =
+      ltId === lessonTypeStr ? ownByStudent : crossSet.has(ltId) ? crossByStudent : null;
+    if (!bucket) continue;
+    if (!bucket.has(sid)) bucket.set(sid, []);
+    bucket.get(sid).push(sub);
+  }
+
+  return { ownByStudent, crossByStudent };
+}
+
+/** @param {Map<string, Array<{ status?: string, created_at?: string, amount_uah?: number | null, total_visits?: number | null }>>} ownByStudent @param {Map<string, Array<{ status?: string, created_at?: string, amount_uah?: number | null, total_visits?: number | null }>>} crossByStudent @param {string} studentId */
+function pickAbonSubForStudentRevenue(ownByStudent, crossByStudent, studentId) {
+  return pickSubscriptionForAbonLesson(
+    ownByStudent.get(String(studentId)) || [],
+    crossByStudent.get(String(studentId)) || [],
+  );
+}
+
+/**
+ * Виручка з фактичних відвідувань журналу (subscription_id на візиті).
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {string} occurrenceId
+ * @param {string} lessonTypeId
+ * @param {Map<string, { single: number, abonUnit: number }>} priceByType
+ * @returns {Promise<{ abonRevenue: number, singleRevenue: number, totalRevenue: number, abonCount: number, singleCount: number } | null>}
+ */
+async function computeLessonRevenueFromAttendedVisits(supabaseAdmin, occurrenceId, lessonTypeId, priceByType) {
+  const occId = String(occurrenceId || "").trim();
+  if (!occId) return null;
+
+  const { data: visits, error } = await supabaseAdmin
+    .from("visits")
+    .select("vote_choice, subscriptions ( amount_uah, total_visits )")
+    .eq("lesson_vote_occurrence_id", occId)
+    .eq("visit_status", "attended");
+  if (error) throw new Error(error.message);
+  if (!visits?.length) return null;
+
+  const prices = priceByType.get(lessonTypeId) || { single: 0, abonUnit: 0 };
+  let abonRevenue = 0;
+  let singleRevenue = 0;
+  let abonCount = 0;
+  let singleCount = 0;
+
+  for (const v of visits) {
+    const isAbon = v.vote_choice === "abon";
+    let amount = isAbon ? subscriptionVisitUnitPrice(v.subscriptions) : prices.single;
+    if (isAbon && amount <= 0) amount = prices.abonUnit;
+    amount = Math.round(amount * 100) / 100;
+    if (isAbon) {
+      abonRevenue += amount;
+      abonCount += 1;
+    } else {
+      singleRevenue += amount;
+      singleCount += 1;
+    }
+  }
+
+  abonRevenue = Math.round(abonRevenue * 100) / 100;
+  singleRevenue = Math.round(singleRevenue * 100) / 100;
+  return {
+    abonRevenue,
+    singleRevenue,
+    totalRevenue: Math.round((abonRevenue + singleRevenue) * 100) / 100,
+    abonCount,
+    singleCount,
+  };
 }
 
 /**
@@ -590,7 +700,9 @@ async function computeLessonRevenueFromVotes(supabaseAdmin, { lessonTypeId, vote
   /** @type {Map<string, string>} */
   const studentIdByTid = new Map();
   /** @type {Map<string, Array<{ status?: string, created_at?: string, amount_uah?: number | null, total_visits?: number | null }>>} */
-  const subsByStudent = new Map();
+  let ownByStudent = new Map();
+  /** @type {Map<string, Array<{ status?: string, created_at?: string, amount_uah?: number | null, total_visits?: number | null }>>} */
+  let crossByStudent = new Map();
 
   const tidValues = [...new Set([...uidToTid.values()])];
   if (tidValues.length > 0) {
@@ -606,19 +718,11 @@ async function computeLessonRevenueFromVotes(supabaseAdmin, { lessonTypeId, vote
 
     const studentIds = [...new Set((students || []).map((st) => String(st.id)))];
     if (studentIds.length > 0) {
-      const { data: subs, error: subErr } = await supabaseAdmin
-        .from("subscriptions")
-        .select("id, student_id, status, amount_uah, total_visits, created_at")
-        .in("student_id", studentIds)
-        .eq("lesson_type_id", lessonTypeId)
-        .in("status", ["active", "pending"]);
-      if (subErr) throw new Error(subErr.message);
-
-      for (const sub of subs || []) {
-        const sid = String(sub.student_id);
-        if (!subsByStudent.has(sid)) subsByStudent.set(sid, []);
-        subsByStudent.get(sid).push(sub);
-      }
+      ({ ownByStudent, crossByStudent } = await loadAbonSubsByStudentForRevenue(
+        supabaseAdmin,
+        studentIds,
+        lessonTypeId,
+      ));
     }
   }
 
@@ -629,7 +733,7 @@ async function computeLessonRevenueFromVotes(supabaseAdmin, { lessonTypeId, vote
     if (tid != null) {
       const studentId = studentIdByTid.get(String(tid));
       if (studentId) {
-        const sub = pickOpenSubscriptionForStudent(subsByStudent.get(studentId));
+        const sub = pickAbonSubForStudentRevenue(ownByStudent, crossByStudent, studentId);
         if (sub) unitPrice = subscriptionVisitUnitPrice(sub);
       }
     }
@@ -767,8 +871,8 @@ async function buildStudentFinanceRowsFromSnapshot(supabaseAdmin, { lessonTypeId
 
     /** @type {Map<string, string>} */
     const studentIdByTid = new Map();
-    /** @type {Map<string, Array<{ status?: string, created_at?: string, amount_uah?: number | null, total_visits?: number | null }>>} */
-    const subsByStudent = new Map();
+    let ownByStudent = new Map();
+    let crossByStudent = new Map();
     const tidValues = [...new Set([...uidToTid.values()])];
     if (tidValues.length > 0) {
       const { data: students, error: stErr } = await supabaseAdmin
@@ -783,19 +887,11 @@ async function buildStudentFinanceRowsFromSnapshot(supabaseAdmin, { lessonTypeId
 
       const studentIds = [...new Set((students || []).map((st) => String(st.id)))];
       if (studentIds.length > 0) {
-        const { data: subs, error: subErr } = await supabaseAdmin
-          .from("subscriptions")
-          .select("id, student_id, status, amount_uah, total_visits, created_at")
-          .in("student_id", studentIds)
-          .eq("lesson_type_id", lessonTypeId)
-          .in("status", ["active", "pending"]);
-        if (subErr) throw new Error(subErr.message);
-
-        for (const sub of subs || []) {
-          const sid = String(sub.student_id);
-          if (!subsByStudent.has(sid)) subsByStudent.set(sid, []);
-          subsByStudent.get(sid).push(sub);
-        }
+        ({ ownByStudent, crossByStudent } = await loadAbonSubsByStudentForRevenue(
+          supabaseAdmin,
+          studentIds,
+          lessonTypeId,
+        ));
       }
     }
 
@@ -806,7 +902,7 @@ async function buildStudentFinanceRowsFromSnapshot(supabaseAdmin, { lessonTypeId
       if (tid != null) {
         const studentId = studentIdByTid.get(String(tid));
         if (studentId) {
-          const sub = pickOpenSubscriptionForStudent(subsByStudent.get(studentId));
+          const sub = pickAbonSubForStudentRevenue(ownByStudent, crossByStudent, studentId);
           if (sub) amount = subscriptionVisitUnitPrice(sub);
         }
       }
@@ -1124,6 +1220,7 @@ async function computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso, fromD
     }
   }
   const totalPeople = uniqueStudentIds.size;
+  const totalPeopleAll = teachers.reduce((sum, row) => sum + row.peopleCount, 0);
   const totalRevenue = teachers.reduce((sum, row) => sum + row.revenue, 0);
   const totalRent = teachers.reduce((sum, row) => sum + row.rent, 0);
   const totalSmm = teachers.reduce((sum, row) => sum + row.smm, 0);
@@ -1143,6 +1240,7 @@ async function computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso, fromD
       totalLessons,
       totalScheduledLessons,
       totalPeople,
+      totalPeopleAll,
       totalNetAfterRent: totalRevenue - totalRent,
       totalSmm,
     },
@@ -1166,6 +1264,16 @@ async function computeTeacherLessonsJournal(supabaseAdmin, { teacherId, teacherN
   }
   lessons.sort((a, b) => String(b.startsAt || "").localeCompare(String(a.startsAt || "")));
 
+  const uniqueStudentIds = new Set();
+  for (const row of matched) {
+    const oid = String(row.lesson_vote_occurrence_id || "").trim();
+    if (!oid) continue;
+    for (const visit of ctx.visitsByOccurrence.get(oid) || []) {
+      const sid = String(visit.student_id || "").trim();
+      if (sid) uniqueStudentIds.add(sid);
+    }
+  }
+
   const summary = lessons.reduce(
     (acc, lesson) => {
       acc.lessonsCount += 1;
@@ -1178,6 +1286,7 @@ async function computeTeacherLessonsJournal(supabaseAdmin, { teacherId, teacherN
     },
     { lessonsCount: 0, peopleCount: 0, revenue: 0, rent: 0, smm: 0, payout: 0 },
   );
+  summary.uniquePeopleCount = uniqueStudentIds.size;
 
   return {
     teacherName: lessons[0]?.teacherName || teacherName || "—",
@@ -1404,21 +1513,40 @@ async function computeConductingTeacherPayoutBreakdown(row, votesByKind) {
     }
 
     const priceByType = buildPriceByType(pricesRes.data || []);
-    const revenueBreakdown = await computeLessonRevenueFromVotes(supabaseAdmin, {
+    const revenueFromVisits = await computeLessonRevenueFromAttendedVisits(
+      supabaseAdmin,
+      row?.id,
       lessonTypeId,
-      votesByKind,
       priceByType,
-    });
+    );
+    const revenueBreakdown =
+      revenueFromVisits ||
+      (await computeLessonRevenueFromVotes(supabaseAdmin, {
+        lessonTypeId,
+        votesByKind,
+        priceByType,
+      }));
     const { abonRevenue, singleRevenue, totalRevenue } = revenueBreakdown;
+    const effectivePeopleCount = revenueFromVisits
+      ? revenueFromVisits.abonCount + revenueFromVisits.singleCount
+      : peopleCount;
     const placePriceMap = new Map(
       (placePricesRes.data || []).map((pp) => [`${pp.place_id}:${pp.duration_minutes}`, Number(pp.amount_uah) || 0]),
     );
     const placeId = String(row.place_id || "");
     const rent = placePriceMap.get(`${placeId}:${lessonDuration}`) ?? placePriceMap.get(`${placeId}:60`) ?? 0;
-    const smm = pickSmmAmount(smmRes.data || [], peopleCount);
+    const smm = pickSmmAmount(smmRes.data || [], effectivePeopleCount);
     const netIncome = Math.round((totalRevenue - rent - smm) * 100) / 100;
 
-    return { abonRevenue, singleRevenue, totalRevenue, rent, smm, netIncome, peopleCount };
+    return {
+      abonRevenue,
+      singleRevenue,
+      totalRevenue,
+      rent,
+      smm,
+      netIncome,
+      peopleCount: effectivePeopleCount,
+    };
   } catch (e) {
     console.warn("computeConductingTeacherPayoutBreakdown:", e?.message || e);
     return null;
@@ -3590,9 +3718,13 @@ if (bot) {
       });
   }
 
-  bot.use(async (ctx, next) => {
-    if (ctx.callbackQuery) await voteHydrationPromise;
-    return next();
+  bot.catch((err) => {
+    const msg = err?.description || err?.message || String(err);
+    if (isTelegramStaleCallbackQueryError(err)) {
+      console.warn("Telegram stale callback (ignored):", msg);
+      return;
+    }
+    console.error("Telegram bot handler error:", msg);
   });
 
   /** Поки працює long-polling Telegraf, додатковий getUpdates може не бачити ті самі апдейти — зберігаємо чат із кожного вхідного оновлення. */
@@ -3623,7 +3755,7 @@ if (bot) {
       if (data.startsWith(conductPrefix)) {
         const conductId = data.slice(conductPrefix.length);
         if (!chatId || !messageId) {
-          await ctx.answerCbQuery("Не вдалося ідентифікувати повідомлення.");
+          await safeAnswerCbQuery(ctx, "Не вдалося ідентифікувати повідомлення.");
           return;
         }
 
@@ -3633,9 +3765,11 @@ if (bot) {
           state = await ensureActiveConductVote(chatId, messageId, conductId);
         }
         if (!state || state.conductId !== conductId) {
-          await ctx.answerCbQuery("Оновлення вже неактивне.");
+          await safeAnswerCbQuery(ctx, "Оновлення вже неактивне.");
           return;
         }
+
+        await safeAnswerCbQuery(ctx);
 
         const displayName = await resolveVoterDisplayName(ctx.telegram, chatId, ctx.from);
         state.conductorDisplayName = displayName;
@@ -3648,8 +3782,6 @@ if (bot) {
         } else if (state.voteOccurrenceId) {
           await persistOccurrenceConducting(state.voteOccurrenceId, displayName, String(chatId));
         }
-
-        await ctx.answerCbQuery(`Проводить: ${displayName}`);
         return;
       }
 
@@ -3659,7 +3791,7 @@ if (bot) {
         const isKeep = data.startsWith(reviewKeepPrefix);
         const reviewId = data.slice((isKeep ? reviewKeepPrefix : reviewDeletePrefix).length);
         if (!chatId || !messageId) {
-          await ctx.answerCbQuery("Не вдалося ідентифікувати повідомлення.");
+          await safeAnswerCbQuery(ctx, "Не вдалося ідентифікувати повідомлення.");
           return;
         }
 
@@ -3669,9 +3801,11 @@ if (bot) {
           reviewState = await ensureActiveLessonReview(chatId, messageId, reviewId);
         }
         if (!reviewState || reviewState.reviewId !== reviewId) {
-          await ctx.answerCbQuery("Оновлення вже неактивне.");
+          await safeAnswerCbQuery(ctx, "Оновлення вже неактивне.");
           return;
         }
+
+        await safeAnswerCbQuery(ctx);
 
         if (isKeep) {
           const confirmed = await confirmTwoStudentLesson(reviewState);
@@ -3683,7 +3817,6 @@ if (bot) {
           )}\n\n${confirmed.ok ? "✅ Заняття підтверджено." : "⚠️ Не вдалося підтвердити заняття."}`;
           await ctx.editMessageText(keptText, { reply_markup: { inline_keyboard: [] } });
           activeLessonReviews.delete(stateKey);
-          await ctx.answerCbQuery(confirmed.ok ? "Заняття підтверджено" : confirmed.error || "Помилка");
           return;
         }
 
@@ -3703,19 +3836,18 @@ if (bot) {
             )}\n\n⚠️ ${cancelled.error || "Не вдалося скасувати заняття."}`;
         await ctx.editMessageText(deletedText, { reply_markup: { inline_keyboard: [] } });
         activeLessonReviews.delete(stateKey);
-        await ctx.answerCbQuery(cancelled.ok ? "Заняття скасовано" : cancelled.error || "Помилка");
         return;
       }
 
       const match = data.match(/^lesson_vote:([^:]+):(abon|single|skip)$/);
       if (!match) {
-        await ctx.answerCbQuery();
+        await safeAnswerCbQuery(ctx);
         return;
       }
 
       const [, voteId, choice] = match;
       if (!chatId || !messageId) {
-        await ctx.answerCbQuery("Не вдалося ідентифікувати повідомлення.");
+        await safeAnswerCbQuery(ctx, "Не вдалося ідентифікувати повідомлення.");
         return;
       }
 
@@ -3725,15 +3857,23 @@ if (bot) {
         voteState = await ensureActiveLessonVote(chatId, messageId, voteId);
       }
       if (!voteState || voteState.voteId !== voteId) {
-        await ctx.answerCbQuery("Голосування вже неактивне.");
+        await safeAnswerCbQuery(ctx, "Голосування вже неактивне.");
         return;
       }
 
       const userId = String(ctx.from?.id || "");
       if (!userId) {
-        await ctx.answerCbQuery("Не вдалося визначити користувача.");
+        await safeAnswerCbQuery(ctx, "Не вдалося визначити користувача.");
         return;
       }
+
+      const feedback =
+        choice === "abon"
+          ? "Ваш голос: Абонемент"
+          : choice === "single"
+            ? "Ваш голос: Разове"
+            : "Ви позначили: пропускаю";
+      await safeAnswerCbQuery(ctx, feedback);
 
       const voter = await resolveVoterIdentity(ctx.telegram, chatId, ctx.from);
       voteState.votesByKind.abon.delete(userId);
@@ -3760,16 +3900,13 @@ if (bot) {
           console.warn("lesson vote callback editMessageText:", err?.description || err?.message || err);
         }
       }
-      const feedback =
-        choice === "abon"
-          ? "Ваш голос: Абонемент"
-          : choice === "single"
-            ? "Ваш голос: Разове"
-            : "Ви позначили: пропускаю";
-      await ctx.answerCbQuery(feedback);
     } catch (error) {
+      if (isTelegramStaleCallbackQueryError(error)) {
+        console.warn("lesson vote callback expired:", error?.description || error?.message || error);
+        return;
+      }
       console.error("Failed to process lesson vote callback:", error);
-      await ctx.answerCbQuery("Помилка обробки голосу.");
+      await safeAnswerCbQuery(ctx, "Помилка обробки голосу.");
     }
   });
 
@@ -3816,11 +3953,14 @@ startDailyLessonVoteCron({
   createDailyTimeEnv: lessonVoteDailyCreateCronTime,
   closeDailyTimeEnv: lessonVoteDailyCloseCronTime,
   digestDailyTimeEnv: adminDigestCronTime,
+  weeklyDigestTimeEnv: adminWeeklyDigestCronTime,
   runBatchTeacherVotesInWindow,
   closeOpenVotesForToday,
   supabaseAdmin,
   expireOverdueSubscriptions,
   runDailyTeacherDigests: () => runDailyTeacherDigests(supabaseAdmin, bot),
+  runWeeklyTeacherStatsDigests: () =>
+    runWeeklyTeacherStatsDigests(supabaseAdmin, bot, computeTeacherLessonsJournal, computeAdminStatsDashboard),
 });
 
 registerStudentRoutes(app, supabaseAdmin);

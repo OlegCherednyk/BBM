@@ -48,15 +48,18 @@ export function startDailyLessonVoteCron({
   createDailyTimeEnv,
   closeDailyTimeEnv,
   digestDailyTimeEnv,
+  weeklyDigestTimeEnv,
   runBatchTeacherVotesInWindow,
   closeOpenVotesForToday,
   supabaseAdmin,
   expireOverdueSubscriptions,
   runDailyTeacherDigests,
+  runWeeklyTeacherStatsDigests,
 }) {
   const createDailyTime = normalizeDailyTime(createDailyTimeEnv);
   const closeDailyTime = normalizeDailyTime(closeDailyTimeEnv);
   const digestDailyTime = normalizeDailyTime(digestDailyTimeEnv || "09:00");
+  const weeklyDigestTime = normalizeDailyTime(weeklyDigestTimeEnv || digestDailyTimeEnv || "09:00");
   if (!createDailyTime || !closeDailyTime) {
     console.error(
       "[lesson-vote-daily-cron] disabled: invalid/missing env. Expected LESSON_VOTE_DAILY_CREATE_CRON_TIME and LESSON_VOTE_DAILY_CLOSE_CRON_TIME in HH:MM"
@@ -66,9 +69,10 @@ export function startDailyLessonVoteCron({
   let lastCreateRunDateKyiv = "";
   let lastCloseRunDateKyiv = "";
   let lastDigestRunDateKyiv = "";
+  let lastWeeklyDigestRunDateKyiv = "";
 
   console.log(
-    `[lesson-vote-daily-cron] enabled create_time=${createDailyTime} close_time=${closeDailyTime} digest_time=${digestDailyTime} tz=${KYIV_TZ}`
+    `[lesson-vote-daily-cron] enabled create_time=${createDailyTime} close_time=${closeDailyTime} digest_time=${digestDailyTime} weekly_digest_time=${weeklyDigestTime} tz=${KYIV_TZ}`
   );
 
   const tick = async () => {
@@ -131,6 +135,23 @@ export function startDailyLessonVoteCron({
           await runDailyTeacherDigests();
         } catch (error) {
           console.error("[lesson-vote-daily-cron] digest exception:", error?.message || error);
+        }
+      }
+    }
+
+    if (
+      weeklyDigestTime &&
+      nowKyiv.weekday === 1 &&
+      isSameKyivMinute(nowKyiv, weeklyDigestTime) &&
+      lastWeeklyDigestRunDateKyiv !== dateKey
+    ) {
+      lastWeeklyDigestRunDateKyiv = dateKey;
+      console.log(`[lesson-vote-daily-cron] weekly digest run started kyiv=${nowKyiv.toISO()}`);
+      if (typeof runWeeklyTeacherStatsDigests === "function") {
+        try {
+          await runWeeklyTeacherStatsDigests();
+        } catch (error) {
+          console.error("[lesson-vote-daily-cron] weekly digest exception:", error?.message || error);
         }
       }
     }

@@ -794,52 +794,52 @@ async function resolveCrossTypeIds(supabaseAdmin, lessonTypeId) {
   return crossTypes.map((t) => String(t.id));
 }
 
+export async function resolveCrossTypeLessonTypeIds(supabaseAdmin, lessonTypeId) {
+  return resolveCrossTypeIds(supabaseAdmin, lessonTypeId);
+}
+
+/**
+ * Той самий пріоритет, що й resolveSubscriptionForAbonVisit (без створення pending):
+ * активний власного типу → активний cross-type → pending власного типу.
+ * @param {Array<{ id?: string, status?: string, created_at?: string, amount_uah?: number | null, total_visits?: number | null }>} ownTypeSubs
+ * @param {Array<{ id?: string, status?: string, created_at?: string, amount_uah?: number | null, total_visits?: number | null }>} crossTypeSubs
+ */
+export function pickSubscriptionForAbonLesson(ownTypeSubs, crossTypeSubs = []) {
+  const byCreatedAsc = (a, b) => String(a.created_at || "").localeCompare(String(b.created_at || ""));
+
+  const ownActive = (ownTypeSubs || []).filter((s) => s.status === "active").sort(byCreatedAsc);
+  if (ownActive.length > 0) return ownActive[0];
+
+  const crossActive = (crossTypeSubs || []).filter((s) => s.status === "active").sort(byCreatedAsc);
+  if (crossActive.length > 0) return crossActive[0];
+
+  const ownPending = (ownTypeSubs || []).filter((s) => s.status === "pending").sort(byCreatedAsc);
+  if (ownPending.length > 0) return ownPending[0];
+
+  return null;
+}
+
 /**
  * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
  * @param {string} studentId
  * @param {string} lessonTypeId
  */
 async function resolveSubscriptionForAbonVisit(supabaseAdmin, studentId, lessonTypeId) {
-  const { data: activeSub, error: actErr } = await supabaseAdmin
-    .from("subscriptions")
-    .select("id")
-    .eq("student_id", studentId)
-    .eq("lesson_type_id", lessonTypeId)
-    .eq("status", "active")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (actErr) throw new Error(actErr.message);
-  if (activeSub) return activeSub.id;
-
-  // Якщо власного активного абону немає — шукаємо активний абон дозволеного типу
-  // (наприклад, сучасний танець замість тренажу)
   const crossTypeIds = await resolveCrossTypeIds(supabaseAdmin, lessonTypeId);
-  if (crossTypeIds.length > 0) {
-    const { data: crossSub, error: crossErr } = await supabaseAdmin
-      .from("subscriptions")
-      .select("id")
-      .eq("student_id", studentId)
-      .in("lesson_type_id", crossTypeIds)
-      .eq("status", "active")
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (crossErr) throw new Error(crossErr.message);
-    if (crossSub) return crossSub.id;
-  }
+  const typeFilter = [lessonTypeId, ...crossTypeIds.filter((id) => id !== lessonTypeId)];
 
-  const { data: pendingSub, error: penErr } = await supabaseAdmin
+  const { data: subs, error } = await supabaseAdmin
     .from("subscriptions")
-    .select("id")
+    .select("id, lesson_type_id, status, created_at")
     .eq("student_id", studentId)
-    .eq("lesson_type_id", lessonTypeId)
-    .eq("status", "pending")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (penErr) throw new Error(penErr.message);
-  if (pendingSub) return pendingSub.id;
+    .in("lesson_type_id", typeFilter)
+    .in("status", ["active", "pending"]);
+  if (error) throw new Error(error.message);
+
+  const own = (subs || []).filter((s) => String(s.lesson_type_id) === String(lessonTypeId));
+  const cross = (subs || []).filter((s) => crossTypeIds.includes(String(s.lesson_type_id)));
+  const picked = pickSubscriptionForAbonLesson(own, cross);
+  if (picked?.id) return picked.id;
 
   const { data: newSub, error: insErr } = await supabaseAdmin
     .from("subscriptions")

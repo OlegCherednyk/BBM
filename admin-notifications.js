@@ -219,3 +219,206 @@ export async function runDailyTeacherDigests(supabaseAdmin, bot) {
   console.log(`[admin-digest] done sent=${sent} recipients=${recipients.length}`);
   return { sent, skipped: false };
 }
+
+/** @param {number} weeksAgo 1 = минулий повний тиждень (пн–нд) */
+export function getCompletedWeekRangeKyiv(weeksAgo = 1) {
+  const now = DateTime.now().setZone(KYIV_TZ);
+  const thisWeekStart = now.startOf("week");
+  const weekStart = thisWeekStart.minus({ weeks: weeksAgo });
+  const weekEnd = weekStart.plus({ days: 6 });
+  return {
+    fromDate: weekStart.toISODate(),
+    toDate: weekEnd.toISODate(),
+    fromIso: weekStart.startOf("day").toUTC().toISO(),
+    toIso: weekEnd.endOf("day").toUTC().toISO(),
+    label: `${weekStart.toFormat("dd.MM")} — ${weekEnd.toFormat("dd.MM.yyyy")}`,
+  };
+}
+
+function fmtUah(amount) {
+  const n = Math.round(Number(amount) || 0);
+  return `${n.toLocaleString("uk-UA")} ₴`;
+}
+
+/**
+ * @param {string} label
+ * @param {number} current
+ * @param {number} previous
+ * @param {{ money?: boolean }} [opts]
+ */
+function formatCompareLine(label, current, previous, { money = false } = {}) {
+  const cur = Number(current) || 0;
+  const prev = Number(previous) || 0;
+  const delta = cur - prev;
+  const fmt = money ? fmtUah : (v) => String(Math.round(Number(v) || 0));
+
+  let arrow = "→";
+  if (delta > 0) arrow = "↑";
+  else if (delta < 0) arrow = "↓";
+
+  let changePart;
+  if (delta === 0) {
+    changePart = "без змін";
+  } else {
+    const sign = delta > 0 ? "+" : "−";
+    const absVal = Math.abs(delta);
+    changePart = money ? `${sign}${fmtUah(absVal)}` : `${sign}${absVal}`;
+  }
+
+  return `${label}: ${fmt(cur)} ${arrow} ${changePart} (було ${fmt(prev)})`;
+}
+
+/**
+ * @param {{ summary?: { totalLessons?: number, totalPeople?: number, totalPeopleAll?: number }, teachers?: Array<{ revenue?: number, payout?: number, peopleCount?: number }> }} dashboard
+ */
+function dashboardToWeekSummary(dashboard) {
+  const s = dashboard?.summary || {};
+  const teachers = dashboard?.teachers || [];
+  return {
+    lessonsCount: Number(s.totalLessons) || 0,
+    uniquePeopleCount: Number(s.totalPeople) || 0,
+    totalPeopleCount:
+      Number(s.totalPeopleAll) || teachers.reduce((sum, row) => sum + (Number(row.peopleCount) || 0), 0),
+    revenue: teachers.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0),
+    payout: teachers.reduce((sum, row) => sum + (Number(row.payout) || 0), 0),
+  };
+}
+
+function teacherSummaryToWeekSummary(summary) {
+  const s = summary || {};
+  return {
+    lessonsCount: Number(s.lessonsCount) || 0,
+    uniquePeopleCount: Number(s.uniquePeopleCount) || 0,
+    totalPeopleCount: Number(s.peopleCount) || 0,
+    revenue: Number(s.revenue) || 0,
+    payout: Number(s.payout) || 0,
+  };
+}
+
+function formatStatsBlock(title, currentSummary, prevSummary) {
+  return [
+    title,
+    formatCompareLine("📚 Уроків", currentSummary.lessonsCount, prevSummary.lessonsCount),
+    formatCompareLine("👤 Унікальних", currentSummary.uniquePeopleCount, prevSummary.uniquePeopleCount),
+    formatCompareLine("👥 Всіх", currentSummary.totalPeopleCount, prevSummary.totalPeopleCount),
+    formatCompareLine("💰 Виручка", currentSummary.revenue, prevSummary.revenue, { money: true }),
+    formatCompareLine("💵 Виплата", currentSummary.payout, prevSummary.payout, { money: true }),
+  ];
+}
+
+/**
+ * @param {string} teacherName
+ * @param {string} weekLabel
+ * @param {{ lessonsCount: number, uniquePeopleCount: number, totalPeopleCount: number, revenue: number, payout: number }} teacherCurrent
+ * @param {{ lessonsCount: number, uniquePeopleCount: number, totalPeopleCount: number, revenue: number, payout: number }} teacherPrev
+ * @param {{ lessonsCount: number, uniquePeopleCount: number, totalPeopleCount: number, revenue: number, payout: number }} overallCurrent
+ * @param {{ lessonsCount: number, uniquePeopleCount: number, totalPeopleCount: number, revenue: number, payout: number }} overallPrev
+ */
+export function buildWeeklyStatsDigestText(
+  teacherName,
+  weekLabel,
+  teacherCurrent,
+  teacherPrev,
+  overallCurrent,
+  overallPrev,
+) {
+  const name = String(teacherName || "Викладач").trim();
+  const lines = [
+    "📊 BBM — тижневий дайджест",
+    weekLabel,
+    "",
+    ...formatStatsBlock(`👤 ${name}`, teacherCurrent, teacherPrev),
+    "",
+    ...formatStatsBlock("🏫 BBM загалом", overallCurrent, overallPrev),
+  ];
+  let text = lines.join("\n").trim();
+  if (text.length > 4096) text = `${text.slice(0, 4090)}…`;
+  return text;
+}
+
+const EMPTY_WEEK_SUMMARY = { lessonsCount: 0, uniquePeopleCount: 0, totalPeopleCount: 0, revenue: 0, payout: 0 };
+
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {{ telegram: { sendMessage: (chatId: string, text: string) => Promise<unknown> } } | null} bot
+ * @param {(supabaseAdmin: import("@supabase/supabase-js").SupabaseClient, args: { teacherId?: string, teacherName?: string, fromIso?: string | null, toIso?: string | null }) => Promise<{ summary: { lessonsCount: number, uniquePeopleCount: number, totalPeopleCount: number, revenue: number, payout: number }, teacherName?: string }>} computeTeacherStats
+ * @param {(supabaseAdmin: import("@supabase/supabase-js").SupabaseClient, args: { fromIso?: string | null, toIso?: string | null, fromDate?: string | null, toDate?: string | null }) => Promise<{ summary: { totalLessons?: number, totalPeople?: number, totalPeopleAll?: number }, teachers?: Array<{ revenue?: number, payout?: number, peopleCount?: number }> }>} computeOverallStats
+ */
+export async function runWeeklyTeacherStatsDigests(supabaseAdmin, bot, computeTeacherStats, computeOverallStats) {
+  if (!supabaseAdmin || !bot?.telegram?.sendMessage) {
+    console.log("[admin-weekly-digest] skipped: bot or supabase not configured");
+    return { sent: 0, skipped: true };
+  }
+  if (typeof computeTeacherStats !== "function") {
+    console.log("[admin-weekly-digest] skipped: computeTeacherStats not configured");
+    return { sent: 0, skipped: true };
+  }
+  if (typeof computeOverallStats !== "function") {
+    console.log("[admin-weekly-digest] skipped: computeOverallStats not configured");
+    return { sent: 0, skipped: true };
+  }
+
+  const recipients = await loadDigestRecipients(supabaseAdmin);
+  if (!recipients.length) {
+    console.log("[admin-weekly-digest] no recipients with digest_enabled");
+    return { sent: 0, skipped: false };
+  }
+
+  const currentWeek = getCompletedWeekRangeKyiv(1);
+  const prevWeek = getCompletedWeekRangeKyiv(2);
+
+  const [overallCurrentRaw, overallPrevRaw] = await Promise.all([
+    computeOverallStats(supabaseAdmin, {
+      fromIso: currentWeek.fromIso,
+      toIso: currentWeek.toIso,
+      fromDate: currentWeek.fromDate,
+      toDate: currentWeek.toDate,
+    }),
+    computeOverallStats(supabaseAdmin, {
+      fromIso: prevWeek.fromIso,
+      toIso: prevWeek.toIso,
+      fromDate: prevWeek.fromDate,
+      toDate: prevWeek.toDate,
+    }),
+  ]);
+  const overallCurrent = dashboardToWeekSummary(overallCurrentRaw);
+  const overallPrev = dashboardToWeekSummary(overallPrevRaw);
+
+  let sent = 0;
+  for (const t of recipients) {
+    try {
+      const [current, previous] = await Promise.all([
+        computeTeacherStats(supabaseAdmin, {
+          teacherId: String(t.id),
+          teacherName: String(t.name || ""),
+          fromIso: currentWeek.fromIso,
+          toIso: currentWeek.toIso,
+        }),
+        computeTeacherStats(supabaseAdmin, {
+          teacherId: String(t.id),
+          teacherName: String(t.name || ""),
+          fromIso: prevWeek.fromIso,
+          toIso: prevWeek.toIso,
+        }),
+      ]);
+
+      const text = buildWeeklyStatsDigestText(
+        current.teacherName || t.name,
+        currentWeek.label,
+        teacherSummaryToWeekSummary(current.summary),
+        teacherSummaryToWeekSummary(previous.summary),
+        overallCurrent,
+        overallPrev,
+      );
+      await bot.telegram.sendMessage(String(t.chat_id).trim(), text);
+      sent += 1;
+    } catch (err) {
+      console.error(
+        `[admin-weekly-digest] send failed teacher=${t.id}:`,
+        err?.description || err?.message || err,
+      );
+    }
+  }
+  console.log(`[admin-weekly-digest] done sent=${sent} recipients=${recipients.length} week=${currentWeek.label}`);
+  return { sent, skipped: false };
+}

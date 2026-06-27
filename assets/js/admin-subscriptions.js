@@ -894,6 +894,11 @@ export async function setupSubscriptionsAdmin() {
     });
   }
 
+  if (statusFilterEl) {
+    if (!statusFilterEl.value) statusFilterEl.value = "active";
+    syncSelectUi(statusFilterEl);
+  }
+
   await loadLessonTypeFilter();
   await refreshList();
 }
