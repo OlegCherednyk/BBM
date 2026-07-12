@@ -410,7 +410,7 @@ export async function runWeeklyTeacherStatsDigests(supabaseAdmin, bot, computeTe
       ]);
 
       const chatId = String(t.chat_id).trim();
-      const teacherName = current.teacherName || t.name;
+      const teacherName = current.teacherName || t.name || "Викладач";
       const teacherCurrent = teacherSummaryToWeekSummary(current.summary);
       const teacherPrev = teacherSummaryToWeekSummary(previous.summary);
 
