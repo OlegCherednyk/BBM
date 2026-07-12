@@ -1405,10 +1405,6 @@ async function notifyTeacherTwoStudentReview({
     conductingDisplayName,
     conductingTelegramChatId: teacherChatId,
   };
-  if (!teacherChatId) {
-    await notifyConductingTeacherPayout(payoutArgs);
-    return;
-  }
 
   const reviewId = `r_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const payoutBreakdown = await computeConductingTeacherPayoutBreakdown(row, votesByKind);
@@ -1416,23 +1412,62 @@ async function notifyTeacherTwoStudentReview({
   const text = buildTwoStudentReviewMessage(lessonContext, abonCount, singleCount, netIncome);
   const markup = buildTwoStudentReviewKeyboard(reviewId);
 
-  try {
-    const sent = await bot.telegram.sendMessage(teacherChatId, text, { reply_markup: markup });
-    activeLessonReviews.set(attendanceGroupMemoryKey(sent.chat.id, sent.message_id), {
-      reviewId,
-      lessonId,
-      row,
-      lessonContext,
-      votesByKind,
-      conductingDisplayName,
-      conductingTelegramChatId: teacherChatId,
-      netIncome,
-    });
-    await persistTwoStudentReviewMessage(row.id, sent.chat.id, sent.message_id, reviewId);
-  } catch (e) {
-    console.warn("notifyTeacherTwoStudentReview:", e?.description || e?.message || e);
-    await notifyConductingTeacherPayout(payoutArgs);
+  /** @type {{ chatId: string }[]} */
+  let targets = [];
+  if (teacherChatId) {
+    targets = [{ chatId: teacherChatId }];
+  } else {
+    try {
+      targets = await loadDigestTeacherTargets();
+    } catch (e) {
+      console.warn("notifyTeacherTwoStudentReview loadDigestTeacherTargets:", e?.message || e);
+      await notifyConductingTeacherPayout(payoutArgs);
+      return;
+    }
+    if (!targets.length) {
+      console.warn("notifyTeacherTwoStudentReview: no digest teachers with chat_id; skipping form");
+      await notifyConductingTeacherPayout(payoutArgs);
+      return;
+    }
   }
+
+  const persistedMessages = [];
+  for (const t of targets) {
+    try {
+      const sent = await bot.telegram.sendMessage(t.chatId, text, { reply_markup: markup });
+      const entry = {
+        chat_id: String(sent.chat.id),
+        message_id: Number(sent.message_id),
+        review_id: reviewId,
+      };
+      persistedMessages.push(entry);
+      activeLessonReviews.set(attendanceGroupMemoryKey(entry.chat_id, entry.message_id), {
+        reviewId,
+        lessonId,
+        row,
+        lessonContext,
+        votesByKind,
+        conductingDisplayName: conductingDisplayName ?? null,
+        conductingTelegramChatId: teacherChatId || null,
+        netIncome,
+      });
+    } catch (e) {
+      console.warn(
+        "notifyTeacherTwoStudentReview send:",
+        t.chatId,
+        e?.description || e?.message || e,
+      );
+    }
+  }
+
+  if (!persistedMessages.length) {
+    await notifyConductingTeacherPayout(payoutArgs);
+    return;
+  }
+
+  // Keep row.two_student_review_message in sync for sibling deactivate before DB round-trip.
+  if (row) row.two_student_review_message = persistedMessages;
+  await persistTwoStudentReviewMessages(row.id, persistedMessages);
 }
 
 async function handlePostFinalizeTeacherNotifications({
@@ -1868,6 +1903,57 @@ async function loadTeacherTargetsWithChatId(opts = {}) {
     });
   }
   return result;
+}
+
+/** Викладачі з увімкненим дайджестом (для broadcast форми «2 учні» без conducting). */
+async function loadDigestTeacherTargets() {
+  if (!supabaseAdmin) return [];
+
+  const { data, error } = await supabaseAdmin
+    .from("teachers")
+    .select("id, name, chat_id")
+    .eq("digest_enabled", true)
+    .not("chat_id", "is", null);
+
+  if (error) {
+    throw new Error(`Failed to load digest teachers: ${error.message}`);
+  }
+
+  const seen = new Set();
+  const result = [];
+  for (const row of data || []) {
+    const chatId = String(row.chat_id || "").trim();
+    if (!chatId || seen.has(chatId)) continue;
+    seen.add(chatId);
+    result.push({
+      id: row.id,
+      name: row.name || "Викладач",
+      chatId,
+    });
+  }
+  return result;
+}
+
+async function resolveTeacherDisplayNameByChatId(chatIdRaw) {
+  if (!supabaseAdmin || chatIdRaw == null || chatIdRaw === "") return null;
+  const cid = String(chatIdRaw).trim();
+  if (!cid) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("teachers")
+      .select("name")
+      .eq("chat_id", cid)
+      .maybeSingle();
+    if (error) {
+      console.warn("resolveTeacherDisplayNameByChatId:", error.message);
+      return null;
+    }
+    const name = data?.name != null ? String(data.name).trim() : "";
+    return name || null;
+  } catch (e) {
+    console.warn("resolveTeacherDisplayNameByChatId:", e?.message || e);
+    return null;
+  }
 }
 
 /** 0 = неділя … 6 = субота (як у БД) → Luxon weekday (1 = Mon … 7 = Sun) */
@@ -2663,19 +2749,81 @@ async function markTwoStudentReviewPending(occurrenceId) {
   if (error) console.error("markTwoStudentReviewPending:", error.message);
 }
 
-async function persistTwoStudentReviewMessage(occurrenceId, chatId, messageId, reviewId) {
+/** @param {unknown} raw */
+function normalizeTwoStudentReviewMessages(raw) {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) {
+    return raw
+      .filter((m) => m && m.chat_id != null && Number.isFinite(Number(m.message_id)) && m.review_id)
+      .map((m) => ({
+        chat_id: String(m.chat_id),
+        message_id: Number(m.message_id),
+        review_id: String(m.review_id),
+      }));
+  }
+  if (
+    typeof raw === "object" &&
+    raw.chat_id != null &&
+    Number.isFinite(Number(raw.message_id)) &&
+    raw.review_id
+  ) {
+    return [
+      {
+        chat_id: String(raw.chat_id),
+        message_id: Number(raw.message_id),
+        review_id: String(raw.review_id),
+      },
+    ];
+  }
+  return [];
+}
+
+async function persistTwoStudentReviewMessages(occurrenceId, messages) {
   if (!supabaseAdmin || !occurrenceId) return;
+  const normalized = normalizeTwoStudentReviewMessages(messages);
   const { error } = await supabaseAdmin
     .from("lesson_vote_occurrences")
-    .update({
-      two_student_review_message: {
-        chat_id: String(chatId),
-        message_id: Number(messageId),
-        review_id: String(reviewId),
-      },
-    })
+    .update({ two_student_review_message: normalized })
     .eq("id", occurrenceId);
-  if (error) console.error("persistTwoStudentReviewMessage:", error.message);
+  if (error) console.error("persistTwoStudentReviewMessages:", error.message);
+}
+
+async function finalizeTwoStudentReviewMessages(row, finalText) {
+  if (!bot || !row) return;
+  let messages = normalizeTwoStudentReviewMessages(row.two_student_review_message);
+  if (!messages.length && supabaseAdmin && row.id) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from("lesson_vote_occurrences")
+        .select("two_student_review_message")
+        .eq("id", row.id)
+        .maybeSingle();
+      if (!error) {
+        messages = normalizeTwoStudentReviewMessages(data?.two_student_review_message);
+        row.two_student_review_message = data?.two_student_review_message ?? row.two_student_review_message;
+      }
+    } catch (e) {
+      console.warn("finalizeTwoStudentReviewMessages reload:", e?.message || e);
+    }
+  }
+
+  for (const msg of messages) {
+    const stateKey = attendanceGroupMemoryKey(msg.chat_id, msg.message_id);
+    activeLessonReviews.delete(stateKey);
+    try {
+      await bot.telegram.editMessageText(String(msg.chat_id), Number(msg.message_id), undefined, finalText, {
+        reply_markup: { inline_keyboard: [] },
+      });
+    } catch (e) {
+      if (!isTelegramMessageNotModifiedError(e)) {
+        console.warn(
+          "finalizeTwoStudentReviewMessages:",
+          msg.chat_id,
+          e?.description || e?.message || e,
+        );
+      }
+    }
+  }
 }
 
 async function markTwoStudentReviewResolved(occurrenceId, status) {
@@ -3030,14 +3178,14 @@ async function ensureActiveLessonReview(chatId, messageId, reviewId) {
   }
 
   for (const row of rows || []) {
-    const msg = row.two_student_review_message;
-    if (
-      String(msg?.chat_id) !== String(chatId) ||
-      Number(msg?.message_id) !== Number(messageId) ||
-      String(msg?.review_id) !== String(reviewId)
-    ) {
-      continue;
-    }
+    const messages = normalizeTwoStudentReviewMessages(row.two_student_review_message);
+    const hit = messages.find(
+      (msg) =>
+        String(msg.chat_id) === String(chatId) &&
+        Number(msg.message_id) === Number(messageId) &&
+        String(msg.review_id) === String(reviewId),
+    );
+    if (!hit) continue;
     const lessonId = await findLessonIdByOccurrenceId(row.id);
     const reviewState = buildReviewStateFromOccurrenceRow(row, reviewId, lessonId);
     activeLessonReviews.set(stateKey, reviewState);
@@ -3063,13 +3211,14 @@ async function hydratePendingTwoStudentReviewsFromDb() {
 
     let count = 0;
     for (const row of rows || []) {
-      const msg = row.two_student_review_message;
-      if (!msg?.chat_id || !Number.isFinite(Number(msg?.message_id)) || !msg?.review_id) continue;
-      const stateKey = attendanceGroupMemoryKey(msg.chat_id, msg.message_id);
-      if (activeLessonReviews.has(stateKey)) continue;
-      const lessonId = await findLessonIdByOccurrenceId(row.id);
-      activeLessonReviews.set(stateKey, buildReviewStateFromOccurrenceRow(row, msg.review_id, lessonId));
-      count += 1;
+      const messages = normalizeTwoStudentReviewMessages(row.two_student_review_message);
+      for (const msg of messages) {
+        const stateKey = attendanceGroupMemoryKey(msg.chat_id, msg.message_id);
+        if (activeLessonReviews.has(stateKey)) continue;
+        const lessonId = await findLessonIdByOccurrenceId(row.id);
+        activeLessonReviews.set(stateKey, buildReviewStateFromOccurrenceRow(row, msg.review_id, lessonId));
+        count += 1;
+      }
     }
     return count;
   } catch (e) {
@@ -3807,6 +3956,21 @@ if (bot) {
 
         await safeAnswerCbQuery(ctx);
 
+        const clickerChatId = String(chatId);
+        reviewState.conductingTelegramChatId = clickerChatId;
+        const fromDb = await resolveTeacherDisplayNameByChatId(clickerChatId);
+        reviewState.conductingDisplayName =
+          fromDb ||
+          [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ").trim() ||
+          "Викладач";
+        if (reviewState.row?.id) {
+          await persistOccurrenceConducting(
+            reviewState.row.id,
+            reviewState.conductingDisplayName,
+            clickerChatId,
+          );
+        }
+
         if (isKeep) {
           const confirmed = await confirmTwoStudentLesson(reviewState);
           const keptText = `${buildTwoStudentReviewMessage(
@@ -3815,8 +3979,7 @@ if (bot) {
             reviewState.votesByKind?.single?.size ?? 0,
             reviewState.netIncome,
           )}\n\n${confirmed.ok ? "✅ Заняття підтверджено." : "⚠️ Не вдалося підтвердити заняття."}`;
-          await ctx.editMessageText(keptText, { reply_markup: { inline_keyboard: [] } });
-          activeLessonReviews.delete(stateKey);
+          await finalizeTwoStudentReviewMessages(reviewState.row, keptText);
           return;
         }
 
@@ -3834,8 +3997,7 @@ if (bot) {
               reviewState.votesByKind?.single?.size ?? 0,
               reviewState.netIncome,
             )}\n\n⚠️ ${cancelled.error || "Не вдалося скасувати заняття."}`;
-        await ctx.editMessageText(deletedText, { reply_markup: { inline_keyboard: [] } });
-        activeLessonReviews.delete(stateKey);
+        await finalizeTwoStudentReviewMessages(reviewState.row, deletedText);
         return;
       }
 

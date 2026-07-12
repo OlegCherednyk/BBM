@@ -1,0 +1,8 @@
+-- AFTER apply verification (2026-07-12)
+-- occurrence bb23e0aa-0008-4ddb-9d7f-c2a268b3382d
+
+-- two_student_review_status = confirmed
+-- conducting_display_name = Вікторія
+-- lesson_id = 0477347c-7fad-4330-908f-415e2359a0a3
+-- teacher = Віка (bc361895-e8df-412d-b9a1-3b36c896b8f3)
+-- visits = 2 (Аліна abon, Sasha Pochep single)
