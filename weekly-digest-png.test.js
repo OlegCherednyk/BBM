@@ -9,6 +9,7 @@ import {
   getMonthToDateCompareRangesKyiv,
   formatDigestDateSubtitle,
   formatDigestDateSubtitleFromRanges,
+  buildWeeklyDigestSvg,
 } from "./weekly-digest-png.js";
 
 describe("percentChange", () => {
@@ -102,5 +103,50 @@ describe("formatDigestDateSubtitleFromRanges", () => {
       { fromDate: "2026-06-01", toDate: "2026-06-11" },
     );
     assert.equal(s, "6–12 лип · 1–11 лип vs 1–11 чер");
+  });
+});
+
+describe("buildWeeklyDigestSvg", () => {
+  it("includes title, labels, and no forbidden words", () => {
+    const svg = buildWeeklyDigestSvg({
+      teacherName: "Олена",
+      dateSubtitle: "6–12 лип · 1–11 лип vs 1–11 чер",
+      teacherWeek: {
+        current: { lessonsCount: 14, uniquePeopleCount: 41, totalPeopleCount: 55, revenue: 13100, payout: 4000 },
+        previous: { lessonsCount: 12, uniquePeopleCount: 48, totalPeopleCount: 52, revenue: 12400, payout: 3800 },
+      },
+      overallMonth: {
+        current: { lessonsCount: 80, uniquePeopleCount: 200, totalPeopleCount: 260, revenue: 90000, payout: 30000 },
+        previous: { lessonsCount: 70, uniquePeopleCount: 210, totalPeopleCount: 250, revenue: 83000, payout: 28000 },
+      },
+    });
+    assert.ok(svg.startsWith("<svg"));
+    assert.ok(svg.includes("BBM · Тижневий дайджест"));
+    assert.ok(svg.includes("уроки"));
+    assert.ok(svg.includes("учні"));
+    assert.ok(svg.includes("візити"));
+    assert.ok(svg.includes("виручка"));
+    assert.ok(svg.includes("виплата"));
+    assert.ok(svg.includes("Особисте · тиждень"));
+    assert.ok(svg.includes("BBM · місяць"));
+    assert.ok(!svg.includes("MTD"));
+    assert.ok(!/міс\./i.test(svg));
+  });
+
+  it("escapes teacher name and truncates long names", () => {
+    const svg = buildWeeklyDigestSvg({
+      teacherName: 'A&B<script>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+      dateSubtitle: "x",
+      teacherWeek: {
+        current: { lessonsCount: 0, uniquePeopleCount: 0, totalPeopleCount: 0, revenue: 0, payout: 0 },
+        previous: { lessonsCount: 0, uniquePeopleCount: 0, totalPeopleCount: 0, revenue: 0, payout: 0 },
+      },
+      overallMonth: {
+        current: { lessonsCount: 0, uniquePeopleCount: 0, totalPeopleCount: 0, revenue: 0, payout: 0 },
+        previous: { lessonsCount: 0, uniquePeopleCount: 0, totalPeopleCount: 0, revenue: 0, payout: 0 },
+      },
+    });
+    assert.ok(!svg.includes("<script>"));
+    assert.ok(svg.includes("&amp;") || svg.includes("A&amp;B"));
   });
 });
