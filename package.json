@@ -4,6 +4,7 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@supabase/supabase-js": "^2.105.3",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
