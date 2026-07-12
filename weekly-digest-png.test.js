@@ -149,6 +149,7 @@ describe("buildWeeklyDigestSvg", () => {
     });
     assert.ok(!svg.includes("<script>"));
     assert.ok(svg.includes("&amp;") || svg.includes("A&amp;B"));
+    assert.ok(svg.includes("…"));
   });
 });
 

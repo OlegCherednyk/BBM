@@ -199,7 +199,7 @@ export function buildWeeklyDigestSvg(payload) {
 
   const monthBars = metrics.map(([label, key, money], index) => pairBarsRow({
     x: 60,
-    y: 738 + index * 34,
+    y: 738 + index * 26,
     label,
     previous: monthPrevious,
     current: monthCurrent,
@@ -215,7 +215,7 @@ export function buildWeeklyDigestSvg(payload) {
 
   <text x="60" y="72" fill="#c4b5fd" font-family="Inter, Arial, sans-serif" font-size="36" font-weight="900">BBM · Тижневий дайджест</text>
   <text x="60" y="106" fill="#94a3b8" font-family="Inter, Arial, sans-serif" font-size="20">${dateSubtitle}</text>
-  <text x="60" y="136" fill="#e5e7eb" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="800">${teacherName}</text>
+  <text x="780" y="136" text-anchor="end" fill="#e5e7eb" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="800">${teacherName}</text>
 
   <text x="60" y="176" fill="#f8fafc" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="900">Особисте · тиждень</text>
   <text x="626" y="176" fill="#64748b" font-family="Inter, Arial, sans-serif" font-size="18">■ попередній</text>
