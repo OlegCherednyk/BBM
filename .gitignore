@@ -29,3 +29,5 @@ build/
 .cache/
 .parcel-cache/
 nginx/
+.superpowers/
+.worktrees/
