@@ -1,5 +1,10 @@
 import { DateTime } from "luxon";
 import { computeSubscriptionUsedVisits } from "./students-api.js";
+import {
+  formatDigestDateSubtitleFromRanges,
+  getMonthToDateCompareRangesKyiv,
+  renderWeeklyDigestPng,
+} from "./weekly-digest-png.js";
 
 const KYIV_TZ = "Europe/Kyiv";
 
@@ -366,19 +371,21 @@ export async function runWeeklyTeacherStatsDigests(supabaseAdmin, bot, computeTe
 
   const currentWeek = getCompletedWeekRangeKyiv(1);
   const prevWeek = getCompletedWeekRangeKyiv(2);
+  const monthRanges = getMonthToDateCompareRangesKyiv();
+  const dateSubtitle = formatDigestDateSubtitleFromRanges(currentWeek, monthRanges.current, monthRanges.previous);
 
   const [overallCurrentRaw, overallPrevRaw] = await Promise.all([
     computeOverallStats(supabaseAdmin, {
-      fromIso: currentWeek.fromIso,
-      toIso: currentWeek.toIso,
-      fromDate: currentWeek.fromDate,
-      toDate: currentWeek.toDate,
+      fromIso: monthRanges.current.fromIso,
+      toIso: monthRanges.current.toIso,
+      fromDate: monthRanges.current.fromDate,
+      toDate: monthRanges.current.toDate,
     }),
     computeOverallStats(supabaseAdmin, {
-      fromIso: prevWeek.fromIso,
-      toIso: prevWeek.toIso,
-      fromDate: prevWeek.fromDate,
-      toDate: prevWeek.toDate,
+      fromIso: monthRanges.previous.fromIso,
+      toIso: monthRanges.previous.toIso,
+      fromDate: monthRanges.previous.fromDate,
+      toDate: monthRanges.previous.toDate,
     }),
   ]);
   const overallCurrent = dashboardToWeekSummary(overallCurrentRaw);
@@ -402,15 +409,38 @@ export async function runWeeklyTeacherStatsDigests(supabaseAdmin, bot, computeTe
         }),
       ]);
 
-      const text = buildWeeklyStatsDigestText(
-        current.teacherName || t.name,
-        currentWeek.label,
-        teacherSummaryToWeekSummary(current.summary),
-        teacherSummaryToWeekSummary(previous.summary),
-        overallCurrent,
-        overallPrev,
-      );
-      await bot.telegram.sendMessage(String(t.chat_id).trim(), text);
+      const chatId = String(t.chat_id).trim();
+      const teacherName = current.teacherName || t.name;
+      const teacherCurrent = teacherSummaryToWeekSummary(current.summary);
+      const teacherPrev = teacherSummaryToWeekSummary(previous.summary);
+
+      try {
+        const png = await renderWeeklyDigestPng({
+          teacherName,
+          dateSubtitle,
+          teacherWeek: { current: teacherCurrent, previous: teacherPrev },
+          overallMonth: { current: overallCurrent, previous: overallPrev },
+        });
+        await bot.telegram.sendPhoto(
+          chatId,
+          { source: png },
+          { caption: `📊 BBM — тижневий дайджест\n${teacherName}\n${currentWeek.label}` },
+        );
+      } catch (pngErr) {
+        console.error(
+          `[admin-weekly-digest] png send failed teacher=${t.id}, falling back to text:`,
+          pngErr?.description || pngErr?.message || pngErr,
+        );
+        const text = buildWeeklyStatsDigestText(
+          teacherName,
+          currentWeek.label,
+          teacherCurrent,
+          teacherPrev,
+          overallCurrent,
+          overallPrev,
+        );
+        await bot.telegram.sendMessage(chatId, text);
+      }
       sent += 1;
     } catch (err) {
       console.error(
