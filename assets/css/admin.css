@@ -64,6 +64,85 @@ body[data-admin-page] {
   letter-spacing: -0.02em;
 }
 
+.admin-nav__logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.admin-nav__logo-mark {
+  display: block;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.admin-nav__logo-text {
+  font-family: inherit;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.admin-nav__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--olive-dim);
+  background: var(--admin-accent-dim);
+  border: 1px solid rgba(116, 134, 47, 0.28);
+}
+
+.admin-nav__backdrop {
+  position: fixed;
+  inset: var(--admin-nav-h) 0 0;
+  z-index: 93;
+  background: rgba(26, 18, 13, 0.28);
+}
+
+.admin-nav__drawer-footer {
+  width: 100%;
+  max-width: 960px;
+  margin: 10px auto 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--admin-panel-border);
+}
+
+.admin-nav__signout {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--brown-mid);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color var(--admin-transition),
+    background var(--admin-transition),
+    border-color var(--admin-transition);
+}
+
+.admin-nav__signout:hover {
+  color: var(--olive);
+  background: var(--admin-accent-dim);
+  border-color: rgba(116, 134, 47, 0.28);
+}
+
+.admin-nav__signout-icon {
+  flex-shrink: 0;
+}
+
 .admin-nav__toggle {
   display: flex;
   margin-left: auto;
@@ -187,7 +266,9 @@ body[data-admin-page] {
   }
 
   .admin-nav__drawer:not(.admin-hide) {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 8px 12px;
   }
 
   .admin-nav__jumps {
@@ -218,6 +299,29 @@ body[data-admin-page] {
     font-size: 0.78rem;
     letter-spacing: 0.01em;
     white-space: nowrap;
+  }
+
+  .admin-nav__drawer-footer {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border: none;
+    flex-shrink: 0;
+  }
+
+  .admin-nav__signout {
+    width: auto;
+    padding: 6px 11px;
+    font-size: 0.78rem;
+  }
+
+  .admin-nav__signout-label {
+    display: none;
+  }
+
+  .admin-nav__backdrop {
+    display: none !important;
   }
 }
 

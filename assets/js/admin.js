@@ -16,10 +16,37 @@ function syncCustomSelect(selectEl) {
   }
 }
 
-/** @type {"login"|"lesson-types"|"prices"|"places"|"teachers"|"students"|"votes"|"lessons"|"stats"} */
+/** @type {"login"|"lesson-types"|"prices"|"places"|"teachers"|"students"|"subscriptions"|"votes"|"lessons"|"stats"} */
 const ADMIN_PAGE = /** @type {any} */ (document.body?.dataset.adminPage ?? "lesson-types");
 
 const isLoginPage = ADMIN_PAGE === "login";
+
+/** Cross-page admin nav (order matches product menu). */
+const ADMIN_NAV_PAGES = [
+  { id: "prices", href: "prices.html", label: "Ціни" },
+  { id: "places", href: "places.html", label: "Місця" },
+  { id: "teachers", href: "teachers.html", label: "Викладачі" },
+  { id: "students", href: "students.html", label: "Учні" },
+  { id: "subscriptions", href: "subscriptions.html", label: "Абонементи" },
+  { id: "votes", href: "votes.html", label: "Голосування" },
+  { id: "lessons", href: "lessons.html", label: "Заняття" },
+  { id: "stats", href: "stats.html", label: "Статистика" },
+];
+
+function renderAdminNavLinks() {
+  const jumps = maybeEl("adminNavJumps");
+  if (!jumps) return;
+  jumps.replaceChildren();
+  for (const page of ADMIN_NAV_PAGES) {
+    const li = document.createElement("li");
+    const a = document.createElement("a");
+    a.href = page.href;
+    a.textContent = page.label;
+    if (page.id === ADMIN_PAGE) a.setAttribute("aria-current", "page");
+    li.appendChild(a);
+    jumps.appendChild(li);
+  }
+}
 
 function fmtTime(timeStr) {
   if (!timeStr || typeof timeStr !== "string") return "";
@@ -2973,27 +3000,55 @@ function closeAdminNavDrawer() {
   if (isAdminNavDesktop()) return;
   const toggle = maybeEl("adminNavToggle");
   const drawer = maybeEl("adminNavDrawer");
+  const backdrop = maybeEl("adminNavBackdrop");
   if (!toggle || !drawer) return;
   toggle.setAttribute("aria-expanded", "false");
   drawer.classList.remove("is-open");
   drawer.setAttribute("aria-hidden", "true");
+  if (backdrop) {
+    backdrop.classList.add("admin-hide");
+    backdrop.setAttribute("aria-hidden", "true");
+  }
+}
+
+function openAdminNavDrawer() {
+  if (isAdminNavDesktop()) return;
+  const toggle = maybeEl("adminNavToggle");
+  const drawer = maybeEl("adminNavDrawer");
+  const backdrop = maybeEl("adminNavBackdrop");
+  if (!toggle || !drawer) return;
+  toggle.setAttribute("aria-expanded", "true");
+  drawer.classList.add("is-open");
+  drawer.setAttribute("aria-hidden", "false");
+  if (backdrop) {
+    backdrop.classList.remove("admin-hide");
+    backdrop.setAttribute("aria-hidden", "false");
+  }
 }
 
 function initAdminNavDrawer() {
   const toggle = maybeEl("adminNavToggle");
   const drawer = maybeEl("adminNavDrawer");
+  const backdrop = maybeEl("adminNavBackdrop");
   if (!toggle || !drawer) return;
 
   toggle.addEventListener("click", () => {
     if (isAdminNavDesktop()) return;
     const open = toggle.getAttribute("aria-expanded") === "true";
-    toggle.setAttribute("aria-expanded", open ? "false" : "true");
-    drawer.classList.toggle("is-open", !open);
-    drawer.setAttribute("aria-hidden", open ? "true" : "false");
+    if (open) closeAdminNavDrawer();
+    else openAdminNavDrawer();
   });
+
+  backdrop?.addEventListener("click", () => closeAdminNavDrawer());
 
   drawer.querySelectorAll("a[href]").forEach((link) => {
     link.addEventListener("click", () => closeAdminNavDrawer());
+  });
+
+  // Close after JS-rendered links are clicked (event delegation)
+  drawer.addEventListener("click", (e) => {
+    const t = /** @type {HTMLElement | null} */ (e.target instanceof Element ? e.target.closest("a[href]") : null);
+    if (t && drawer.contains(t)) closeAdminNavDrawer();
   });
 
   document.addEventListener("keydown", (e) => {
@@ -3003,7 +3058,7 @@ function initAdminNavDrawer() {
   document.addEventListener("click", (e) => {
     if (isAdminNavDesktop() || !drawer.classList.contains("is-open")) return;
     const target = /** @type {Node | null} */ (e.target);
-    if (target && !drawer.contains(target) && !toggle.contains(target)) {
+    if (target && !drawer.contains(target) && !toggle.contains(target) && !(backdrop && backdrop.contains(target))) {
       closeAdminNavDrawer();
     }
   });
@@ -3020,9 +3075,12 @@ function showView(view) {
   const jumps = maybeEl("adminNavJumps");
   const toggle = maybeEl("adminNavToggle");
   const drawer = maybeEl("adminNavDrawer");
+  const drawerFooter = maybeEl("adminNavDrawerFooter");
+  if (dash) renderAdminNavLinks();
   if (jumps) jumps.classList.toggle("admin-hide", !dash);
   if (toggle) toggle.classList.toggle("admin-hide", !dash);
   if (drawer) drawer.classList.toggle("admin-hide", !dash);
+  if (drawerFooter) drawerFooter.classList.toggle("admin-hide", !dash);
   if (!dash) closeAdminNavDrawer();
   else syncAdminNavDesktopState();
 }
@@ -3657,6 +3715,7 @@ function wireSignOut(btn) {
 initAdminNavDrawer();
 
 wireSignOut(maybeEl("signOutBlocked"));
+wireSignOut(maybeEl("adminNavSignOut"));
 
 /** Skip duplicate bootstrap when `getSession` and `onAuthStateChange` both report the same user. */
 let lastSuccessfulDashBootstrapUserId = null;

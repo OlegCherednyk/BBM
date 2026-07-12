@@ -19,19 +19,21 @@
     <nav class="nav nav--admin scrolled" aria-label="Адмін">
       <div class="admin-nav__inner">
         <div class="admin-nav__brand">
-          <a class="nav__logo" href="../index.html">mozok.tilo.ruh</a>
+          <a class="admin-nav__logo nav__logo" href="../index.html">
+            <img class="admin-nav__logo-mark" src="../logo_bbm_circle.png" alt="" width="28" height="28" decoding="async" />
+            <span class="admin-nav__logo-text">mozok.tilo.ruh</span>
+          </a>
+          <span class="admin-nav__badge">Адмін</span>
         </div>
+        <div id="adminNavBackdrop" class="admin-nav__backdrop admin-hide" aria-hidden="true"></div>
         <div id="adminNavDrawer" class="admin-nav__drawer admin-hide" aria-hidden="true">
-          <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі за порядком">
-        <li><a href="prices.html">Ціни</a></li>
-        <li><a href="places.html" aria-current="page">Місця</a></li>
-        <li><a href="teachers.html">Викладачі</a></li>
-        <li><a href="students.html">Учні</a></li>
-        <li><a href="subscriptions.html">Абонементи</a></li>
-        <li><a href="votes.html">Голосування</a></li>
-        <li><a href="lessons.html">Заняття</a></li>
-        <li><a href="stats.html">Статистика</a></li>
-          </ol>
+          <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі"></ol>
+          <div id="adminNavDrawerFooter" class="admin-nav__drawer-footer admin-hide">
+            <button type="button" class="admin-nav__signout" id="adminNavSignOut">
+              <svg class="admin-nav__signout-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              <span class="admin-nav__signout-label">Вийти</span>
+            </button>
+          </div>
         </div>
         <button
           type="button"
