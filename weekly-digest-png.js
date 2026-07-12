@@ -1,3 +1,11 @@
+import { DateTime } from "luxon";
+
+const KYIV_TZ = "Europe/Kyiv";
+const UK_MONTHS_SHORT = [
+  "", "січ", "лют", "бер", "кві", "тра", "чер",
+  "лип", "сер", "вер", "жов", "лис", "гру",
+];
+
 /** @param {number} cur @param {number} prev */
 export function percentChange(cur, prev) {
   const c = Number(cur) || 0;
@@ -48,4 +56,53 @@ export function barHeights(prev, cur, maxBar) {
     prev: Math.max(minH, Math.round((p / max) * maxBar)),
     cur: Math.max(minH, Math.round((c / max) * maxBar)),
   };
+}
+
+export function getMonthToDateCompareRangesKyiv(now = DateTime.now().setZone(KYIV_TZ)) {
+  const kyiv = now.setZone(KYIV_TZ);
+  const yesterday = kyiv.startOf("day").minus({ days: 1 });
+  const curStart = yesterday.startOf("month");
+  const curEnd = yesterday;
+  const dayN = yesterday.day;
+  const prevMonthRef = curStart.minus({ months: 1 });
+  const prevLastDay = prevMonthRef.endOf("month").day;
+  const prevEndDay = Math.min(dayN, prevLastDay);
+  const prevStart = prevMonthRef.startOf("month");
+  const prevEnd = prevStart.set({ day: prevEndDay });
+
+  const pack = (from, to) => ({
+    fromDate: from.toISODate(),
+    toDate: to.toISODate(),
+    fromIso: from.startOf("day").toUTC().toISO(),
+    toIso: to.endOf("day").toUTC().toISO(),
+  });
+
+  return { current: pack(curStart, curEnd), previous: pack(prevStart, prevEnd) };
+}
+
+function dayMonth(dt) {
+  return `${dt.day} ${UK_MONTHS_SHORT[dt.month]}`;
+}
+
+export function formatDigestDateSubtitle(parts) {
+  const weekSameMonth = parts.weekFrom.month === parts.weekTo.month;
+  const weekPart = weekSameMonth
+    ? `${parts.weekFrom.day}–${parts.weekTo.day} ${UK_MONTHS_SHORT[parts.weekTo.month]}`
+    : `${dayMonth(parts.weekFrom)}–${dayMonth(parts.weekTo)}`;
+
+  const monthPart = `${parts.monthFrom.day}–${parts.monthTo.day} ${UK_MONTHS_SHORT[parts.monthTo.month]}`;
+  const prevPart = `${parts.prevMonthFrom.day}–${parts.prevMonthTo.day} ${UK_MONTHS_SHORT[parts.prevMonthTo.month]}`;
+  return `${weekPart} · ${monthPart} vs ${prevPart}`;
+}
+
+export function formatDigestDateSubtitleFromRanges(week, monthCurrent, monthPrev) {
+  const z = (isoDate) => DateTime.fromISO(isoDate, { zone: KYIV_TZ });
+  return formatDigestDateSubtitle({
+    weekFrom: z(week.fromDate),
+    weekTo: z(week.toDate),
+    monthFrom: z(monthCurrent.fromDate),
+    monthTo: z(monthCurrent.toDate),
+    prevMonthFrom: z(monthPrev.fromDate),
+    prevMonthTo: z(monthPrev.toDate),
+  });
 }
