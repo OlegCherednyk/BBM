@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { Resvg } from "@resvg/resvg-js";
 
 const KYIV_TZ = "Europe/Kyiv";
 const UK_MONTHS_SHORT = [
@@ -236,4 +237,14 @@ export function buildWeeklyDigestSvg(payload) {
     ${monthBars}
   </g>
 </svg>`;
+}
+
+export async function renderWeeklyDigestPng(payload) {
+  const svg = buildWeeklyDigestSvg(payload);
+  const resvg = new Resvg(svg, {
+    fitTo: { mode: "width", value: 840 },
+    font: { loadSystemFonts: true },
+  });
+  const png = resvg.render().asPng();
+  return Buffer.from(png);
 }
