@@ -208,6 +208,7 @@ async function openTeacherEditModal(teacher) {
   const descInput = maybeEl("teacherEditDescription");
   const bankSel = maybeEl("teacherEditRiverBankScope");
   const digestChk = maybeEl("teacherEditDigestEnabled");
+  const smmChk = maybeEl("teacherEditIsSmm");
   if (!modal || !idInput || !nameInput || !descInput) return;
 
   try {
@@ -225,6 +226,7 @@ async function openTeacherEditModal(teacher) {
   populateTeacherChatSelect(teacher.chat_id || "", "teacherEditChatTarget");
   if (bankSel) bankSel.value = teacher.river_bank_scope || "any";
   if (digestChk) digestChk.checked = Boolean(teacher.digest_enabled);
+  if (smmChk) smmChk.checked = Boolean(teacher.is_smm);
   syncCustomSelect(maybeEl("teacherEditChatTarget"));
   syncCustomSelect(bankSel);
 
@@ -274,6 +276,15 @@ function initTeacherEditModal() {
         : null;
     const river_bank_scope = maybeEl("teacherEditRiverBankScope")?.value || "any";
     const digest_enabled = Boolean(maybeEl("teacherEditDigestEnabled")?.checked);
+    const is_smm = Boolean(maybeEl("teacherEditIsSmm")?.checked);
+
+    if (is_smm) {
+      const { error: clearErr } = await supabase.from("teachers").update({ is_smm: false }).neq("id", id);
+      if (clearErr) {
+        showDashError(clearErr.message);
+        return;
+      }
+    }
 
     const { error: dbError } = await supabase
       .from("teachers")
@@ -283,6 +294,7 @@ function initTeacherEditModal() {
         chat_id: validSelectedChatId,
         river_bank_scope,
         digest_enabled,
+        is_smm,
       })
       .eq("id", id);
 
@@ -303,7 +315,7 @@ async function renderTeachersPanel() {
   root.innerHTML = '<p class="admin-muted">Завантаження…</p>';
   const { data: teachers, error } = await supabase
     .from("teachers")
-    .select("id, name, short_description, sort_order, chat_id, river_bank_scope, digest_enabled")
+    .select("id, name, short_description, sort_order, chat_id, river_bank_scope, digest_enabled, is_smm")
     .order("sort_order", { ascending: true });
   if (error) {
     root.innerHTML = `<p class="admin-muted">${error.message}</p>`;
@@ -322,7 +334,7 @@ async function renderTeachersPanel() {
 
   const tbl = document.createElement("table");
   tbl.className = "admin-prices-table";
-  tbl.innerHTML = `<thead><tr><th>Ім'я</th><th>Telegram</th><th>Берег</th><th>Дайджest</th><th></th></tr></thead><tbody></tbody>`;
+  tbl.innerHTML = `<thead><tr><th>Ім'я</th><th>Telegram</th><th>Берег</th><th>Дайджest</th><th>SMM</th><th></th></tr></thead><tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
 
   for (const teacher of teachers) {
@@ -331,7 +343,8 @@ async function renderTeachersPanel() {
     const tgLabel = tgUsername ? `@${tgUsername}` : "—";
     const bankLabel = teacherRiverBankScopeLabel(teacher.river_bank_scope || "any");
     const digestLabel = teacher.digest_enabled ? "✓" : "—";
-    tr.innerHTML = `<td>${escapeHtml(teacher.name || "—")}</td><td>${escapeHtml(tgLabel)}</td><td>${escapeHtml(bankLabel)}</td><td>${digestLabel}</td>`;
+    const smmLabel = teacher.is_smm ? "✓" : "—";
+    tr.innerHTML = `<td>${escapeHtml(teacher.name || "—")}</td><td>${escapeHtml(tgLabel)}</td><td>${escapeHtml(bankLabel)}</td><td>${digestLabel}</td><td>${smmLabel}</td>`;
     const td = document.createElement("td");
 
     const editBtn = document.createElement("button");
@@ -906,12 +919,17 @@ function mountLessonFinanceStudents(container, students) {
 function mountLessonFinanceFooter(container, summary) {
   if (!container) return;
   const negative = Number(summary.netProfit) < 0;
-  container.innerHTML = `
-    <div class="admin-lesson-finance__footer-item">
+  const noSmm = Boolean(summary.isSmmTeacher);
+  const smmLine = noSmm
+    ? ""
+    : `<div class="admin-lesson-finance__footer-item">
       <span class="admin-lesson-finance__footer-label">SMM</span>
       <span class="admin-lesson-finance__footer-value">− ${escapeHtml(fmtMoney(summary.smm))}</span>
-    </div>
-    <div class="admin-lesson-finance__footer-item">
+    </div>`;
+  container.classList.toggle("admin-lesson-finance__footer--no-smm", noSmm);
+  container.innerHTML = `
+    ${smmLine}
+    <div class="admin-lesson-finance__footer-item${noSmm ? " admin-lesson-finance__footer-item--grow" : ""}">
       <span class="admin-lesson-finance__footer-label">Оренда</span>
       <span class="admin-lesson-finance__footer-value">− ${escapeHtml(fmtMoney(summary.rent))}</span>
     </div>
@@ -2398,7 +2416,7 @@ function renderStatsKpiCards(summary) {
     { color: "olive", icon: ICON_CALENDAR, label: "Проведено занять",    valueHtml: lessonsValueHtml },
     { color: "blue",  icon: ICON_PEOPLE,   label: "Унікальних учнів", value: String(totalPeople) },
     { color: netColor, icon: ICON_MONEY,   label: "Чистий після оренди", value: fmtMoney(totalNetAfterRent) },
-    { color: "amber", icon: ICON_SEND,     label: "Загальні SMM витрати",value: fmtMoney(totalSmm) },
+    { color: "amber", icon: ICON_SEND,     label: "SMM дохід (загалом)", value: fmtMoney(totalSmm) },
   ];
 
   root.innerHTML = cards.map((c) => `
@@ -2491,8 +2509,9 @@ function renderStatsPayoutChart(rows) {
 /**
  * Render a Chart.js doughnut chart for overall financial breakdown.
  * @param {Array<{ revenue: number, rent: number, smm: number, payout: number }>} rows
+ * @param {{ totalSmm?: number } | null} [summary]
  */
-function renderStatsBreakdownChart(rows) {
+function renderStatsBreakdownChart(rows, summary = null) {
   const canvas = /** @type {HTMLCanvasElement | null} */ (document.getElementById("statsBreakdownChart"));
   const legendRoot = document.getElementById("statsBreakdownLegend");
   const wrap = document.getElementById("statsBreakdownWrap");
@@ -2511,8 +2530,9 @@ function renderStatsBreakdownChart(rows) {
 
   const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
   const totalRent    = rows.reduce((s, r) => s + r.rent, 0);
-  const totalSmm     = rows.reduce((s, r) => s + r.smm, 0);
-  const totalPayout  = rows.reduce((s, r) => s + r.payout, 0);
+  const totalSmm     = summary?.totalSmm != null ? Number(summary.totalSmm) || 0 : rows.reduce((s, r) => s + r.smm, 0);
+  // SMM is inside SMM-teacher payout — keep separate slice in the donut
+  const totalPayout  = rows.reduce((s, r) => s + r.payout, 0) - totalSmm;
 
   const segments = [
     { label: "Виплати",  value: Math.max(0, totalPayout), color: "rgba(116,134,47,0.85)",  border: "rgba(116,134,47,1)" },
@@ -2577,7 +2597,7 @@ function renderStatsBreakdownChart(rows) {
 
 /**
  * Render teacher detail cards.
- * @param {Array<{ id?: string | null, name: string, lessonsCount: number, peopleCount: number, revenue: number, rent: number, smm: number, payout: number }>} rows
+ * @param {Array<{ id?: string | null, name: string, lessonsCount: number, peopleCount: number, revenue: number, rent: number, smm: number, smmIncome?: number, isSmm?: boolean, payout: number }>} rows
  */
 function renderStatsTeachersTable(rows) {
   const tableRoot = maybeEl("statsTeachersTable");
@@ -2596,10 +2616,16 @@ function renderStatsTeachersTable(rows) {
     const topMod = rank <= 3 ? ` admin-stats-teacher-card--top-${rank}` : "";
     const teacherId = row.id ? escapeHtml(String(row.id)) : "";
     const teacherName = escapeHtml(row.name);
+    const nameBadge = row.isSmm ? ` <span class="admin-muted">(SMM)</span>` : "";
+    const rentSigned = `− ${fmtMoney(row.rent)}`;
+    const smmSigned = row.isSmm
+      ? fmtMoney(Number(row.smmIncome) || 0)
+      : `− ${fmtMoney(row.smm)}`;
+    const smmLabel = row.isSmm ? "SMM дохід" : "SMM";
     return `
       <article class="admin-stats-teacher-card${topMod}">
         <header class="admin-stats-teacher-card__head">
-          <h3 class="admin-stats-teacher-card__name">${teacherName}</h3>
+          <h3 class="admin-stats-teacher-card__name">${teacherName}${nameBadge}</h3>
         </header>
         <dl class="admin-stats-teacher-card__stats">
           <div class="admin-stats-teacher-card__stat">
@@ -2616,11 +2642,11 @@ function renderStatsTeachersTable(rows) {
           </div>
           <div class="admin-stats-teacher-card__stat">
             <dt>Оренда</dt>
-            <dd class="admin-stats-teacher-card__stat--muted">${escapeHtml(fmtMoney(row.rent))}</dd>
+            <dd class="admin-stats-teacher-card__stat--muted">${escapeHtml(rentSigned)}</dd>
           </div>
           <div class="admin-stats-teacher-card__stat">
-            <dt>SMM</dt>
-            <dd class="admin-stats-teacher-card__stat--muted">${escapeHtml(fmtMoney(row.smm))}</dd>
+            <dt>${smmLabel}</dt>
+            <dd class="admin-stats-teacher-card__stat--muted">${escapeHtml(smmSigned)}</dd>
           </div>
           <div class="admin-stats-teacher-card__journal-cell">
             <button
@@ -2689,25 +2715,30 @@ function mountStatsTeacherJournalList(container, lessons) {
 
   container.innerHTML = lessons.map((lesson) => {
     const payoutCls = lesson.payout >= 0 ? "admin-stats-payout-positive" : "admin-stats-payout-negative";
+    const financeMod = lesson.hideSmm ? " admin-stats-journal__finance--no-smm" : "";
+    const rentSigned = `− ${fmtMoney(lesson.rent)}`;
+    const smmItem = lesson.hideSmm
+      ? ""
+      : `<div class="admin-stats-journal__finance-item">
+            <dt>SMM</dt>
+            <dd class="admin-stats-teacher-card__stat--muted">${escapeHtml(`− ${fmtMoney(lesson.smm)}`)}</dd>
+          </div>`;
     return `
       <article class="admin-stats-journal__item">
         <div class="admin-stats-journal__main">
           <div class="admin-stats-journal__date">${escapeHtml(fmtKyivDateTime(lesson.startsAt))}</div>
           <div class="admin-stats-journal__meta">${escapeHtml(lesson.lessonTypeName)} · ${escapeHtml(lesson.placeName)} · ${lesson.peopleCount} ${lesson.peopleCount === 1 ? "людина" : lesson.peopleCount >= 2 && lesson.peopleCount <= 4 ? "людини" : "людей"}</div>
         </div>
-        <dl class="admin-stats-journal__finance">
+        <dl class="admin-stats-journal__finance${financeMod}">
           <div class="admin-stats-journal__finance-item">
             <dt>Виручка</dt>
             <dd>${escapeHtml(fmtMoney(lesson.revenue))}</dd>
           </div>
           <div class="admin-stats-journal__finance-item">
             <dt>Оренда</dt>
-            <dd class="admin-stats-teacher-card__stat--muted">${escapeHtml(fmtMoney(lesson.rent))}</dd>
+            <dd class="admin-stats-teacher-card__stat--muted">${escapeHtml(rentSigned)}</dd>
           </div>
-          <div class="admin-stats-journal__finance-item">
-            <dt>SMM</dt>
-            <dd class="admin-stats-teacher-card__stat--muted">${escapeHtml(fmtMoney(lesson.smm))}</dd>
-          </div>
+          ${smmItem}
           <div class="admin-stats-journal__finance-item admin-stats-journal__finance-item--payout">
             <dt>Виплата</dt>
             <dd class="${payoutCls}">${escapeHtml(fmtMoney(lesson.payout))}</dd>
@@ -2855,7 +2886,7 @@ async function renderStatsDashboard() {
 
   renderStatsKpiCards(summary);
   renderStatsPayoutChart(rows);
-  renderStatsBreakdownChart(rows);
+  renderStatsBreakdownChart(rows, summary);
   renderStatsTeachersTable(rows);
 }
 

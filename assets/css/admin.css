@@ -1478,6 +1478,14 @@ body.admin-modal-open {
   gap: 6px;
 }
 
+.admin-lesson-finance__footer--no-smm {
+  grid-template-columns: 1fr auto;
+}
+
+.admin-lesson-finance__footer--no-smm .admin-lesson-finance__footer-item--grow {
+  min-width: 0;
+}
+
 .admin-lesson-finance__footer-item {
   display: flex;
   flex-direction: column;
@@ -4076,6 +4084,10 @@ pre {
   margin: 0;
 }
 
+.admin-stats-teacher-card__stats--no-smm .admin-stats-teacher-card__stat--grow {
+  grid-column: span 2;
+}
+
 .admin-stats-teacher-card__stat {
   display: flex;
   flex-direction: column;
@@ -4238,6 +4250,10 @@ pre {
   .admin-stats-journal__finance {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+
+  .admin-stats-journal__finance--no-smm {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .admin-stats-journal__finance-item {
@@ -4384,6 +4400,10 @@ pre {
 @media (max-width: 720px) {
   .admin-stats-teacher-card__stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-stats-teacher-card__stats--no-smm .admin-stats-teacher-card__stat--grow {
+    grid-column: span 1;
   }
 }
 

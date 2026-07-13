@@ -928,7 +928,7 @@ async function computeLessonFinanceBreakdown(supabaseAdmin, lessonId) {
     .from("lessons")
     .select(
       `id, starts_at, place_id, abon_count, single_visitors_count, vote_snapshot, lesson_vote_occurrence_id,
-       teachers ( name ),
+       teachers ( name, is_smm ),
        conducting_display_name,
        places ( name ),
        lesson_times ( lesson_types ( id, name, duration_minutes ) )`,
@@ -1009,7 +1009,9 @@ async function computeLessonFinanceBreakdown(supabaseAdmin, lessonId) {
     studentRows.length ||
     Math.max(0, Number(lesson.abon_count) || 0) + Math.max(0, Number(lesson.single_visitors_count) || 0);
   const rent = placePriceMap.get(`${placeId}:${duration}`) ?? placePriceMap.get(`${placeId}:60`) ?? 0;
-  const smm = pickSmmAmount(smmRes.data || [], peopleCount);
+  const smmRaw = pickSmmAmount(smmRes.data || [], peopleCount);
+  const isSmmTeacher = Boolean(lesson.teachers?.is_smm);
+  const smm = isSmmTeacher ? 0 : smmRaw;
   const netProfit = Math.round((totalRevenue - rent - smm) * 100) / 100;
 
   const teacherName =
@@ -1030,6 +1032,8 @@ async function computeLessonFinanceBreakdown(supabaseAdmin, lessonId) {
       singleRevenue,
       rent,
       smm,
+      smmPool: smmRaw,
+      isSmmTeacher,
       netProfit,
     },
   };
@@ -1045,24 +1049,26 @@ async function loadAdminStatsLessonsContext(supabaseAdmin, { fromIso, toIso }) {
     .select(
       `id, starts_at, abon_count, single_visitors_count, conducting_display_name, place_id,
        vote_snapshot, lesson_vote_occurrence_id,
-       teachers(id, name),
+       teachers(id, name, is_smm),
        places(name),
        lesson_times(lesson_types(id, name, duration_minutes))`,
     );
   if (fromIso) lessonsQuery = lessonsQuery.gte("starts_at", fromIso);
   if (toIso) lessonsQuery = lessonsQuery.lte("starts_at", toIso);
 
-  const [lessonsRes, pricesRes, smmRes, placePricesRes] = await Promise.all([
+  const [lessonsRes, pricesRes, smmRes, placePricesRes, smmTeacherRes] = await Promise.all([
     lessonsQuery,
     supabaseAdmin.from("prices").select("lesson_type_id, price_kind, visits_count, amount_uah"),
     supabaseAdmin.from("smm_prices").select("people_from, people_to, amount_uah").order("people_from", { ascending: true }),
     supabaseAdmin.from("places_prices").select("place_id, duration_minutes, amount_uah"),
+    supabaseAdmin.from("teachers").select("id, name, chat_id").eq("is_smm", true).limit(1).maybeSingle(),
   ]);
 
   if (lessonsRes.error) throw new Error(lessonsRes.error.message);
   if (pricesRes.error) throw new Error(pricesRes.error.message);
   if (smmRes.error) throw new Error(smmRes.error.message);
   if (placePricesRes.error) throw new Error(placePricesRes.error.message);
+  if (smmTeacherRes.error) throw new Error(smmTeacherRes.error.message);
 
   const priceByType = buildPriceByType(pricesRes.data || []);
   const smmRows = smmRes.data || [];
@@ -1094,12 +1100,17 @@ async function loadAdminStatsLessonsContext(supabaseAdmin, { fromIso, toIso }) {
     }
   }
 
+  const smmTeacher = smmTeacherRes.data
+    ? { id: String(smmTeacherRes.data.id), name: String(smmTeacherRes.data.name || "").trim() || "SMM", chatId: smmTeacherRes.data.chat_id ? String(smmTeacherRes.data.chat_id) : null }
+    : null;
+
   return {
     lessons: lessonsRes.data || [],
     priceByType,
     smmRows,
     placePriceMap,
     visitsByOccurrence,
+    smmTeacher,
   };
 }
 
@@ -1142,7 +1153,9 @@ async function computeLessonFinancialsForStats(supabaseAdmin, row, ctx) {
   const placeId = String(row.place_id || "");
   const rent = ctx.placePriceMap.get(`${placeId}:${duration}`) ?? ctx.placePriceMap.get(`${placeId}:60`) ?? 0;
   const smm = pickSmmAmount(ctx.smmRows, peopleCount);
-  const payout = Math.round((revenue - rent - smm) * 100) / 100;
+  const isSmmTeacher = Boolean(row.teachers?.is_smm);
+  // ponytail: SMM teacher keeps full lesson payout; pool SMM is added later in dashboard/journal
+  const payout = Math.round((revenue - rent - (isSmmTeacher ? 0 : smm)) * 100) / 100;
 
   const teacherName =
     row.teachers?.name?.trim() ||
@@ -1156,6 +1169,7 @@ async function computeLessonFinancialsForStats(supabaseAdmin, row, ctx) {
     placeName: String(row.places?.name || "").trim() || "—",
     teacherId: row.teachers?.id ? String(row.teachers.id) : null,
     teacherName,
+    isSmmTeacher,
     peopleCount,
     revenue,
     rent,
@@ -1185,11 +1199,13 @@ function lessonMatchesTeacherFilter(row, { teacherId, teacherName }) {
 async function computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso, fromDate, toDate }) {
   const ctx = await loadAdminStatsLessonsContext(supabaseAdmin, { fromIso, toIso });
 
-  /** @type {Map<string, { id: string | null, name: string, lessonsCount: number, peopleCount: number, revenue: number, rent: number, smm: number, payout: number }>} */
+  /** @type {Map<string, { id: string | null, name: string, lessonsCount: number, peopleCount: number, revenue: number, rent: number, smm: number, smmIncome: number, isSmm: boolean, payout: number }>} */
   const byTeacher = new Map();
+  let totalSmm = 0;
 
   for (const row of ctx.lessons) {
     const fin = await computeLessonFinancialsForStats(supabaseAdmin, row, ctx);
+    totalSmm += fin.smm;
     const teacherKey = fin.teacherId || fin.teacherName;
     const agg = byTeacher.get(teacherKey) || {
       id: fin.teacherId,
@@ -1199,15 +1215,40 @@ async function computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso, fromD
       revenue: 0,
       rent: 0,
       smm: 0,
+      smmIncome: 0,
+      isSmm: false,
       payout: 0,
     };
     agg.lessonsCount += 1;
     agg.peopleCount += fin.peopleCount;
     agg.revenue += fin.revenue;
     agg.rent += fin.rent;
-    agg.smm += fin.smm;
+    // SMM fee is school-level only; never on SMM teacher's card
+    if (!fin.isSmmTeacher) agg.smm += fin.smm;
     agg.payout += fin.payout;
+    if (fin.isSmmTeacher) agg.isSmm = true;
     byTeacher.set(teacherKey, agg);
+  }
+
+  if (ctx.smmTeacher) {
+    const key = ctx.smmTeacher.id;
+    const agg = byTeacher.get(key) || {
+      id: ctx.smmTeacher.id,
+      name: ctx.smmTeacher.name,
+      lessonsCount: 0,
+      peopleCount: 0,
+      revenue: 0,
+      rent: 0,
+      smm: 0,
+      smmIncome: 0,
+      isSmm: true,
+      payout: 0,
+    };
+    agg.isSmm = true;
+    // SMM pool goes into overall teacher payout (chart + card total)
+    agg.smmIncome = Math.round(totalSmm * 100) / 100;
+    agg.payout = Math.round((agg.payout + totalSmm) * 100) / 100;
+    byTeacher.set(key, agg);
   }
 
   const teachers = [...byTeacher.values()].sort((a, b) => b.payout - a.payout);
@@ -1223,7 +1264,7 @@ async function computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso, fromD
   const totalPeopleAll = teachers.reduce((sum, row) => sum + row.peopleCount, 0);
   const totalRevenue = teachers.reduce((sum, row) => sum + row.revenue, 0);
   const totalRent = teachers.reduce((sum, row) => sum + row.rent, 0);
-  const totalSmm = teachers.reduce((sum, row) => sum + row.smm, 0);
+  totalSmm = Math.round(totalSmm * 100) / 100;
 
   let totalScheduledLessons = null;
   if (fromDate && toDate) {
@@ -1280,18 +1321,34 @@ async function computeTeacherLessonsJournal(supabaseAdmin, { teacherId, teacherN
       acc.peopleCount += lesson.peopleCount;
       acc.revenue += lesson.revenue;
       acc.rent += lesson.rent;
-      acc.smm += lesson.smm;
+      if (!lesson.isSmmTeacher) acc.smm += lesson.smm;
       acc.payout += lesson.payout;
       return acc;
     },
-    { lessonsCount: 0, peopleCount: 0, revenue: 0, rent: 0, smm: 0, payout: 0 },
+    { lessonsCount: 0, peopleCount: 0, revenue: 0, rent: 0, smm: 0, smmIncome: 0, isSmm: false, payout: 0 },
   );
   summary.uniquePeopleCount = uniqueStudentIds.size;
 
+  const isSmmJournal =
+    Boolean(ctx.smmTeacher) &&
+    ((teacherId && ctx.smmTeacher.id === teacherId) ||
+      (!teacherId && teacherName && ctx.smmTeacher.name === String(teacherName).trim()) ||
+      lessons.some((l) => l.isSmmTeacher));
+  if (isSmmJournal) {
+    let poolSmm = 0;
+    for (const row of ctx.lessons) {
+      const fin = await computeLessonFinancialsForStats(supabaseAdmin, row, ctx);
+      poolSmm += fin.smm;
+    }
+    summary.isSmm = true;
+    summary.smmIncome = Math.round(poolSmm * 100) / 100;
+    summary.payout = Math.round((summary.payout + poolSmm) * 100) / 100;
+  }
+
   return {
-    teacherName: lessons[0]?.teacherName || teacherName || "—",
+    teacherName: lessons[0]?.teacherName || (isSmmJournal ? ctx.smmTeacher?.name : null) || teacherName || "—",
     summary,
-    lessons: lessons.map(({ id, startsAt, lessonTypeName, placeName, peopleCount, revenue, rent, smm, payout }) => ({
+    lessons: lessons.map(({ id, startsAt, lessonTypeName, placeName, peopleCount, revenue, rent, smm, payout, isSmmTeacher }) => ({
       id,
       startsAt,
       lessonTypeName,
@@ -1299,8 +1356,9 @@ async function computeTeacherLessonsJournal(supabaseAdmin, { teacherId, teacherN
       peopleCount,
       revenue,
       rent,
-      smm,
+      smm: isSmmTeacher ? 0 : smm,
       payout,
+      hideSmm: Boolean(isSmmTeacher),
     })),
   };
 }
@@ -1570,7 +1628,14 @@ async function computeConductingTeacherPayoutBreakdown(row, votesByKind) {
     );
     const placeId = String(row.place_id || "");
     const rent = placePriceMap.get(`${placeId}:${lessonDuration}`) ?? placePriceMap.get(`${placeId}:60`) ?? 0;
-    const smm = pickSmmAmount(smmRes.data || [], effectivePeopleCount);
+    const smmPool = pickSmmAmount(smmRes.data || [], effectivePeopleCount);
+    let isSmmTeacher = false;
+    const teacherId = row?.teacher_id ? String(row.teacher_id).trim() : "";
+    if (teacherId) {
+      const { data: tRow } = await supabaseAdmin.from("teachers").select("is_smm").eq("id", teacherId).maybeSingle();
+      isSmmTeacher = Boolean(tRow?.is_smm);
+    }
+    const smm = isSmmTeacher ? 0 : smmPool;
     const netIncome = Math.round((totalRevenue - rent - smm) * 100) / 100;
 
     return {
@@ -1579,12 +1644,38 @@ async function computeConductingTeacherPayoutBreakdown(row, votesByKind) {
       totalRevenue,
       rent,
       smm,
+      smmPool,
+      isSmmTeacher,
       netIncome,
       peopleCount: effectivePeopleCount,
     };
   } catch (e) {
     console.warn("computeConductingTeacherPayoutBreakdown:", e?.message || e);
     return null;
+  }
+}
+
+async function notifySmmTeacherPayout(smmAmount) {
+  if (!bot || !supabaseAdmin) return;
+  const amount = Math.round((Number(smmAmount) || 0) * 100) / 100;
+  if (amount <= 0) return;
+  try {
+    const { data: smmTeacher, error } = await supabaseAdmin
+      .from("teachers")
+      .select("chat_id")
+      .eq("is_smm", true)
+      .not("chat_id", "is", null)
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.warn("notifySmmTeacherPayout:", error.message);
+      return;
+    }
+    const chatId = smmTeacher?.chat_id != null ? String(smmTeacher.chat_id).trim() : "";
+    if (!chatId) return;
+    await bot.telegram.sendMessage(chatId, `📣 Виплата SMM: ${formatMoneyUah(amount)}`);
+  } catch (e) {
+    console.warn("notifySmmTeacherPayout:", e?.description || e?.message || e);
   }
 }
 
@@ -1596,23 +1687,28 @@ async function notifyConductingTeacherPayout({
   conductingTelegramChatId,
 }) {
   if (!bot || !supabaseAdmin) return;
-  const teacherChatId = conductingTelegramChatId != null ? String(conductingTelegramChatId).trim() : "";
-  if (!teacherChatId) return;
 
   try {
     const breakdown = await computeConductingTeacherPayoutBreakdown(row, votesByKind);
     if (!breakdown) return;
 
-    const { abonRevenue, singleRevenue, rent, smm, netIncome } = breakdown;
-    const payoutText = [
-      `📘 Абонемент: ${formatMoneyUah(abonRevenue)}`,
-      `🎟️ Разове: ${formatMoneyUah(singleRevenue)}`,
-      `📣 Оплата SMM: - ${formatMoneyUah(smm)}`,
-      `🏠 Оплата оренди: - ${formatMoneyUah(rent)}`,
-      `🧾 Чистий дохід: ${formatMoneyUah(netIncome)}`,
-    ].join("\n");
+    const teacherChatId = conductingTelegramChatId != null ? String(conductingTelegramChatId).trim() : "";
+    if (teacherChatId) {
+      const { abonRevenue, singleRevenue, rent, smm, netIncome, isSmmTeacher } = breakdown;
+      const payoutText = [
+        `📘 Абонемент: ${formatMoneyUah(abonRevenue)}`,
+        `🎟️ Разове: ${formatMoneyUah(singleRevenue)}`,
+        isSmmTeacher ? null : `📣 Оплата SMM: - ${formatMoneyUah(smm)}`,
+        `🏠 Оплата оренди: - ${formatMoneyUah(rent)}`,
+        `🧾 Чистий дохід: ${formatMoneyUah(netIncome)}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
 
-    await bot.telegram.sendMessage(teacherChatId, payoutText);
+      await bot.telegram.sendMessage(teacherChatId, payoutText);
+    }
+
+    await notifySmmTeacherPayout(breakdown.smmPool);
   } catch (e) {
     console.warn("notifyConductingTeacherPayout:", e?.description || e?.message || e);
   }
