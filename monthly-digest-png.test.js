@@ -7,6 +7,8 @@ import {
   avgPerLesson,
   revenuePerLesson,
   conductedShare,
+  buildMonthlyDigestSvg,
+  renderMonthlyDigestPng,
 } from "./monthly-digest-png.js";
 
 describe("getCompletedMonthCompareRangesKyiv", () => {
@@ -58,5 +60,75 @@ describe("avgPerLesson / revenuePerLesson / conductedShare", () => {
   });
   it("conductedShare scheduled 0 → null", () => {
     assert.equal(conductedShare(10, 0), null);
+  });
+});
+
+const sampleSummary = {
+  lessonsCount: 31,
+  uniquePeopleCount: 42,
+  totalPeopleCount: 130,
+  revenue: 50000,
+  payout: 28000,
+};
+
+describe("buildMonthlyDigestSvg", () => {
+  it("includes title and personal block", () => {
+    const svg = buildMonthlyDigestSvg({
+      teacherName: "Олена К.",
+      dateSubtitle: "червень vs травень",
+      teacherMonth: { current: sampleSummary, previous: { ...sampleSummary, lessonsCount: 28, revenue: 52000 } },
+      overall: {
+        current: {
+          summary: { ...sampleSummary, lessonsCount: 124, scheduledLessons: 144, revenue: 186000 },
+          byDirection: [
+            { name: "Сучасний", lessonsCount: 72, totalPeopleCount: 410, revenue: 118000 },
+            { name: "Тренаж", lessonsCount: 52, totalPeopleCount: 280, revenue: 68000 },
+          ],
+          byBank: [
+            { key: "right", label: "Правий", lessonsCount: 68, totalPeopleCount: 380, revenue: 102000 },
+            { key: "left", label: "Лівий", lessonsCount: 56, totalPeopleCount: 310, revenue: 84000 },
+          ],
+          visitKinds: { single: 210, abon: 480 },
+        },
+        previous: {
+          summary: { ...sampleSummary, lessonsCount: 110, scheduledLessons: 140, revenue: 172000 },
+          byDirection: [],
+          byBank: [],
+          visitKinds: { single: 192, abon: 492 },
+        },
+      },
+    });
+    assert.match(svg, /Місячний дайджест/);
+    assert.match(svg, /Особисте/);
+    assert.match(svg, /124/);
+    assert.match(svg, /з 144/);
+    assert.match(svg, /Разові|разові/i);
+  });
+});
+
+describe("renderMonthlyDigestPng", () => {
+  it("returns a PNG buffer", async () => {
+    const buf = await renderMonthlyDigestPng({
+      teacherName: "Test",
+      dateSubtitle: "червень vs травень",
+      teacherMonth: { current: sampleSummary, previous: sampleSummary },
+      overall: {
+        current: {
+          summary: { ...sampleSummary, scheduledLessons: 40 },
+          byDirection: [{ name: "A", lessonsCount: 10, totalPeopleCount: 40, revenue: 10000 }],
+          byBank: [{ key: "right", label: "Правий", lessonsCount: 10, totalPeopleCount: 40, revenue: 10000 }],
+          visitKinds: { single: 10, abon: 30 },
+        },
+        previous: {
+          summary: { ...sampleSummary, scheduledLessons: 40 },
+          byDirection: [],
+          byBank: [],
+          visitKinds: { single: 8, abon: 32 },
+        },
+      },
+    });
+    assert.ok(Buffer.isBuffer(buf));
+    assert.equal(buf[0], 0x89);
+    assert.equal(buf[1], 0x50);
   });
 });
