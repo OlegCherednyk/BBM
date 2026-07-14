@@ -108,6 +108,20 @@ export function formatDigestDateSubtitleFromRanges(week, monthCurrent, monthPrev
   });
 }
 
+function formatWeekRangeShort(fromDate, toDate) {
+  const from = DateTime.fromISO(fromDate, { zone: KYIV_TZ });
+  const to = DateTime.fromISO(toDate, { zone: KYIV_TZ });
+  if (from.month === to.month) {
+    return `${from.day}–${to.day} ${UK_MONTHS_SHORT[to.month]}`;
+  }
+  return `${from.day} ${UK_MONTHS_SHORT[from.month]} – ${to.day} ${UK_MONTHS_SHORT[to.month]}`;
+}
+
+/** @param {{ fromDate: string, toDate: string }} current @param {{ fromDate: string, toDate: string }} previous */
+export function formatWeekCompareSubtitle(current, previous) {
+  return `${formatWeekRangeShort(current.fromDate, current.toDate)} vs ${formatWeekRangeShort(previous.fromDate, previous.toDate)}`;
+}
+
 function escapeXml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")

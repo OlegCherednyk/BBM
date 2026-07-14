@@ -9,6 +9,7 @@ import {
   getMonthToDateCompareRangesKyiv,
   formatDigestDateSubtitle,
   formatDigestDateSubtitleFromRanges,
+  formatWeekCompareSubtitle,
   buildWeeklyDigestSvg,
   renderWeeklyDigestPng,
 } from "./weekly-digest-png.js";
@@ -93,6 +94,24 @@ describe("formatDigestDateSubtitle", () => {
     assert.equal(s, "6–12 лип · 1–11 лип vs 1–11 чер");
     assert.ok(!s.includes("MTD"));
     assert.ok(!s.toLowerCase().includes("міс"));
+  });
+});
+
+describe("formatWeekCompareSubtitle", () => {
+  it("formats same-month weeks", () => {
+    const s = formatWeekCompareSubtitle(
+      { fromDate: "2026-07-06", toDate: "2026-07-12" },
+      { fromDate: "2026-06-29", toDate: "2026-07-05" },
+    );
+    assert.equal(s, "6–12 лип vs 29 чер – 5 лип");
+  });
+
+  it("formats when current week stays in one month", () => {
+    const s = formatWeekCompareSubtitle(
+      { fromDate: "2026-07-13", toDate: "2026-07-19" },
+      { fromDate: "2026-07-06", toDate: "2026-07-12" },
+    );
+    assert.equal(s, "13–19 лип vs 6–12 лип");
   });
 });
 
