@@ -126,45 +126,54 @@ describe("formatDigestDateSubtitleFromRanges", () => {
   });
 });
 
+const samplePayload = {
+  teacherName: "Олена",
+  dateSubtitle: "6–12 лип vs 29 чер – 5 лип",
+  teacherWeek: {
+    current: { lessonsCount: 14, uniquePeopleCount: 41, totalPeopleCount: 55, revenue: 13100, payout: 4000 },
+    previous: { lessonsCount: 12, uniquePeopleCount: 48, totalPeopleCount: 52, revenue: 12400, payout: 3800 },
+  },
+  overallWeek: {
+    current: {
+      lessonsCount: 11,
+      uniquePeopleCount: 30,
+      totalPeopleCount: 42,
+      revenue: 15200,
+      payout: 5000,
+      scheduledLessons: 18,
+    },
+    previous: {
+      lessonsCount: 8,
+      uniquePeopleCount: 25,
+      totalPeopleCount: 29,
+      revenue: 10400,
+      payout: 4000,
+      scheduledLessons: 16,
+    },
+  },
+};
+
 describe("buildWeeklyDigestSvg", () => {
-  it("includes title, labels, and no forbidden words", () => {
-    const svg = buildWeeklyDigestSvg({
-      teacherName: "Олена",
-      dateSubtitle: "6–12 лип · 1–11 лип vs 1–11 чер",
-      teacherWeek: {
-        current: { lessonsCount: 14, uniquePeopleCount: 41, totalPeopleCount: 55, revenue: 13100, payout: 4000 },
-        previous: { lessonsCount: 12, uniquePeopleCount: 48, totalPeopleCount: 52, revenue: 12400, payout: 3800 },
-      },
-      overallMonth: {
-        current: { lessonsCount: 80, uniquePeopleCount: 200, totalPeopleCount: 260, revenue: 90000, payout: 30000 },
-        previous: { lessonsCount: 70, uniquePeopleCount: 210, totalPeopleCount: 250, revenue: 83000, payout: 28000 },
-      },
-    });
+  it("includes monthly-style week blocks and progress", () => {
+    const svg = buildWeeklyDigestSvg(samplePayload);
     assert.ok(svg.startsWith("<svg"));
+    assert.ok(svg.includes('width="1200"'));
     assert.ok(svg.includes("BBM · Тижневий дайджест"));
-    assert.ok(svg.includes("уроки"));
-    assert.ok(svg.includes("учні"));
-    assert.ok(svg.includes("візити"));
-    assert.ok(svg.includes("виручка"));
-    assert.ok(svg.includes("виплата"));
     assert.ok(svg.includes("Особисте · тиждень"));
-    assert.ok(svg.includes("BBM · місяць"));
+    assert.ok(svg.includes("BBM загалом"));
+    assert.ok(svg.includes("УРОКИ ПРОВЕДЕНО"));
+    assert.ok(svg.includes("ПОРІВНЯННЯ З ПОПЕРЕДНІМ ТИЖНЕМ"));
+    assert.ok(svg.includes("уроки"));
+    assert.ok(svg.includes("виручка"));
+    assert.ok(!svg.includes("BBM · місяць"));
     assert.ok(!svg.includes("MTD"));
-    assert.ok(!/міс\./i.test(svg));
+    assert.ok(!svg.includes("сер. на урок") && !svg.includes("СЕР. НА УРОК"));
   });
 
   it("escapes teacher name and truncates long names", () => {
     const svg = buildWeeklyDigestSvg({
+      ...samplePayload,
       teacherName: 'A&B<script>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-      dateSubtitle: "x",
-      teacherWeek: {
-        current: { lessonsCount: 0, uniquePeopleCount: 0, totalPeopleCount: 0, revenue: 0, payout: 0 },
-        previous: { lessonsCount: 0, uniquePeopleCount: 0, totalPeopleCount: 0, revenue: 0, payout: 0 },
-      },
-      overallMonth: {
-        current: { lessonsCount: 0, uniquePeopleCount: 0, totalPeopleCount: 0, revenue: 0, payout: 0 },
-        previous: { lessonsCount: 0, uniquePeopleCount: 0, totalPeopleCount: 0, revenue: 0, payout: 0 },
-      },
     });
     assert.ok(!svg.includes("<script>"));
     assert.ok(svg.includes("&amp;") || svg.includes("A&amp;B"));
@@ -174,18 +183,7 @@ describe("buildWeeklyDigestSvg", () => {
 
 describe("renderWeeklyDigestPng", () => {
   it("returns a PNG buffer", async () => {
-    const buf = await renderWeeklyDigestPng({
-      teacherName: "Олена",
-      dateSubtitle: "6–12 лип · 1–11 лип vs 1–11 чер",
-      teacherWeek: {
-        current: { lessonsCount: 14, uniquePeopleCount: 41, totalPeopleCount: 55, revenue: 13100, payout: 4000 },
-        previous: { lessonsCount: 12, uniquePeopleCount: 48, totalPeopleCount: 52, revenue: 12400, payout: 3800 },
-      },
-      overallMonth: {
-        current: { lessonsCount: 80, uniquePeopleCount: 200, totalPeopleCount: 260, revenue: 90000, payout: 30000 },
-        previous: { lessonsCount: 70, uniquePeopleCount: 210, totalPeopleCount: 250, revenue: 83000, payout: 28000 },
-      },
-    });
+    const buf = await renderWeeklyDigestPng(samplePayload);
     assert.ok(Buffer.isBuffer(buf));
     assert.ok(buf.length > 1000);
     assert.equal(buf[0], 0x89);

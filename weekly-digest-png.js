@@ -141,122 +141,202 @@ function trendColor(pct) {
   return pct >= 0 ? "#34d399" : "#f87171";
 }
 
-function metricValue(row, key) {
+function metric(row, key) {
   return Number(row?.[key]) || 0;
 }
 
-function metricRange(previous, current, key, money = false) {
-  const prev = metricValue(previous, key);
-  const cur = metricValue(current, key);
-  return `${formatCompactNumber(prev, { money })} → ${formatCompactNumber(cur, { money })}`;
+/** Same "X з Y" share used by monthly digest; copied (not imported) to avoid a monthly→weekly circular import. */
+function conductedShare(conducted, scheduled) {
+  const s = Number(scheduled) || 0;
+  if (s <= 0) return null;
+  return Math.round(((Number(conducted) || 0) / s) * 100);
 }
 
-function kpiCard({ x, y, label, previous, current, key, money = false }) {
-  const prev = metricValue(previous, key);
-  const cur = metricValue(current, key);
-  const pct = percentChange(cur, prev);
+const FONT = "Inter, Arial, sans-serif";
+
+const WEEKLY_METRICS = [
+  ["уроки", "lessonsCount", false],
+  ["учні", "uniquePeopleCount", false],
+  ["візити", "totalPeopleCount", false],
+  ["виручка", "revenue", true],
+  ["виплата", "payout", true],
+];
+
+const BBM_KPI_METRICS = [
+  ["уроки", "lessonsCount", false],
+  ["візити", "totalPeopleCount", false],
+  ["виручка", "revenue", true],
+];
+
+/** KPI card: label / %change / value / "було {prev}". Copied from monthly-digest-png.js. */
+function kpiBox({ x, y, w, h, label, cur, prev, money = false }) {
+  const pct = (cur == null || prev == null) ? 0 : percentChange(cur, prev);
+  const fmt = (v) => (v == null ? "—" : formatCompactNumber(v, { money }));
   return `
-    <rect x="${x}" y="${y}" width="230" height="112" rx="22" fill="#1f2937" stroke="#374151"/>
-    <text x="${x + 22}" y="${y + 34}" fill="#d1d5db" font-size="23" font-weight="700">${escapeXml(label)}</text>
-    <text x="${x + 22}" y="${y + 72}" fill="${trendColor(pct)}" font-size="34" font-weight="800">${escapeXml(formatPercentLabel(pct))}</text>
-    <text x="${x + 22}" y="${y + 96}" fill="#94a3b8" font-size="18">${escapeXml(metricRange(previous, current, key, money))}</text>`;
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="#1f2937" stroke="#374151"/>
+    <text x="${x + w / 2}" y="${y + 22}" text-anchor="middle" fill="#9ca3af" font-size="11" font-weight="700">${escapeXml(label)}</text>
+    <text x="${x + w / 2}" y="${y + 52}" text-anchor="middle" fill="${trendColor(pct)}" font-size="24" font-weight="900">${escapeXml(formatPercentLabel(pct))}</text>
+    <text x="${x + w / 2}" y="${y + 76}" text-anchor="middle" fill="#e5e7eb" font-size="15" font-weight="700">${escapeXml(fmt(cur))}</text>
+    <text x="${x + w / 2}" y="${y + 94}" text-anchor="middle" fill="#64748b" font-size="11">було ${escapeXml(fmt(prev))}</text>`;
 }
 
-function pairBarsRow({ x, y, label, previous, current, key, curColor, maxBar = 52, money = false }) {
-  const prev = metricValue(previous, key);
-  const cur = metricValue(current, key);
-  const pct = percentChange(cur, prev);
-  const heights = barHeights(prev, cur, maxBar);
-  const baseline = y + maxBar + 4;
+function legendTwoLine({ x, y, prevLabel, curLabel, curColor }) {
   return `
-    <text x="${x}" y="${y + 32}" fill="#e5e7eb" font-size="20" font-weight="700">${escapeXml(label)}</text>
-    <line x1="${x + 128}" y1="${baseline}" x2="${x + 370}" y2="${baseline}" stroke="#334155" stroke-width="2"/>
-    <rect x="${x + 170}" y="${baseline - heights.prev}" width="34" height="${heights.prev}" rx="8" fill="#64748b"/>
-    <rect x="${x + 214}" y="${baseline - heights.cur}" width="34" height="${heights.cur}" rx="8" fill="${curColor}"/>
-    <text x="${x + 292}" y="${y + 32}" fill="#cbd5e1" font-size="18">${escapeXml(metricRange(previous, current, key, money))}</text>
-    <text x="${x + 520}" y="${y + 32}" fill="${trendColor(pct)}" font-size="20" font-weight="800">${escapeXml(formatPercentLabel(pct))}</text>`;
+    <text x="${x}" y="${y}" text-anchor="end" fill="#64748b" font-size="13">■ ${escapeXml(prevLabel)}</text>
+    <text x="${x}" y="${y + 22}" text-anchor="end" fill="${curColor}" font-size="13">■ ${escapeXml(curLabel)}</text>`;
+}
+
+/** Grouped bar-chart comparing tracked metrics, prev (grey) vs current (curColor). Copied from monthly-digest-png.js. */
+function categoryBarsChart({ x, y, w, h, current, previous, curColor, metricsList, showLabel = true, label = "" }) {
+  const labelH = showLabel ? 22 : 0;
+  const catLabelH = 16;
+  const barsH = Math.max(10, h - labelH - catLabelH);
+  const baseline = y + labelH + barsH;
+  const slotW = w / metricsList.length;
+  const barW = Math.max(8, Math.min(24, slotW * 0.28));
+  const bars = metricsList.map(([lbl, key], i) => {
+    const heights = barHeights(metric(previous, key), metric(current, key), barsH);
+    const cx = x + i * slotW + slotW / 2;
+    return `
+      <rect x="${cx - barW - 3}" y="${baseline - heights.prev}" width="${barW}" height="${heights.prev}" rx="3" fill="#64748b"/>
+      <rect x="${cx + 3}" y="${baseline - heights.cur}" width="${barW}" height="${heights.cur}" rx="3" fill="${curColor}"/>
+      <text x="${cx}" y="${baseline + 14}" text-anchor="middle" fill="#94a3b8" font-size="11">${escapeXml(lbl)}</text>`;
+  }).join("");
+  const labelText = showLabel
+    ? `<text x="${x}" y="${y + 14}" fill="#9ca3af" font-size="11" font-weight="700">${escapeXml(label)}</text>`
+    : "";
+  return `${labelText}${bars}`;
+}
+
+/** "Уроки проведено: X з Y  Z%" + progress bar. Copied from monthly-digest-png.js. */
+function lessonsProgressCard({ x, y, w, h, conducted, scheduled, pct }) {
+  const scheduledLabel = scheduled == null ? "—" : String(scheduled);
+  const pctLabel = pct == null ? "—" : `${pct}%`;
+  const barPct = pct == null ? 0 : Math.max(0, Math.min(100, pct));
+  const barW = w - 32;
+  return `
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="#1f2937" stroke="#38bdf8" stroke-opacity="0.25"/>
+    <text x="${x + 16}" y="${y + 22}" fill="#9ca3af" font-size="11" font-weight="700">УРОКИ ПРОВЕДЕНО</text>
+    <text x="${x + 16}" y="${y + 54}" fill="#f8fafc" font-size="26" font-weight="900">${escapeXml(String(conducted))}<tspan fill="#94a3b8" font-size="16" font-weight="600"> з ${escapeXml(scheduledLabel)}</tspan><tspan fill="#38bdf8" font-size="18" font-weight="800"> ${escapeXml(pctLabel)}</tspan></text>
+    <rect x="${x + 16}" y="${y + h - 18}" width="${barW}" height="8" rx="4" fill="#334155"/>
+    <rect x="${x + 16}" y="${y + h - 18}" width="${(barW * barPct) / 100}" height="8" rx="4" fill="#38bdf8"/>`;
+}
+
+/** Full-width monthly-style block: title + legend + 5 KPIs + full-width bars chart. */
+function sectionBlock({ x, y, w, h, title, prevLabel, curLabel, curColor, current, previous, chartLabel }) {
+  const innerX = x + 20;
+  const innerW = w - 40;
+  const titleY = y + 20 + 22;
+  const kpiRowY = titleY + 16;
+  const kpiH = 140;
+  const kpiGap = 16;
+  const kpiW = (innerW - kpiGap * 4) / 5;
+  const kpis = WEEKLY_METRICS.map(([label, key, money], i) => kpiBox({
+    x: innerX + i * (kpiW + kpiGap),
+    y: kpiRowY,
+    w: kpiW,
+    h: kpiH,
+    label: label.toUpperCase(),
+    cur: metric(current, key),
+    prev: metric(previous, key),
+    money,
+  })).join("");
+  const chartY = kpiRowY + kpiH + 16;
+  const chartH = y + h - 20 - chartY;
+  const chart = categoryBarsChart({
+    x: innerX, y: chartY, w: innerW, h: chartH,
+    current, previous, curColor, metricsList: WEEKLY_METRICS, label: chartLabel,
+  });
+  return `
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="18" fill="#172033" stroke="#293548"/>
+    <text x="${innerX}" y="${titleY}" fill="#f8fafc" font-size="26" font-weight="900">${escapeXml(title)}</text>
+    ${legendTwoLine({ x: innerX + innerW, y: y + 18, prevLabel, curLabel, curColor })}
+    ${kpis}
+    <rect x="${innerX}" y="${chartY}" width="${innerW}" height="${chartH}" rx="10" fill="#1f2937" stroke="#374151"/>
+    ${chart}`;
 }
 
 export function buildWeeklyDigestSvg(payload) {
   const teacherWeek = payload?.teacherWeek ?? {};
-  const weekCurrent = teacherWeek.current ?? {};
-  const weekPrevious = teacherWeek.previous ?? {};
-  const overallMonth = payload?.overallMonth ?? {};
-  const monthCurrent = overallMonth.current ?? {};
-  const monthPrevious = overallMonth.previous ?? {};
+  const tCur = teacherWeek.current ?? {};
+  const tPrev = teacherWeek.previous ?? {};
+  const overallWeek = payload?.overallWeek ?? {};
+  const oCur = overallWeek.current ?? {};
+  const oPrev = overallWeek.previous ?? {};
+
   const teacherName = escapeXml(truncateText(payload?.teacherName ?? "", 18));
-  const dateSubtitle = escapeXml(payload?.dateSubtitle ?? "");
-  const monthRevenuePct = percentChange(
-    metricValue(monthCurrent, "revenue"),
-    metricValue(monthPrevious, "revenue"),
-  );
+  const dateSubtitleRaw = String(payload?.dateSubtitle ?? "");
+  const dateSubtitle = escapeXml(dateSubtitleRaw);
+  const [curWeekWord, prevWeekWord] = dateSubtitleRaw.split(" vs ");
 
-  const metrics = [
-    ["уроки", "lessonsCount", false],
-    ["учні", "uniquePeopleCount", false],
-    ["візити", "totalPeopleCount", false],
-    ["виручка", "revenue", true],
-    ["виплата", "payout", true],
-  ];
-
-  const personalBars = metrics.map(([label, key, money], index) => pairBarsRow({
-    x: 60,
-    y: 340 + index * 58,
-    label,
-    previous: weekPrevious,
-    current: weekCurrent,
-    key,
+  const b1 = { x: 32, y: 90, w: 1136, h: 380 };
+  const block1 = sectionBlock({
+    x: b1.x, y: b1.y, w: b1.w, h: b1.h,
+    title: "Особисте · тиждень",
+    prevLabel: prevWeekWord || "попередній",
+    curLabel: curWeekWord || "поточний",
     curColor: "#a78bfa",
-    maxBar: 44,
+    current: tCur,
+    previous: tPrev,
+    chartLabel: "ПОРІВНЯННЯ З ПОПЕРЕДНІМ ТИЖНЕМ",
+  });
+
+  const b2 = { x: 32, y: b1.y + b1.h + 16, w: 1136, h: 270 };
+  const b2InnerX = b2.x + 20;
+  const b2InnerW = b2.w - 40;
+  const b2TitleY = b2.y + 20 + 22;
+  const row1Y = b2TitleY + 18;
+  const row1H = 100;
+  const progressW = 380;
+  const kpiGap = 16;
+  const kpiW = (b2InnerW - progressW - kpiGap * 3) / 3;
+  const oConducted = metric(oCur, "lessonsCount");
+  const oScheduled = oCur.scheduledLessons ?? null;
+  const oSharePct = conductedShare(oConducted, oScheduled);
+
+  const bbmKpis = BBM_KPI_METRICS.map(([label, key, money], i) => kpiBox({
+    x: b2InnerX + progressW + kpiGap + i * (kpiW + kpiGap),
+    y: row1Y,
+    w: kpiW,
+    h: row1H,
+    label: label.toUpperCase(),
+    cur: metric(oCur, key),
+    prev: metric(oPrev, key),
     money,
   })).join("");
 
-  const monthBars = metrics.map(([label, key, money], index) => pairBarsRow({
-    x: 60,
-    y: 738 + index * 26,
-    label,
-    previous: monthPrevious,
-    current: monthCurrent,
-    key,
-    curColor: "#38bdf8",
-    maxBar: 24,
-    money,
-  })).join("");
+  const b2Row2Y = row1Y + row1H + 12;
+  const b2Row2H = b2.y + b2.h - 20 - b2Row2Y;
+  const bbmChart = categoryBarsChart({
+    x: b2InnerX, y: b2Row2Y, w: b2InnerW, h: b2Row2H,
+    current: oCur, previous: oPrev, curColor: "#38bdf8", metricsList: WEEKLY_METRICS, showLabel: false,
+  });
 
-  return `<svg width="840" height="920" viewBox="0 0 840 920" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="BBM weekly digest">
-  <rect width="840" height="920" fill="#111827"/>
-  <rect x="28" y="28" width="784" height="864" rx="36" fill="#172033" stroke="#293548" stroke-width="2"/>
+  const block2 = `
+    <rect x="${b2.x}" y="${b2.y}" width="${b2.w}" height="${b2.h}" rx="16" fill="#172033" stroke="#293548"/>
+    <text x="${b2InnerX}" y="${b2TitleY}" fill="#f8fafc" font-size="22" font-weight="900">BBM загалом</text>
+    ${legendTwoLine({ x: b2InnerX + b2InnerW, y: b2.y + 16, prevLabel: prevWeekWord || "попередній", curLabel: curWeekWord || "поточний", curColor: "#38bdf8" })}
+    ${lessonsProgressCard({ x: b2InnerX, y: row1Y, w: progressW, h: row1H, conducted: oConducted, scheduled: oScheduled, pct: oSharePct })}
+    ${bbmKpis}
+    <rect x="${b2InnerX}" y="${b2Row2Y}" width="${b2InnerW}" height="${b2Row2H}" rx="10" fill="#1f2937" stroke="#374151"/>
+    ${bbmChart}`;
 
-  <text x="60" y="72" fill="#c4b5fd" font-family="Inter, Arial, sans-serif" font-size="36" font-weight="900">BBM · Тижневий дайджест</text>
-  <text x="60" y="106" fill="#94a3b8" font-family="Inter, Arial, sans-serif" font-size="20">${dateSubtitle}</text>
-  <text x="780" y="136" text-anchor="end" fill="#e5e7eb" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="800">${teacherName}</text>
+  const height = b2.y + b2.h + 32;
 
-  <text x="60" y="176" fill="#f8fafc" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="900">Особисте · тиждень</text>
-  <text x="626" y="176" fill="#64748b" font-family="Inter, Arial, sans-serif" font-size="18">■ попередній</text>
-  <text x="626" y="202" fill="#a78bfa" font-family="Inter, Arial, sans-serif" font-size="18">■ цей</text>
-  <g font-family="Inter, Arial, sans-serif">
-    ${kpiCard({ x: 60, y: 198, label: "уроки", previous: weekPrevious, current: weekCurrent, key: "lessonsCount" })}
-    ${kpiCard({ x: 306, y: 198, label: "учні", previous: weekPrevious, current: weekCurrent, key: "uniquePeopleCount" })}
-    ${kpiCard({ x: 552, y: 198, label: "виручка", previous: weekPrevious, current: weekCurrent, key: "revenue", money: true })}
-    ${personalBars}
-  </g>
-
-  <line x1="60" y1="658" x2="780" y2="658" stroke="#334155" stroke-width="2"/>
-  <text x="60" y="704" fill="#f8fafc" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="900">BBM · місяць</text>
-  <text x="60" y="734" fill="#94a3b8" font-family="Inter, Arial, sans-serif" font-size="18">виручка</text>
-  <text x="238" y="726" fill="${trendColor(monthRevenuePct)}" font-family="Inter, Arial, sans-serif" font-size="56" font-weight="900">${escapeXml(formatPercentLabel(monthRevenuePct))}</text>
-  <text x="626" y="704" fill="#64748b" font-family="Inter, Arial, sans-serif" font-size="18">■ попередній</text>
-  <text x="626" y="730" fill="#38bdf8" font-family="Inter, Arial, sans-serif" font-size="18">■ цей</text>
-  <g font-family="Inter, Arial, sans-serif">
-    ${monthBars}
-  </g>
+  return `<svg width="1200" height="${height}" viewBox="0 0 1200 ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="BBM weekly digest" font-family="${FONT}">
+  <rect width="1200" height="${height}" fill="#111827"/>
+  <text x="32" y="58" fill="#c4b5fd" font-size="32" font-weight="900">BBM · Тижневий дайджест</text>
+  <text x="32" y="86" fill="#94a3b8" font-size="18">${dateSubtitle}</text>
+  <text x="1168" y="66" text-anchor="end" fill="#e5e7eb" font-size="22" font-weight="800">${teacherName}</text>
+  <g>${block1}</g>
+  <g>${block2}</g>
 </svg>`;
 }
 
 export async function renderWeeklyDigestPng(payload) {
   const svg = buildWeeklyDigestSvg(payload);
   const resvg = new Resvg(svg, {
-    fitTo: { mode: "width", value: 840 },
+    fitTo: { mode: "width", value: 1200 },
     font: { loadSystemFonts: true },
   });
   const png = resvg.render().asPng();
