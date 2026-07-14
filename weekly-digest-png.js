@@ -153,6 +153,7 @@ function conductedShare(conducted, scheduled) {
 }
 
 const FONT = "Inter, Arial, sans-serif";
+const KPI_H = 140;
 
 const WEEKLY_METRICS = [
   ["уроки", "lessonsCount", false],
@@ -228,20 +229,19 @@ function sectionBlock({ x, y, w, h, title, prevLabel, curLabel, curColor, curren
   const innerW = w - 40;
   const titleY = y + 20 + 22;
   const kpiRowY = titleY + 16;
-  const kpiH = 140;
   const kpiGap = 16;
   const kpiW = (innerW - kpiGap * 4) / 5;
   const kpis = WEEKLY_METRICS.map(([label, key, money], i) => kpiBox({
     x: innerX + i * (kpiW + kpiGap),
     y: kpiRowY,
     w: kpiW,
-    h: kpiH,
+    h: KPI_H,
     label: label.toUpperCase(),
     cur: metric(current, key),
     prev: metric(previous, key),
     money,
   })).join("");
-  const chartY = kpiRowY + kpiH + 16;
+  const chartY = kpiRowY + KPI_H + 16;
   const chartH = y + h - 20 - chartY;
   const chart = categoryBarsChart({
     x: innerX, y: chartY, w: innerW, h: chartH,
@@ -281,12 +281,12 @@ export function buildWeeklyDigestSvg(payload) {
     chartLabel: "ПОРІВНЯННЯ З ПОПЕРЕДНІМ ТИЖНЕМ",
   });
 
-  const b2 = { x: 32, y: b1.y + b1.h + 16, w: 1136, h: 270 };
+  const b2 = { x: 32, y: b1.y + b1.h + 16, w: 1136, h: 310 };
   const b2InnerX = b2.x + 20;
   const b2InnerW = b2.w - 40;
   const b2TitleY = b2.y + 20 + 22;
   const row1Y = b2TitleY + 18;
-  const row1H = 100;
+  const row1H = KPI_H;
   const progressW = 380;
   const kpiGap = 16;
   const kpiW = (b2InnerW - progressW - kpiGap * 3) / 3;
