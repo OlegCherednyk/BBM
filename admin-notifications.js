@@ -1,8 +1,7 @@
 import { DateTime } from "luxon";
 import { computeSubscriptionUsedVisits } from "./students-api.js";
 import {
-  formatDigestDateSubtitleFromRanges,
-  getMonthToDateCompareRangesKyiv,
+  formatWeekCompareSubtitle,
   renderWeeklyDigestPng,
 } from "./weekly-digest-png.js";
 import {
@@ -291,6 +290,8 @@ function dashboardToWeekSummary(dashboard) {
       Number(s.totalPeopleAll) || teachers.reduce((sum, row) => sum + (Number(row.peopleCount) || 0), 0),
     revenue: teachers.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0),
     payout: teachers.reduce((sum, row) => sum + (Number(row.payout) || 0), 0),
+    scheduledLessons:
+      s.totalScheduledLessons == null ? null : Number(s.totalScheduledLessons) || 0,
   };
 }
 
@@ -406,21 +407,20 @@ export async function runWeeklyTeacherStatsDigests(supabaseAdmin, bot, computeTe
 
   const currentWeek = getCompletedWeekRangeKyiv(1);
   const prevWeek = getCompletedWeekRangeKyiv(2);
-  const monthRanges = getMonthToDateCompareRangesKyiv();
-  const dateSubtitle = formatDigestDateSubtitleFromRanges(currentWeek, monthRanges.current, monthRanges.previous);
+  const dateSubtitle = formatWeekCompareSubtitle(currentWeek, prevWeek);
 
   const [overallCurrentRaw, overallPrevRaw] = await Promise.all([
     computeOverallStats(supabaseAdmin, {
-      fromIso: monthRanges.current.fromIso,
-      toIso: monthRanges.current.toIso,
-      fromDate: monthRanges.current.fromDate,
-      toDate: monthRanges.current.toDate,
+      fromIso: currentWeek.fromIso,
+      toIso: currentWeek.toIso,
+      fromDate: currentWeek.fromDate,
+      toDate: currentWeek.toDate,
     }),
     computeOverallStats(supabaseAdmin, {
-      fromIso: monthRanges.previous.fromIso,
-      toIso: monthRanges.previous.toIso,
-      fromDate: monthRanges.previous.fromDate,
-      toDate: monthRanges.previous.toDate,
+      fromIso: prevWeek.fromIso,
+      toIso: prevWeek.toIso,
+      fromDate: prevWeek.fromDate,
+      toDate: prevWeek.toDate,
     }),
   ]);
   const overallCurrent = dashboardToWeekSummary(overallCurrentRaw);
@@ -454,12 +454,12 @@ export async function runWeeklyTeacherStatsDigests(supabaseAdmin, bot, computeTe
           teacherName,
           dateSubtitle,
           teacherWeek: { current: teacherCurrent, previous: teacherPrev },
-          overallMonth: { current: overallCurrent, previous: overallPrev },
+          overallWeek: { current: overallCurrent, previous: overallPrev },
         });
         await bot.telegram.sendPhoto(
           chatId,
           { source: png },
-          { caption: `📊 BBM — тижневий дайджест\n${teacherName}\n${currentWeek.label}` },
+          { caption: `📊 BBM — тижневий дайджест\n${teacherName}\n${dateSubtitle}` },
         );
       } catch (pngErr) {
         console.error(
@@ -468,7 +468,7 @@ export async function runWeeklyTeacherStatsDigests(supabaseAdmin, bot, computeTe
         );
         const text = buildWeeklyStatsDigestText(
           teacherName,
-          currentWeek.label,
+          dateSubtitle,
           teacherCurrent,
           teacherPrev,
           overallCurrent,
