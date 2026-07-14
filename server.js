@@ -15,7 +15,7 @@ import {
   resolveCrossTypeLessonTypeIds,
   rollbackVisitsForOccurrence,
 } from "./students-api.js";
-import { parsePlaceRiverBank, runDailyTeacherDigests, runWeeklyTeacherStatsDigests, teacherMatchesBank } from "./admin-notifications.js";
+import { parsePlaceRiverBank, runDailyTeacherDigests, runWeeklyTeacherStatsDigests, runMonthlyTeacherStatsDigests, teacherMatchesBank } from "./admin-notifications.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
@@ -4301,6 +4301,8 @@ startDailyLessonVoteCron({
   runDailyTeacherDigests: () => runDailyTeacherDigests(supabaseAdmin, bot),
   runWeeklyTeacherStatsDigests: () =>
     runWeeklyTeacherStatsDigests(supabaseAdmin, bot, computeTeacherLessonsJournal, computeAdminStatsDashboard),
+  runMonthlyTeacherStatsDigests: () =>
+    runMonthlyTeacherStatsDigests(supabaseAdmin, bot, computeTeacherLessonsJournal, computeMonthlyDigestOverall),
 });
 
 registerStudentRoutes(app, supabaseAdmin);

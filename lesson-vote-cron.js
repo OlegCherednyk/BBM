@@ -55,6 +55,7 @@ export function startDailyLessonVoteCron({
   expireOverdueSubscriptions,
   runDailyTeacherDigests,
   runWeeklyTeacherStatsDigests,
+  runMonthlyTeacherStatsDigests,
 }) {
   const createDailyTime = normalizeDailyTime(createDailyTimeEnv);
   const closeDailyTime = normalizeDailyTime(closeDailyTimeEnv);
@@ -70,9 +71,10 @@ export function startDailyLessonVoteCron({
   let lastCloseRunDateKyiv = "";
   let lastDigestRunDateKyiv = "";
   let lastWeeklyDigestRunDateKyiv = "";
+  let lastMonthlyDigestRunDateKyiv = "";
 
   console.log(
-    `[lesson-vote-daily-cron] enabled create_time=${createDailyTime} close_time=${closeDailyTime} digest_time=${digestDailyTime} weekly_digest_time=${weeklyDigestTime} tz=${KYIV_TZ}`
+    `[lesson-vote-daily-cron] enabled create_time=${createDailyTime} close_time=${closeDailyTime} digest_time=${digestDailyTime} weekly_digest_time=${weeklyDigestTime} monthly_digest_time=${weeklyDigestTime} tz=${KYIV_TZ}`
   );
 
   const tick = async () => {
@@ -152,6 +154,23 @@ export function startDailyLessonVoteCron({
           await runWeeklyTeacherStatsDigests();
         } catch (error) {
           console.error("[lesson-vote-daily-cron] weekly digest exception:", error?.message || error);
+        }
+      }
+    }
+
+    if (
+      weeklyDigestTime &&
+      nowKyiv.day === 1 &&
+      isSameKyivMinute(nowKyiv, weeklyDigestTime) &&
+      lastMonthlyDigestRunDateKyiv !== dateKey
+    ) {
+      lastMonthlyDigestRunDateKyiv = dateKey;
+      console.log(`[lesson-vote-daily-cron] monthly digest run started kyiv=${nowKyiv.toISO()}`);
+      if (typeof runMonthlyTeacherStatsDigests === "function") {
+        try {
+          await runMonthlyTeacherStatsDigests();
+        } catch (error) {
+          console.error("[lesson-vote-daily-cron] monthly digest exception:", error?.message || error);
         }
       }
     }
