@@ -104,6 +104,30 @@ describe("buildMonthlyDigestSvg", () => {
     assert.match(svg, /з 144/);
     assert.match(svg, /Разові|разові/i);
   });
+
+  it("shows 0% when derived avg is null", () => {
+    const empty = { lessonsCount: 0, uniquePeopleCount: 0, totalPeopleCount: 0, revenue: 0, payout: 0 };
+    const svg = buildMonthlyDigestSvg({
+      teacherName: "Test",
+      dateSubtitle: "червень vs травень",
+      teacherMonth: { current: empty, previous: empty },
+      overall: {
+        current: {
+          summary: { ...empty, scheduledLessons: 0 },
+          byDirection: [],
+          byBank: [],
+          visitKinds: { single: 0, abon: 0 },
+        },
+        previous: {
+          summary: { ...empty, scheduledLessons: 0 },
+          byDirection: [],
+          byBank: [],
+          visitKinds: { single: 0, abon: 0 },
+        },
+      },
+    });
+    assert.match(svg, /СЕР\. НА УРОК[\s\S]*?>0%</);
+  });
 });
 
 describe("renderMonthlyDigestPng", () => {

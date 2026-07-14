@@ -86,9 +86,9 @@ function metric(row, key) {
   return Number(row?.[key]) || 0;
 }
 
-/** KPI card: label / %change / value / "було {prev}". null cur/prev → "—", pct treated as 0/0. */
+/** KPI card: label / %change / value / "було {prev}". null cur/prev → "—" and 0%. */
 function kpiBox({ x, y, w, h, label, cur, prev, money = false, raw = false }) {
-  const pct = percentChange(cur ?? 0, prev ?? 0);
+  const pct = (cur == null || prev == null) ? 0 : percentChange(cur, prev);
   const fmt = (v) => (v == null ? "—" : raw ? String(v) : formatCompactNumber(v, { money }));
   return `
     <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="#1f2937" stroke="#374151"/>
@@ -272,7 +272,6 @@ export function buildMonthlyDigestSvg(payload) {
   const abonPrev = metric(visitKindsPrev, "abon");
   const totalVisits = singleCur + abonCur;
   const singlePct = totalVisits > 0 ? Math.round((singleCur / totalVisits) * 100) : 0;
-  const abonPct = 100 - singlePct;
 
   // ===== Block 1: Особисте · місяць (largest, full width) =====
   const b1 = { x: 32, y: 90, w: 1136, h: 482 };
