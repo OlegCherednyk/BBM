@@ -1050,7 +1050,7 @@ async function loadAdminStatsLessonsContext(supabaseAdmin, { fromIso, toIso }) {
       `id, starts_at, abon_count, single_visitors_count, conducting_display_name, place_id,
        vote_snapshot, lesson_vote_occurrence_id,
        teachers(id, name, is_smm),
-       places(name),
+       places(name, river_bank),
        lesson_times(lesson_types(id, name, duration_minutes))`,
     );
   if (fromIso) lessonsQuery = lessonsQuery.gte("starts_at", fromIso);
@@ -1286,6 +1286,88 @@ async function computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso, fromD
       totalSmm,
     },
     teachers,
+  };
+}
+
+/**
+ * BBM monthly digest: dashboard-like summary + direction/bank/visit-kind breakdowns.
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {{ fromIso?: string | null, toIso?: string | null, fromDate?: string | null, toDate?: string | null }} args
+ */
+async function computeMonthlyDigestOverall(supabaseAdmin, { fromIso, toIso, fromDate, toDate }) {
+  const dashboard = await computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso, fromDate, toDate });
+  const ctx = await loadAdminStatsLessonsContext(supabaseAdmin, { fromIso, toIso });
+
+  /** @type {Map<string, { id: string, name: string, lessonsCount: number, totalPeopleCount: number, revenue: number }>} */
+  const byDirection = new Map();
+  /** @type {Map<"left"|"right", { key: "left"|"right", label: string, lessonsCount: number, totalPeopleCount: number, revenue: number }>} */
+  const byBank = new Map();
+  let singleVisits = 0;
+  let abonVisits = 0;
+
+  for (const row of ctx.lessons) {
+    const fin = await computeLessonFinancialsForStats(supabaseAdmin, row, ctx);
+    const type = row.lesson_times?.lesson_types || null;
+    const typeId = String(type?.id || "unknown");
+    const typeName = String(type?.name || "Інше").trim() || "Інше";
+    const dir = byDirection.get(typeId) || {
+      id: typeId,
+      name: typeName,
+      lessonsCount: 0,
+      totalPeopleCount: 0,
+      revenue: 0,
+    };
+    dir.lessonsCount += 1;
+    dir.totalPeopleCount += fin.peopleCount;
+    dir.revenue += fin.revenue;
+    byDirection.set(typeId, dir);
+
+    const bank = parsePlaceRiverBank(row.places?.river_bank);
+    if (bank === "left" || bank === "right") {
+      const label = bank === "left" ? "Лівий" : "Правий";
+      const b = byBank.get(bank) || {
+        key: bank,
+        label,
+        lessonsCount: 0,
+        totalPeopleCount: 0,
+        revenue: 0,
+      };
+      b.lessonsCount += 1;
+      b.totalPeopleCount += fin.peopleCount;
+      b.revenue += fin.revenue;
+      byBank.set(bank, b);
+    }
+
+    const oid = String(row.lesson_vote_occurrence_id || "").trim();
+    const visits = oid ? ctx.visitsByOccurrence.get(oid) || [] : [];
+    for (const v of visits) {
+      if (v.vote_choice === "single") singleVisits += 1;
+      else if (v.vote_choice === "abon") abonVisits += 1;
+    }
+  }
+
+  const teachers = dashboard.teachers || [];
+  const summary = {
+    lessonsCount: Number(dashboard.summary?.totalLessons) || 0,
+    uniquePeopleCount: Number(dashboard.summary?.totalPeople) || 0,
+    totalPeopleCount:
+      Number(dashboard.summary?.totalPeopleAll) ||
+      teachers.reduce((sum, row) => sum + (Number(row.peopleCount) || 0), 0),
+    revenue: teachers.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0),
+    payout: teachers.reduce((sum, row) => sum + (Number(row.payout) || 0), 0),
+    scheduledLessons:
+      dashboard.summary?.totalScheduledLessons == null
+        ? null
+        : Number(dashboard.summary.totalScheduledLessons) || 0,
+  };
+
+  return {
+    summary,
+    byDirection: [...byDirection.values()].sort((a, b) => b.lessonsCount - a.lessonsCount),
+    byBank: ["right", "left"]
+      .map((k) => byBank.get(/** @type {"left"|"right"} */ (k)))
+      .filter(Boolean),
+    visitKinds: { single: singleVisits, abon: abonVisits },
   };
 }
 
