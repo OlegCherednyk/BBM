@@ -15,7 +15,7 @@ import {
   resolveCrossTypeLessonTypeIds,
   rollbackVisitsForOccurrence,
 } from "./students-api.js";
-import { parsePlaceRiverBank, runDailyTeacherDigests, runWeeklyTeacherStatsDigests, runMonthlyTeacherStatsDigests, teacherMatchesBank } from "./admin-notifications.js";
+import { parsePlaceRiverBank, runDailyTeacherDigests, runWeeklyTeacherStatsDigests, runMonthlyTeacherStatsDigests, teacherMatchesBank, getCompletedWeekRangeKyiv } from "./admin-notifications.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
@@ -4287,6 +4287,102 @@ if (bot) {
       console.error("Failed to launch Telegram bot polling:", msg);
       console.error(`[lesson-vote-scheduler] init status=disabled (reason=bot_launch_failed, error=${msg})`);
     });
+}
+
+/** One-shot: PREVIEW_WEEKLY_DIGEST_TEACHER=Ім'я node server.js -> writes PNG and exits. */
+async function previewWeeklyDigestPngAndExit() {
+  const teacherQuery = String(process.env.PREVIEW_WEEKLY_DIGEST_TEACHER || "").trim();
+  if (!teacherQuery) return false;
+  if (!supabaseAdmin) {
+    console.error("[preview-weekly-digest] supabase not configured");
+    process.exit(1);
+  }
+  const outPath = path.resolve(
+    String(process.env.PREVIEW_WEEKLY_DIGEST_OUT || "").trim() ||
+      path.join(__dirname, `weekly-digest-${teacherQuery}.png`),
+  );
+  const { formatWeekCompareSubtitle, renderWeeklyDigestPng } = await import("./weekly-digest-png.js");
+  const { writeFileSync } = await import("fs");
+
+  const { data: teachers, error } = await supabaseAdmin
+    .from("teachers")
+    .select("id, name")
+    .ilike("name", `%${teacherQuery}%`)
+    .limit(5);
+  if (error) throw new Error(error.message);
+  const teacher = (teachers || []).find((t) => String(t.name || "").trim() === teacherQuery) || teachers?.[0];
+  if (!teacher) {
+    console.error(`[preview-weekly-digest] teacher not found: ${teacherQuery}`);
+    process.exit(1);
+  }
+
+  const currentWeek = getCompletedWeekRangeKyiv(1);
+  const prevWeek = getCompletedWeekRangeKyiv(2);
+  const dateSubtitle = formatWeekCompareSubtitle(currentWeek, prevWeek);
+
+  const toTeacherSummary = (summary) => ({
+    lessonsCount: Number(summary?.lessonsCount) || 0,
+    uniquePeopleCount: Number(summary?.uniquePeopleCount) || 0,
+    totalPeopleCount: Number(summary?.peopleCount) || 0,
+    revenue: Number(summary?.revenue) || 0,
+    payout: Number(summary?.payout) || 0,
+  });
+  const toOverallSummary = (dashboard) => {
+    const s = dashboard?.summary || {};
+    const teachersRows = dashboard?.teachers || [];
+    return {
+      lessonsCount: Number(s.totalLessons) || 0,
+      uniquePeopleCount: Number(s.totalPeople) || 0,
+      totalPeopleCount:
+        Number(s.totalPeopleAll) || teachersRows.reduce((sum, row) => sum + (Number(row.peopleCount) || 0), 0),
+      revenue: teachersRows.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0),
+      payout: teachersRows.reduce((sum, row) => sum + (Number(row.payout) || 0), 0),
+      scheduledLessons:
+        s.totalScheduledLessons == null ? null : Number(s.totalScheduledLessons) || 0,
+    };
+  };
+
+  const [overallCurrentRaw, overallPrevRaw, current, previous] = await Promise.all([
+    computeAdminStatsDashboard(supabaseAdmin, {
+      fromIso: currentWeek.fromIso,
+      toIso: currentWeek.toIso,
+      fromDate: currentWeek.fromDate,
+      toDate: currentWeek.toDate,
+    }),
+    computeAdminStatsDashboard(supabaseAdmin, {
+      fromIso: prevWeek.fromIso,
+      toIso: prevWeek.toIso,
+      fromDate: prevWeek.fromDate,
+      toDate: prevWeek.toDate,
+    }),
+    computeTeacherLessonsJournal(supabaseAdmin, {
+      teacherId: String(teacher.id),
+      teacherName: String(teacher.name || ""),
+      fromIso: currentWeek.fromIso,
+      toIso: currentWeek.toIso,
+    }),
+    computeTeacherLessonsJournal(supabaseAdmin, {
+      teacherId: String(teacher.id),
+      teacherName: String(teacher.name || ""),
+      fromIso: prevWeek.fromIso,
+      toIso: prevWeek.toIso,
+    }),
+  ]);
+
+  const teacherName = current.teacherName || teacher.name || "Викладач";
+  const png = await renderWeeklyDigestPng({
+    teacherName,
+    dateSubtitle,
+    teacherWeek: { current: toTeacherSummary(current.summary), previous: toTeacherSummary(previous.summary) },
+    overallWeek: { current: toOverallSummary(overallCurrentRaw), previous: toOverallSummary(overallPrevRaw) },
+  });
+  writeFileSync(outPath, png);
+  console.log(`[preview-weekly-digest] wrote ${outPath} teacher=${teacherName} label=${dateSubtitle} bytes=${png.length}`);
+  return true;
+}
+
+if (await previewWeeklyDigestPngAndExit()) {
+  process.exit(0);
 }
 
 startDailyLessonVoteCron({
