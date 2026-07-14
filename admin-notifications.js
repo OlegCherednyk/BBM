@@ -5,6 +5,11 @@ import {
   getMonthToDateCompareRangesKyiv,
   renderWeeklyDigestPng,
 } from "./weekly-digest-png.js";
+import {
+  formatMonthCompareLabel,
+  getCompletedMonthCompareRangesKyiv,
+  renderMonthlyDigestPng,
+} from "./monthly-digest-png.js";
 
 const KYIV_TZ = "Europe/Kyiv";
 
@@ -341,6 +346,36 @@ export function buildWeeklyStatsDigestText(
   return text;
 }
 
+/**
+ * @param {string} teacherName
+ * @param {string} monthLabel
+ * @param {{ lessonsCount: number, uniquePeopleCount: number, totalPeopleCount: number, revenue: number, payout: number }} teacherCurrent
+ * @param {{ lessonsCount: number, uniquePeopleCount: number, totalPeopleCount: number, revenue: number, payout: number }} teacherPrev
+ * @param {{ lessonsCount: number, uniquePeopleCount: number, totalPeopleCount: number, revenue: number, payout: number }} overallCurrent
+ * @param {{ lessonsCount: number, uniquePeopleCount: number, totalPeopleCount: number, revenue: number, payout: number }} overallPrev
+ */
+export function buildMonthlyStatsDigestText(
+  teacherName,
+  monthLabel,
+  teacherCurrent,
+  teacherPrev,
+  overallCurrent,
+  overallPrev,
+) {
+  const name = String(teacherName || "Викладач").trim();
+  const lines = [
+    "📊 BBM — місячний дайджест",
+    monthLabel,
+    "",
+    ...formatStatsBlock(`👤 ${name}`, teacherCurrent, teacherPrev),
+    "",
+    ...formatStatsBlock("🏫 BBM загалом", overallCurrent, overallPrev),
+  ];
+  let text = lines.join("\n").trim();
+  if (text.length > 4096) text = `${text.slice(0, 4090)}…`;
+  return text;
+}
+
 const EMPTY_WEEK_SUMMARY = { lessonsCount: 0, uniquePeopleCount: 0, totalPeopleCount: 0, revenue: 0, payout: 0 };
 
 /**
@@ -450,5 +485,110 @@ export async function runWeeklyTeacherStatsDigests(supabaseAdmin, bot, computeTe
     }
   }
   console.log(`[admin-weekly-digest] done sent=${sent} recipients=${recipients.length} week=${currentWeek.label}`);
+  return { sent, skipped: false };
+}
+
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {{ telegram: { sendMessage: (chatId: string, text: string) => Promise<unknown>, sendPhoto: (chatId: string, photo: unknown, opts?: unknown) => Promise<unknown> } } | null} bot
+ * @param {(supabaseAdmin: import("@supabase/supabase-js").SupabaseClient, args: { teacherId?: string, teacherName?: string, fromIso?: string | null, toIso?: string | null }) => Promise<{ summary: { lessonsCount: number, uniquePeopleCount: number, totalPeopleCount: number, revenue: number, payout: number }, teacherName?: string }>} computeTeacherStats
+ * @param {(supabaseAdmin: import("@supabase/supabase-js").SupabaseClient, args: { fromIso?: string | null, toIso?: string | null, fromDate?: string | null, toDate?: string | null }) => Promise<{ summary: object, byDirection: Array<object>, byBank: Array<object>, visitKinds: object }>} computeOverallMonthly
+ */
+export async function runMonthlyTeacherStatsDigests(supabaseAdmin, bot, computeTeacherStats, computeOverallMonthly) {
+  if (!supabaseAdmin || !bot?.telegram?.sendMessage) {
+    console.log("[admin-monthly-digest] skipped: bot or supabase not configured");
+    return { sent: 0, skipped: true };
+  }
+  if (typeof computeTeacherStats !== "function" || typeof computeOverallMonthly !== "function") {
+    console.log("[admin-monthly-digest] skipped: compute fns not configured");
+    return { sent: 0, skipped: true };
+  }
+
+  const recipients = await loadDigestRecipients(supabaseAdmin);
+  if (!recipients.length) {
+    console.log("[admin-monthly-digest] no recipients with digest_enabled");
+    return { sent: 0, skipped: false };
+  }
+
+  const ranges = getCompletedMonthCompareRangesKyiv();
+  const dateSubtitle = formatMonthCompareLabel(ranges.current, ranges.previous);
+
+  const [overallCurrent, overallPrev] = await Promise.all([
+    computeOverallMonthly(supabaseAdmin, {
+      fromIso: ranges.current.fromIso,
+      toIso: ranges.current.toIso,
+      fromDate: ranges.current.fromDate,
+      toDate: ranges.current.toDate,
+    }),
+    computeOverallMonthly(supabaseAdmin, {
+      fromIso: ranges.previous.fromIso,
+      toIso: ranges.previous.toIso,
+      fromDate: ranges.previous.fromDate,
+      toDate: ranges.previous.toDate,
+    }),
+  ]);
+
+  const overallSummaryCurrent = overallCurrent.summary;
+  const overallSummaryPrev = overallPrev.summary;
+
+  let sent = 0;
+  for (const t of recipients) {
+    try {
+      const [current, previous] = await Promise.all([
+        computeTeacherStats(supabaseAdmin, {
+          teacherId: String(t.id),
+          teacherName: String(t.name || ""),
+          fromIso: ranges.current.fromIso,
+          toIso: ranges.current.toIso,
+        }),
+        computeTeacherStats(supabaseAdmin, {
+          teacherId: String(t.id),
+          teacherName: String(t.name || ""),
+          fromIso: ranges.previous.fromIso,
+          toIso: ranges.previous.toIso,
+        }),
+      ]);
+
+      const chatId = String(t.chat_id).trim();
+      const teacherName = current.teacherName || t.name || "Викладач";
+      const teacherCurrent = teacherSummaryToWeekSummary(current.summary);
+      const teacherPrev = teacherSummaryToWeekSummary(previous.summary);
+
+      try {
+        const png = await renderMonthlyDigestPng({
+          teacherName,
+          dateSubtitle,
+          teacherMonth: { current: teacherCurrent, previous: teacherPrev },
+          overall: { current: overallCurrent, previous: overallPrev },
+        });
+        await bot.telegram.sendPhoto(
+          chatId,
+          { source: png },
+          { caption: `📊 BBM — місячний дайджест\n${teacherName}\n${dateSubtitle}` },
+        );
+      } catch (pngErr) {
+        console.error(
+          `[admin-monthly-digest] png send failed teacher=${t.id}, falling back to text:`,
+          pngErr?.description || pngErr?.message || pngErr,
+        );
+        const text = buildMonthlyStatsDigestText(
+          teacherName,
+          dateSubtitle,
+          teacherCurrent,
+          teacherPrev,
+          overallSummaryCurrent,
+          overallSummaryPrev,
+        );
+        await bot.telegram.sendMessage(chatId, text);
+      }
+      sent += 1;
+    } catch (err) {
+      console.error(
+        `[admin-monthly-digest] send failed teacher=${t.id}:`,
+        err?.description || err?.message || err,
+      );
+    }
+  }
+  console.log(`[admin-monthly-digest] done sent=${sent} recipients=${recipients.length} label=${dateSubtitle}`);
   return { sent, skipped: false };
 }
