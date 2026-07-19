@@ -2009,8 +2009,8 @@ async function renderPlacePricesPanel() {
     supabase.from("places").select("id, name").order("sort_order", { ascending: true }),
     supabase
       .from("places_prices")
-      .select("id, place_id, duration_minutes, amount_uah, places(name)")
-      .order("created_at", { ascending: true }),
+      .select("id, place_id, duration_minutes, amount_uah, effective_from, places(name)")
+      .order("effective_from", { ascending: true }),
   ]);
 
   if (placesError) {
@@ -2025,7 +2025,17 @@ async function renderPlacePricesPanel() {
   cachedPlaces = places || [];
   populatePlacePricePlaceSelect();
 
-  const sorted = [...(rows || [])].sort((a, b) => {
+  // Show only the current rate per place+duration; older rows stay for historical stats.
+  const latestByKey = new Map();
+  for (const row of rows || []) {
+    const key = `${row.place_id}:${row.duration_minutes}`;
+    const prev = latestByKey.get(key);
+    if (!prev || new Date(row.effective_from || 0) >= new Date(prev.effective_from || 0)) {
+      latestByKey.set(key, row);
+    }
+  }
+
+  const sorted = [...latestByKey.values()].sort((a, b) => {
     const placeA = (a.places?.name || "").toLowerCase();
     const placeB = (b.places?.name || "").toLowerCase();
     if (placeA !== placeB) return placeA.localeCompare(placeB, "uk");
@@ -2266,16 +2276,15 @@ function initPlacePriceForm() {
       return;
     }
 
-    const payload = { place_id, duration_minutes, amount_uah };
     const id = maybeEl("placePriceEditingId")?.value ?? "";
-    let errRow;
-    if (id) {
-      const { error } = await supabase.from("places_prices").update(payload).eq("id", id);
-      errRow = error;
-    } else {
-      const { error } = await supabase.from("places_prices").insert(payload);
-      errRow = error;
-    }
+    // Edit inserts a new version from now — past lessons keep the previous rent.
+    const payload = {
+      place_id,
+      duration_minutes,
+      amount_uah,
+      effective_from: id ? new Date().toISOString() : "1970-01-01T00:00:00.000Z",
+    };
+    const { error: errRow } = await supabase.from("places_prices").insert(payload);
     if (errRow) {
       showDashError(errRow.message);
       return;
@@ -2284,7 +2293,7 @@ function initPlacePriceForm() {
     resetPlacePriceForm();
     closePlacePriceModal();
     await renderPlacePricesPanel();
-    showDashOk(id ? "Тариф оренди оновлено." : "Тариф оренди додано.");
+    showDashOk(id ? "Тариф оренди оновлено (для нових уроків)." : "Тариф оренди додано.");
   });
 }
 

@@ -554,6 +554,44 @@ function buildPriceByType(pricesRows) {
   return map;
 }
 
+/** @param {Array<{ place_id?: string, duration_minutes?: number, amount_uah?: number, effective_from?: string }>} rows */
+function buildPlacePriceIndex(rows) {
+  /** @type {Map<string, Array<{ effectiveFrom: number, amount: number }>>} */
+  const map = new Map();
+  for (const row of rows || []) {
+    const key = `${row.place_id}:${Number(row.duration_minutes) || 0}`;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push({
+      effectiveFrom: new Date(row.effective_from || 0).getTime() || 0,
+      amount: Number(row.amount_uah) || 0,
+    });
+  }
+  for (const list of map.values()) list.sort((a, b) => a.effectiveFrom - b.effectiveFrom);
+  return map;
+}
+
+/**
+ * Rent in effect at lesson time (latest places_prices.effective_from <= starts_at).
+ * @param {Map<string, Array<{ effectiveFrom: number, amount: number }>>} index
+ */
+function lookupPlaceRent(index, placeId, duration, atIso) {
+  const at = atIso ? new Date(atIso).getTime() : Date.now();
+  const atMs = Number.isFinite(at) ? at : Date.now();
+  const pick = (dur) => {
+    const list = index.get(`${placeId}:${dur}`);
+    if (!list?.length) return null;
+    let amount = null;
+    for (const row of list) {
+      if (row.effectiveFrom <= atMs) amount = row.amount;
+      else break;
+    }
+    return amount;
+  };
+  const exact = pick(duration);
+  if (exact != null) return exact;
+  return pick(60) ?? 0;
+}
+
 function formatMoneyUah(amount) {
   const num = Number(amount) || 0;
   const rounded = Math.round(num * 100) / 100;
@@ -947,7 +985,7 @@ async function computeLessonFinanceBreakdown(supabaseAdmin, lessonId) {
   const [pricesRes, smmRes, placePricesRes, visitsRes] = await Promise.all([
     supabaseAdmin.from("prices").select("lesson_type_id, price_kind, visits_count, amount_uah"),
     supabaseAdmin.from("smm_prices").select("people_from, people_to, amount_uah").order("people_from", { ascending: true }),
-    supabaseAdmin.from("places_prices").select("place_id, duration_minutes, amount_uah"),
+    supabaseAdmin.from("places_prices").select("place_id, duration_minutes, amount_uah, effective_from"),
     occurrenceId
       ? supabaseAdmin
           .from("visits")
@@ -967,9 +1005,7 @@ async function computeLessonFinanceBreakdown(supabaseAdmin, lessonId) {
 
   const priceByType = buildPriceByType(pricesRes.data || []);
   const prices = priceByType.get(lessonTypeId) || { single: 0, abonUnit: 0 };
-  const placePriceMap = new Map(
-    (placePricesRes.data || []).map((row) => [`${row.place_id}:${row.duration_minutes}`, Number(row.amount_uah) || 0]),
-  );
+  const placePriceIndex = buildPlacePriceIndex(placePricesRes.data || []);
 
   /** @type {Array<{ name: string, telegramUsername: string | null, visitKind: "abon" | "single", amountUah: number }>} */
   let studentRows = [];
@@ -1008,7 +1044,7 @@ async function computeLessonFinanceBreakdown(supabaseAdmin, lessonId) {
   const peopleCount =
     studentRows.length ||
     Math.max(0, Number(lesson.abon_count) || 0) + Math.max(0, Number(lesson.single_visitors_count) || 0);
-  const rent = placePriceMap.get(`${placeId}:${duration}`) ?? placePriceMap.get(`${placeId}:60`) ?? 0;
+  const rent = lookupPlaceRent(placePriceIndex, placeId, duration, lesson.starts_at);
   const smmRaw = pickSmmAmount(smmRes.data || [], peopleCount);
   const isSmmTeacher = Boolean(lesson.teachers?.is_smm);
   const smm = isSmmTeacher ? 0 : smmRaw;
@@ -1060,7 +1096,7 @@ async function loadAdminStatsLessonsContext(supabaseAdmin, { fromIso, toIso }) {
     lessonsQuery,
     supabaseAdmin.from("prices").select("lesson_type_id, price_kind, visits_count, amount_uah"),
     supabaseAdmin.from("smm_prices").select("people_from, people_to, amount_uah").order("people_from", { ascending: true }),
-    supabaseAdmin.from("places_prices").select("place_id, duration_minutes, amount_uah"),
+    supabaseAdmin.from("places_prices").select("place_id, duration_minutes, amount_uah, effective_from"),
     supabaseAdmin.from("teachers").select("id, name, chat_id").eq("is_smm", true).limit(1).maybeSingle(),
   ]);
 
@@ -1072,9 +1108,7 @@ async function loadAdminStatsLessonsContext(supabaseAdmin, { fromIso, toIso }) {
 
   const priceByType = buildPriceByType(pricesRes.data || []);
   const smmRows = smmRes.data || [];
-  const placePriceMap = new Map(
-    (placePricesRes.data || []).map((row) => [`${row.place_id}:${row.duration_minutes}`, Number(row.amount_uah) || 0]),
-  );
+  const placePriceIndex = buildPlacePriceIndex(placePricesRes.data || []);
 
   const occurrenceIds = [
     ...new Set(
@@ -1108,7 +1142,7 @@ async function loadAdminStatsLessonsContext(supabaseAdmin, { fromIso, toIso }) {
     lessons: lessonsRes.data || [],
     priceByType,
     smmRows,
-    placePriceMap,
+    placePriceIndex,
     visitsByOccurrence,
     smmTeacher,
   };
@@ -1116,7 +1150,7 @@ async function loadAdminStatsLessonsContext(supabaseAdmin, { fromIso, toIso }) {
 
 /**
  * @param {Record<string, unknown>} row
- * @param {{ priceByType: Map<string, { single: number, abonUnit: number }>, smmRows: unknown[], placePriceMap: Map<string, number>, visitsByOccurrence: Map<string, unknown[]> }} ctx
+ * @param {{ priceByType: Map<string, { single: number, abonUnit: number }>, smmRows: unknown[], placePriceIndex: Map<string, Array<{ effectiveFrom: number, amount: number }>>, visitsByOccurrence: Map<string, unknown[]> }} ctx
  * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
  */
 async function computeLessonFinancialsForStats(supabaseAdmin, row, ctx) {
@@ -1151,7 +1185,7 @@ async function computeLessonFinancialsForStats(supabaseAdmin, row, ctx) {
   const revenue = Math.round((singleRevenue + abonRevenue) * 100) / 100;
 
   const placeId = String(row.place_id || "");
-  const rent = ctx.placePriceMap.get(`${placeId}:${duration}`) ?? ctx.placePriceMap.get(`${placeId}:60`) ?? 0;
+  const rent = lookupPlaceRent(ctx.placePriceIndex, placeId, duration, row.starts_at);
   const smm = pickSmmAmount(ctx.smmRows, peopleCount);
   const isSmmTeacher = Boolean(row.teachers?.is_smm);
   // ponytail: SMM teacher keeps full lesson payout; pool SMM is added later in dashboard/journal
@@ -1676,7 +1710,7 @@ async function computeConductingTeacherPayoutBreakdown(row, votesByKind) {
     const [pricesRes, smmRes, placePricesRes] = await Promise.all([
       supabaseAdmin.from("prices").select("lesson_type_id, price_kind, visits_count, amount_uah"),
       supabaseAdmin.from("smm_prices").select("people_from, people_to, amount_uah").order("people_from", { ascending: true }),
-      supabaseAdmin.from("places_prices").select("place_id, duration_minutes, amount_uah"),
+      supabaseAdmin.from("places_prices").select("place_id, duration_minutes, amount_uah, effective_from"),
     ]);
 
     if (pricesRes.error || smmRes.error || placePricesRes.error) {
@@ -1705,11 +1739,9 @@ async function computeConductingTeacherPayoutBreakdown(row, votesByKind) {
     const effectivePeopleCount = revenueFromVisits
       ? revenueFromVisits.abonCount + revenueFromVisits.singleCount
       : peopleCount;
-    const placePriceMap = new Map(
-      (placePricesRes.data || []).map((pp) => [`${pp.place_id}:${pp.duration_minutes}`, Number(pp.amount_uah) || 0]),
-    );
+    const placePriceIndex = buildPlacePriceIndex(placePricesRes.data || []);
     const placeId = String(row.place_id || "");
-    const rent = placePriceMap.get(`${placeId}:${lessonDuration}`) ?? placePriceMap.get(`${placeId}:60`) ?? 0;
+    const rent = lookupPlaceRent(placePriceIndex, placeId, lessonDuration, row?.occurrence_at || row?.starts_at);
     const smmPool = pickSmmAmount(smmRes.data || [], effectivePeopleCount);
     let isSmmTeacher = false;
     const teacherId = row?.teacher_id ? String(row.teacher_id).trim() : "";
