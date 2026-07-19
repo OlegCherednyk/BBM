@@ -153,7 +153,7 @@ function conductedShare(conducted, scheduled) {
 }
 
 const FONT = "Inter, Arial, sans-serif";
-const KPI_H = 140;
+const KPI_H = 136;
 
 const WEEKLY_METRICS = [
   ["уроки", "lessonsCount", false],

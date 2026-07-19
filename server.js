@@ -4385,6 +4385,90 @@ if (await previewWeeklyDigestPngAndExit()) {
   process.exit(0);
 }
 
+/** One-shot: PREVIEW_MONTHLY_DIGEST_TEACHER=Віка node server.js → writes PNG and exits. */
+async function previewMonthlyDigestPngAndExit() {
+  const teacherQuery = String(process.env.PREVIEW_MONTHLY_DIGEST_TEACHER || "").trim();
+  if (!teacherQuery) return false;
+  if (!supabaseAdmin) {
+    console.error("[preview-monthly-digest] supabase not configured");
+    process.exit(1);
+  }
+  const outPath = path.resolve(
+    String(process.env.PREVIEW_MONTHLY_DIGEST_OUT || "").trim() ||
+      path.join(__dirname, `monthly-digest-${teacherQuery}.png`),
+  );
+  const {
+    formatMonthCompareLabel,
+    getCompletedMonthCompareRangesKyiv,
+    renderMonthlyDigestPng,
+  } = await import("./monthly-digest-png.js");
+  const { writeFileSync } = await import("fs");
+
+  const { data: teachers, error } = await supabaseAdmin
+    .from("teachers")
+    .select("id, name")
+    .ilike("name", `%${teacherQuery}%`)
+    .limit(5);
+  if (error) throw new Error(error.message);
+  const teacher = (teachers || []).find((t) => String(t.name || "").trim() === teacherQuery) || teachers?.[0];
+  if (!teacher) {
+    console.error(`[preview-monthly-digest] teacher not found: ${teacherQuery}`);
+    process.exit(1);
+  }
+
+  const ranges = getCompletedMonthCompareRangesKyiv();
+  const dateSubtitle = formatMonthCompareLabel(ranges.current, ranges.previous);
+  const [overallCurrent, overallPrev, current, previous] = await Promise.all([
+    computeMonthlyDigestOverall(supabaseAdmin, {
+      fromIso: ranges.current.fromIso,
+      toIso: ranges.current.toIso,
+      fromDate: ranges.current.fromDate,
+      toDate: ranges.current.toDate,
+    }),
+    computeMonthlyDigestOverall(supabaseAdmin, {
+      fromIso: ranges.previous.fromIso,
+      toIso: ranges.previous.toIso,
+      fromDate: ranges.previous.fromDate,
+      toDate: ranges.previous.toDate,
+    }),
+    computeTeacherLessonsJournal(supabaseAdmin, {
+      teacherId: String(teacher.id),
+      teacherName: String(teacher.name || ""),
+      fromIso: ranges.current.fromIso,
+      toIso: ranges.current.toIso,
+    }),
+    computeTeacherLessonsJournal(supabaseAdmin, {
+      teacherId: String(teacher.id),
+      teacherName: String(teacher.name || ""),
+      fromIso: ranges.previous.fromIso,
+      toIso: ranges.previous.toIso,
+    }),
+  ]);
+
+  const toSummary = (summary) => ({
+    lessonsCount: Number(summary?.lessonsCount) || 0,
+    uniquePeopleCount: Number(summary?.uniquePeopleCount) || 0,
+    totalPeopleCount: Number(summary?.peopleCount) || 0,
+    revenue: Number(summary?.revenue) || 0,
+    payout: Number(summary?.payout) || 0,
+  });
+
+  const teacherName = current.teacherName || teacher.name || "Викладач";
+  const png = await renderMonthlyDigestPng({
+    teacherName,
+    dateSubtitle,
+    teacherMonth: { current: toSummary(current.summary), previous: toSummary(previous.summary) },
+    overall: { current: overallCurrent, previous: overallPrev },
+  });
+  writeFileSync(outPath, png);
+  console.log(`[preview-monthly-digest] wrote ${outPath} teacher=${teacherName} label=${dateSubtitle} bytes=${png.length}`);
+  return true;
+}
+
+if (await previewMonthlyDigestPngAndExit()) {
+  process.exit(0);
+}
+
 startDailyLessonVoteCron({
   createDailyTimeEnv: lessonVoteDailyCreateCronTime,
   closeDailyTimeEnv: lessonVoteDailyCloseCronTime,

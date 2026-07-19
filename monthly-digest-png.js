@@ -62,6 +62,10 @@ export function conductedShare(conducted, scheduled) {
 export { percentChange, formatPercentLabel, formatCompactNumber, barHeights };
 
 const FONT = "Inter, Arial, sans-serif";
+const GAP = 16;
+const PAD = 24;
+const KPI_H = 136;
+const CHART_H = 120;
 
 function escapeXml(value) {
   return String(value ?? "")
@@ -92,10 +96,10 @@ function kpiBox({ x, y, w, h, label, cur, prev, money = false, raw = false }) {
   const fmt = (v) => (v == null ? "—" : raw ? String(v) : formatCompactNumber(v, { money }));
   return `
     <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="#1f2937" stroke="#374151"/>
-    <text x="${x + w / 2}" y="${y + 22}" text-anchor="middle" fill="#9ca3af" font-size="11" font-weight="700">${escapeXml(label)}</text>
-    <text x="${x + w / 2}" y="${y + 52}" text-anchor="middle" fill="${trendColor(pct)}" font-size="24" font-weight="900">${escapeXml(formatPercentLabel(pct))}</text>
-    <text x="${x + w / 2}" y="${y + 76}" text-anchor="middle" fill="#e5e7eb" font-size="15" font-weight="700">${escapeXml(fmt(cur))}</text>
-    <text x="${x + w / 2}" y="${y + 94}" text-anchor="middle" fill="#64748b" font-size="11">було ${escapeXml(fmt(prev))}</text>`;
+    <text x="${x + w / 2}" y="${y + 30}" text-anchor="middle" fill="#9ca3af" font-size="11" font-weight="700">${escapeXml(label)}</text>
+    <text x="${x + w / 2}" y="${y + 60}" text-anchor="middle" fill="${trendColor(pct)}" font-size="24" font-weight="900">${escapeXml(formatPercentLabel(pct))}</text>
+    <text x="${x + w / 2}" y="${y + 88}" text-anchor="middle" fill="#e5e7eb" font-size="15" font-weight="700">${escapeXml(fmt(cur))}</text>
+    <text x="${x + w / 2}" y="${y + 112}" text-anchor="middle" fill="#64748b" font-size="11">було ${escapeXml(fmt(prev))}</text>`;
 }
 
 function legendTwoLine({ x, y, prevLabel, curLabel, curColor }) {
@@ -106,22 +110,25 @@ function legendTwoLine({ x, y, prevLabel, curLabel, curColor }) {
 
 /** Grouped bar-chart comparing the 5 tracked metrics, prev (grey) vs current (curColor). */
 function categoryBarsChart({ x, y, w, h, current, previous, curColor, metricsList, showLabel = true }) {
-  const labelH = showLabel ? 22 : 0;
-  const catLabelH = 16;
-  const barsH = Math.max(10, h - labelH - catLabelH);
+  const inset = 14;
+  const labelH = showLabel ? 24 : 8;
+  const catLabelH = 18;
+  const barsH = Math.max(10, h - labelH - catLabelH - 4);
   const baseline = y + labelH + barsH;
-  const slotW = w / metricsList.length;
-  const barW = Math.max(8, Math.min(24, slotW * 0.28));
+  const innerX = x + inset;
+  const innerW = w - inset * 2;
+  const slotW = innerW / metricsList.length;
+  const barW = Math.max(8, Math.min(22, slotW * 0.28));
   const bars = metricsList.map(([label, key], i) => {
     const heights = barHeights(metric(previous, key), metric(current, key), barsH);
-    const cx = x + i * slotW + slotW / 2;
+    const cx = innerX + i * slotW + slotW / 2;
     return `
       <rect x="${cx - barW - 3}" y="${baseline - heights.prev}" width="${barW}" height="${heights.prev}" rx="3" fill="#64748b"/>
       <rect x="${cx + 3}" y="${baseline - heights.cur}" width="${barW}" height="${heights.cur}" rx="3" fill="${curColor}"/>
       <text x="${cx}" y="${baseline + 14}" text-anchor="middle" fill="#94a3b8" font-size="11">${escapeXml(label)}</text>`;
   }).join("");
   const label = showLabel
-    ? `<text x="${x}" y="${y + 14}" fill="#9ca3af" font-size="11" font-weight="700">ПОРІВНЯННЯ З ПОПЕРЕДНІМ МІСЯЦЕМ</text>`
+    ? `<text x="${innerX}" y="${y + 18}" fill="#9ca3af" font-size="11" font-weight="700">ПОРІВНЯННЯ З ПОПЕРЕДНІМ МІСЯЦЕМ</text>`
     : "";
   return `${label}${bars}`;
 }
@@ -131,58 +138,60 @@ function lessonsProgressCard({ x, y, w, h, conducted, scheduled, pct }) {
   const scheduledLabel = scheduled == null ? "—" : String(scheduled);
   const pctLabel = pct == null ? "—" : `${pct}%`;
   const barPct = pct == null ? 0 : Math.max(0, Math.min(100, pct));
-  const barW = w - 32;
+  const barW = w - 40;
   return `
     <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="#1f2937" stroke="#38bdf8" stroke-opacity="0.25"/>
-    <text x="${x + 16}" y="${y + 22}" fill="#9ca3af" font-size="11" font-weight="700">УРОКИ ПРОВЕДЕНО</text>
-    <text x="${x + 16}" y="${y + 54}" fill="#f8fafc" font-size="26" font-weight="900">${escapeXml(String(conducted))}<tspan fill="#94a3b8" font-size="16" font-weight="600"> з ${escapeXml(scheduledLabel)}</tspan><tspan fill="#38bdf8" font-size="18" font-weight="800"> ${escapeXml(pctLabel)}</tspan></text>
-    <rect x="${x + 16}" y="${y + h - 18}" width="${barW}" height="8" rx="4" fill="#334155"/>
-    <rect x="${x + 16}" y="${y + h - 18}" width="${(barW * barPct) / 100}" height="8" rx="4" fill="#38bdf8"/>`;
+    <text x="${x + 20}" y="${y + 28}" fill="#9ca3af" font-size="11" font-weight="700">УРОКИ ПРОВЕДЕНО</text>
+    <text x="${x + 20}" y="${y + 62}" fill="#f8fafc" font-size="26" font-weight="900">${escapeXml(String(conducted))}<tspan fill="#94a3b8" font-size="16" font-weight="600"> з ${escapeXml(scheduledLabel)}</tspan><tspan fill="#38bdf8" font-size="18" font-weight="800"> ${escapeXml(pctLabel)}</tspan></text>
+    <rect x="${x + 20}" y="${y + h - 28}" width="${barW}" height="8" rx="4" fill="#334155"/>
+    <rect x="${x + 20}" y="${y + h - 28}" width="${(barW * barPct) / 100}" height="8" rx="4" fill="#38bdf8"/>`;
 }
 
 /** Direction/bank card: title + visits/revenue/avg rows. */
 function breakdownCard({ x, y, w, h, title, accentColor, visits, revenue, avg }) {
+  const tx = x + 22;
+  const vx = x + w - 18;
   return `
-    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="#1f2937"/>
-    <rect x="${x}" y="${y}" width="4" height="${h}" fill="${accentColor}"/>
-    <text x="${x + 14}" y="${y + 20}" fill="#e5e7eb" font-size="13" font-weight="800">${escapeXml(truncateText(title, 14))}</text>
-    <text x="${x + 14}" y="${y + 40}" fill="#9ca3af" font-size="11">візити</text>
-    <text x="${x + w - 12}" y="${y + 40}" text-anchor="end" fill="#e5e7eb" font-size="12" font-weight="700">${escapeXml(String(visits))}</text>
-    <text x="${x + 14}" y="${y + 58}" fill="#9ca3af" font-size="11">виручка</text>
-    <text x="${x + w - 12}" y="${y + 58}" text-anchor="end" fill="#e5e7eb" font-size="12" font-weight="700">${escapeXml(formatCompactNumber(revenue, { money: true }))}</text>
-    <text x="${x + 14}" y="${y + 76}" fill="#9ca3af" font-size="11">сер.</text>
-    <text x="${x + w - 12}" y="${y + 76}" text-anchor="end" fill="#e5e7eb" font-size="12" font-weight="700">${escapeXml(avg == null ? "—" : String(avg))}</text>`;
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="#1f2937"/>
+    <rect x="${x}" y="${y}" width="4" height="${h}" rx="2" fill="${accentColor}"/>
+    <text x="${tx}" y="${y + 28}" fill="#e5e7eb" font-size="13" font-weight="800">${escapeXml(truncateText(title, 14))}</text>
+    <text x="${tx}" y="${y + 54}" fill="#9ca3af" font-size="11">візити</text>
+    <text x="${vx}" y="${y + 54}" text-anchor="end" fill="#e5e7eb" font-size="12" font-weight="700">${escapeXml(String(visits))}</text>
+    <text x="${tx}" y="${y + 74}" fill="#9ca3af" font-size="11">виручка</text>
+    <text x="${vx}" y="${y + 74}" text-anchor="end" fill="#e5e7eb" font-size="12" font-weight="700">${escapeXml(formatCompactNumber(revenue, { money: true }))}</text>
+    <text x="${tx}" y="${y + 94}" fill="#9ca3af" font-size="11">сер.</text>
+    <text x="${vx}" y="${y + 94}" text-anchor="end" fill="#e5e7eb" font-size="12" font-weight="700">${escapeXml(avg == null ? "—" : String(avg))}</text>`;
 }
 
 /** Panel: title + lessonsCount share bar + legend + per-item breakdown cards. */
 function breakdownPanel({ x, y, w, h, title, items, colorFor, nameOf }) {
-  const pad = 16;
-  const innerX = x + pad;
-  const innerW = w - pad * 2;
+  const innerX = x + PAD;
+  const innerW = w - PAD * 2;
   const total = items.reduce((sum, it) => sum + metric(it, "lessonsCount"), 0);
-  const barY = y + pad + 26;
-  let cursor = innerX;
-  const segments = items.map((it, i) => {
-    const val = metric(it, "lessonsCount");
-    const segW = total > 0 ? Math.round((innerW * val) / total) : 0;
-    const rect = `<rect x="${cursor}" y="${barY}" width="${segW}" height="14" fill="${colorFor(it, i)}"/>`;
-    cursor += segW;
-    return rect;
-  }).join("");
-  const legendY = barY + 32;
+  const barY = y + PAD + 28;
+  const barH = 14;
+  const barRx = barH / 2;
+  // Draw back-to-front so ends stay pill-rounded without clipPath (resvg-friendly).
+  const widths = items.map((it) => (total > 0 ? Math.round((innerW * metric(it, "lessonsCount")) / total) : 0));
+  const segments = [];
+  let remainW = widths.reduce((a, b) => a + b, 0);
+  for (let i = items.length - 1; i >= 0; i--) {
+    segments.push(`<rect x="${innerX}" y="${barY}" width="${remainW}" height="${barH}" rx="${barRx}" fill="${colorFor(items[i], i)}"/>`);
+    remainW -= widths[i];
+  }
+  const legendY = barY + 36;
   const legendW = innerW / Math.max(items.length, 1);
   const legend = items.map((it, i) => {
     const val = metric(it, "lessonsCount");
     const pct = total > 0 ? Math.round((val / total) * 100) : 0;
     return `<text x="${innerX + i * legendW}" y="${legendY}" font-size="12"><tspan fill="${colorFor(it, i)}">■</tspan><tspan fill="#94a3b8"> ${escapeXml(nameOf(it))} ${pct}% · ${val}</tspan></text>`;
   }).join("");
-  const cardsY = legendY + 16;
-  const cardsH = y + h - pad - cardsY;
-  const cardGap = 10;
+  const cardsY = legendY + GAP;
+  const cardsH = y + h - PAD - cardsY;
   const count = Math.max(items.length, 1);
-  const cardW = (innerW - cardGap * (count - 1)) / count;
+  const cardW = (innerW - GAP * (count - 1)) / count;
   const cards = items.map((it, i) => breakdownCard({
-    x: innerX + i * (cardW + cardGap),
+    x: innerX + i * (cardW + GAP),
     y: cardsY,
     w: cardW,
     h: cardsH,
@@ -194,30 +203,32 @@ function breakdownPanel({ x, y, w, h, title, items, colorFor, nameOf }) {
   })).join("");
   return `
     <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14" fill="#172033" stroke="#293548"/>
-    <text x="${innerX}" y="${y + pad + 14}" fill="#f8fafc" font-size="16" font-weight="900">${escapeXml(title)}</text>
-    ${segments}
+    <text x="${innerX}" y="${y + PAD + 14}" fill="#f8fafc" font-size="16" font-weight="900">${escapeXml(title)}</text>
+    ${segments.join("")}
     ${legend}
     ${cards}`;
 }
 
-/** Single visit-kind card (single/abon): count, share%, abs delta vs previous. */
+/** Single visit-kind card (single/abon): count, share%, abs delta — content spans full card width. */
 function visitKindCard({ x, y, w, h, label, color, count, total, prevCount }) {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
   const delta = count - prevCount;
   const deltaLabel = delta === 0 ? "0" : delta > 0 ? `+${delta}` : `${delta}`;
+  const pad = 22;
+  const left = x + pad;
+  const right = x + w - pad;
+  const barY = y + h - 22;
+  const barW = w - pad * 2;
+  const fillW = Math.round((barW * pct) / 100);
   return `
-    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="#1f2937"/>
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="12" fill="#1f2937"/>
     <rect x="${x}" y="${y}" width="${w}" height="4" fill="${color}"/>
-    <text x="${x + 16}" y="${y + 26}" fill="${color}" font-size="12" font-weight="800">${escapeXml(label)}</text>
-    <text x="${x + 16}" y="${y + 54}" fill="#f8fafc" font-size="26" font-weight="900">${escapeXml(String(count))}<tspan fill="#94a3b8" font-size="13" font-weight="600"> візитів</tspan></text>
-    <text x="${x + 16}" y="${y + 72}" fill="#cbd5e1" font-size="13">${pct}% · <tspan fill="${trendColor(delta)}">${escapeXml(deltaLabel)}</tspan></text>`;
-}
-
-function stackedBar({ x, y, w, h, singlePct, colors }) {
-  const singleW = Math.round((w * singlePct) / 100);
-  return `
-    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" fill="${colors[1]}"/>
-    <rect x="${x}" y="${y}" width="${singleW}" height="${h}" rx="${h / 2}" fill="${colors[0]}"/>`;
+    <text x="${left}" y="${y + 34}" fill="${color}" font-size="13" font-weight="800">${escapeXml(label)}</text>
+    <text x="${right}" y="${y + 34}" text-anchor="end" fill="#e5e7eb" font-size="20" font-weight="900">${pct}%</text>
+    <text x="${left}" y="${y + 68}" fill="#f8fafc" font-size="28" font-weight="900">${escapeXml(String(count))}<tspan fill="#94a3b8" font-size="14" font-weight="600"> візитів</tspan></text>
+    <text x="${right}" y="${y + 68}" text-anchor="end" fill="${trendColor(delta)}" font-size="18" font-weight="800">${escapeXml(deltaLabel)}</text>
+    <rect x="${left}" y="${barY}" width="${barW}" height="8" rx="4" fill="#334155"/>
+    <rect x="${left}" y="${barY}" width="${fillW}" height="8" rx="4" fill="${color}"/>`;
 }
 
 const PERSONAL_METRICS = [
@@ -271,87 +282,82 @@ export function buildMonthlyDigestSvg(payload) {
   const singlePrev = metric(visitKindsPrev, "single");
   const abonPrev = metric(visitKindsPrev, "abon");
   const totalVisits = singleCur + abonCur;
-  const singlePct = totalVisits > 0 ? Math.round((singleCur / totalVisits) * 100) : 0;
 
-  // ===== Block 1: Особисте · місяць (largest, full width) =====
-  const b1 = { x: 32, y: 90, w: 1136, h: 482 };
-  const b1InnerX = b1.x + 20;
-  const b1InnerW = b1.w - 40;
-  const kpiRow1Y = b1.y + 20 + 26;
-  const kpiRow1H = 140;
-  const kpiColW = (b1InnerW - 4 * 16) / 5;
+  // ===== Block 1: Особисте · місяць =====
+  // PAD + title(28) + GAP + KPI_H + GAP + KPI_H + PAD
+  const b1 = { x: 32, y: 96, w: 1136, h: PAD + 28 + GAP + KPI_H + GAP + KPI_H + PAD };
+  const b1InnerX = b1.x + PAD;
+  const b1InnerW = b1.w - PAD * 2;
+  const kpiRow1Y = b1.y + PAD + 28 + GAP;
+  const kpiColW = Math.floor((b1InnerW - 4 * GAP) / 5);
   const personalKpis = PERSONAL_METRICS.map(([label, key, money], i) => kpiBox({
-    x: b1InnerX + i * (kpiColW + 16),
+    x: b1InnerX + i * (kpiColW + GAP),
     y: kpiRow1Y,
     w: kpiColW,
-    h: kpiRow1H,
+    h: KPI_H,
     label: label.toUpperCase(),
     cur: metric(tCur, key),
     prev: metric(tPrev, key),
     money,
   })).join("");
 
-  const row2Y = kpiRow1Y + kpiRow1H + 16;
-  const row2H = b1.y + b1.h - 20 - row2Y;
+  const row2Y = kpiRow1Y + KPI_H + GAP;
   const derivedKpis = [
-    kpiBox({ x: b1InnerX, y: row2Y, w: kpiColW, h: row2H, label: "СЕР. НА УРОК", cur: tCurAvg, prev: tPrevAvg, raw: true }),
-    kpiBox({ x: b1InnerX + kpiColW + 16, y: row2Y, w: kpiColW, h: row2H, label: "₴ / УРОК", cur: tCurRpl, prev: tPrevRpl, money: true }),
+    kpiBox({ x: b1InnerX, y: row2Y, w: kpiColW, h: KPI_H, label: "СЕР. НА УРОК", cur: tCurAvg, prev: tPrevAvg, raw: true }),
+    kpiBox({ x: b1InnerX + kpiColW + GAP, y: row2Y, w: kpiColW, h: KPI_H, label: "₴ / УРОК", cur: tCurRpl, prev: tPrevRpl, money: true }),
   ].join("");
-  const chartX = b1InnerX + (kpiColW + 16) * 2;
+  const chartX = b1InnerX + (kpiColW + GAP) * 2;
   const chartW = b1InnerX + b1InnerW - chartX;
   const personalChart = categoryBarsChart({
-    x: chartX, y: row2Y, w: chartW, h: row2H,
+    x: chartX, y: row2Y, w: chartW, h: KPI_H,
     current: tCur, previous: tPrev, curColor: "#a78bfa", metricsList: PERSONAL_METRICS,
   });
 
   const block1 = `
     <rect x="${b1.x}" y="${b1.y}" width="${b1.w}" height="${b1.h}" rx="18" fill="#172033" stroke="#293548"/>
-    <text x="${b1InnerX}" y="${b1.y + 20 + 22}" fill="#f8fafc" font-size="26" font-weight="900">Особисте · місяць</text>
-    ${legendTwoLine({ x: b1InnerX + b1InnerW, y: b1.y + 18, prevLabel: prevMonthWord || "попередній", curLabel: curMonthWord || "поточний", curColor: "#a78bfa" })}
+    <text x="${b1InnerX}" y="${b1.y + PAD + 18}" fill="#f8fafc" font-size="26" font-weight="900">Особисте · місяць</text>
+    ${legendTwoLine({ x: b1InnerX + b1InnerW, y: b1.y + PAD + 4, prevLabel: prevMonthWord || "попередній", curLabel: curMonthWord || "поточний", curColor: "#a78bfa" })}
     ${personalKpis}
     ${derivedKpis}
-    <rect x="${chartX}" y="${row2Y}" width="${chartW}" height="${row2H}" rx="10" fill="#1f2937" stroke="#374151"/>
+    <rect x="${chartX}" y="${row2Y}" width="${chartW}" height="${KPI_H}" rx="10" fill="#1f2937" stroke="#374151"/>
     ${personalChart}`;
 
   // ===== Block 2: BBM загалом =====
-  const b2 = { x: 32, y: b1.y + b1.h + 16, w: 1136, h: 270 };
-  const b2InnerX = b2.x + 20;
-  const b2InnerW = b2.w - 40;
-  const b2TitleY = b2.y + 20 + 22;
-  const row1Y = b2TitleY + 18;
-  const row1H = 100;
+  // PAD + title(28) + GAP + KPI_H + GAP + CHART_H + PAD
+  const b2 = { x: 32, y: b1.y + b1.h + GAP, w: 1136, h: PAD + 28 + GAP + KPI_H + GAP + CHART_H + PAD };
+  const b2InnerX = b2.x + PAD;
+  const b2InnerW = b2.w - PAD * 2;
+  const b2TitleY = b2.y + PAD + 18;
+  const row1Y = b2.y + PAD + 28 + GAP;
   const progressW = 380;
-  const kpiGap = 16;
-  const kpiW = (b2InnerW - progressW - kpiGap * 3) / 3;
+  const kpiW = (b2InnerW - progressW - GAP * 3) / 3;
   const bbmKpis = [
     ["ВИРУЧКА", metric(oCurSummary, "revenue"), metric(oPrevSummary, "revenue"), true, false],
     ["СЕР. / УРОК", oCurAvg, oPrevAvg, false, true],
     ["₴ / УРОК", oCurRpl, oPrevRpl, true, false],
   ].map(([label, cur, prev, money, raw], i) => kpiBox({
-    x: b2InnerX + progressW + kpiGap + i * (kpiW + kpiGap),
-    y: row1Y, w: kpiW, h: row1H, label, cur, prev, money, raw,
+    x: b2InnerX + progressW + GAP + i * (kpiW + GAP),
+    y: row1Y, w: kpiW, h: KPI_H, label, cur, prev, money, raw,
   })).join("");
 
-  const b2Row2Y = row1Y + row1H + 12;
-  const b2Row2H = b2.y + b2.h - 20 - b2Row2Y;
+  const b2Row2Y = row1Y + KPI_H + GAP;
   const bbmChart = categoryBarsChart({
-    x: b2InnerX, y: b2Row2Y, w: b2InnerW, h: b2Row2H,
+    x: b2InnerX, y: b2Row2Y, w: b2InnerW, h: CHART_H,
     current: oCurSummary, previous: oPrevSummary, curColor: "#38bdf8", metricsList: PERSONAL_METRICS, showLabel: false,
   });
 
   const block2 = `
     <rect x="${b2.x}" y="${b2.y}" width="${b2.w}" height="${b2.h}" rx="16" fill="#172033" stroke="#293548"/>
     <text x="${b2InnerX}" y="${b2TitleY}" fill="#f8fafc" font-size="22" font-weight="900">BBM загалом</text>
-    ${legendTwoLine({ x: b2InnerX + b2InnerW, y: b2.y + 16, prevLabel: prevMonthWord || "попередній", curLabel: curMonthWord || "поточний", curColor: "#38bdf8" })}
-    ${lessonsProgressCard({ x: b2InnerX, y: row1Y, w: progressW, h: row1H, conducted: oConducted, scheduled: oScheduled, pct: oSharePct })}
+    ${legendTwoLine({ x: b2InnerX + b2InnerW, y: b2.y + PAD, prevLabel: prevMonthWord || "попередній", curLabel: curMonthWord || "поточний", curColor: "#38bdf8" })}
+    ${lessonsProgressCard({ x: b2InnerX, y: row1Y, w: progressW, h: KPI_H, conducted: oConducted, scheduled: oScheduled, pct: oSharePct })}
     ${bbmKpis}
-    <rect x="${b2InnerX}" y="${b2Row2Y}" width="${b2InnerW}" height="${b2Row2H}" rx="10" fill="#1f2937" stroke="#374151"/>
+    <rect x="${b2InnerX}" y="${b2Row2Y}" width="${b2InnerW}" height="${CHART_H}" rx="10" fill="#1f2937" stroke="#374151"/>
     ${bbmChart}`;
 
   // ===== Block 3: За напрямами | За берегами =====
-  const b3 = { x: 32, y: b2.y + b2.h + 16, w: 1136, h: 200 };
-  const panelGap = 16;
-  const panelW = (b3.w - panelGap) / 2;
+  const b3 = { x: 32, y: b2.y + b2.h + GAP, w: 1136, h: 240 };
+  const panelW = (b3.w - GAP) / 2;
   const directionsPanel = breakdownPanel({
     x: b3.x, y: b3.y, w: panelW, h: b3.h,
     title: "За напрямами · BBM",
@@ -360,7 +366,7 @@ export function buildMonthlyDigestSvg(payload) {
     nameOf: (it) => it.name,
   });
   const banksPanel = breakdownPanel({
-    x: b3.x + panelW + panelGap, y: b3.y, w: panelW, h: b3.h,
+    x: b3.x + panelW + GAP, y: b3.y, w: panelW, h: b3.h,
     title: "За берегами · BBM",
     items: byBank,
     colorFor: (it) => bankColor(it.key),
@@ -369,34 +375,30 @@ export function buildMonthlyDigestSvg(payload) {
   const block3 = `${directionsPanel}${banksPanel}`;
 
   // ===== Block 4: Разові vs абонемент =====
-  const b4 = { x: 32, y: b3.y + b3.h + 16, w: 1136, h: 170 };
-  const b4InnerX = b4.x + 20;
-  const b4InnerW = b4.w - 40;
-  const b4TitleY = b4.y + 20 + 22;
-  const cardsY = b4TitleY + 14;
-  const cardsH = 70;
-  const midW = 80;
-  const cardW = (b4InnerW - midW - 32) / 2;
+  // PAD + title(28) + GAP + cardsH + PAD
+  const cardsH = 112;
+  const b4 = { x: 32, y: b3.y + b3.h + GAP, w: 1136, h: PAD + 28 + GAP + cardsH + PAD };
+  const b4InnerX = b4.x + PAD;
+  const b4InnerW = b4.w - PAD * 2;
+  const b4TitleY = b4.y + PAD + 18;
+  const cardsY = b4.y + PAD + 28 + GAP;
+  const cardW = (b4InnerW - GAP) / 2;
   const singleX = b4InnerX;
-  const midX = singleX + cardW + 16;
-  const abonX = midX + midW + 16;
-  const barY = cardsY + cardsH + 12;
+  const abonX = singleX + cardW + GAP;
 
   const block4 = `
     <rect x="${b4.x}" y="${b4.y}" width="${b4.w}" height="${b4.h}" rx="16" fill="#172033" stroke="#293548"/>
     <text x="${b4InnerX}" y="${b4TitleY}" fill="#f8fafc" font-size="22" font-weight="900">Разові vs абонемент · BBM</text>
-    <text x="${b4InnerX + b4InnerW}" y="${b4.y + 20 + 14}" text-anchor="end" fill="#64748b" font-size="13">візити · vs ${escapeXml(prevMonthWord || "попередній")}</text>
+    <text x="${b4InnerX + b4InnerW}" y="${b4.y + PAD + 14}" text-anchor="end" fill="#64748b" font-size="13">${escapeXml(String(totalVisits))} візитів · vs ${escapeXml(prevMonthWord || "попередній")}</text>
     ${visitKindCard({ x: singleX, y: cardsY, w: cardW, h: cardsH, label: "РАЗОВІ", color: "#fbbf24", count: singleCur, total: totalVisits, prevCount: singlePrev })}
-    <text x="${midX + midW / 2}" y="${cardsY + cardsH / 2 - 4}" text-anchor="middle" fill="#64748b" font-size="12" font-weight="700">з</text>
-    <text x="${midX + midW / 2}" y="${cardsY + cardsH / 2 + 12}" text-anchor="middle" fill="#64748b" font-size="12" font-weight="700">${escapeXml(String(totalVisits))}</text>
-    ${visitKindCard({ x: abonX, y: cardsY, w: cardW, h: cardsH, label: "АБОНЕМЕНТ", color: "#818cf8", count: abonCur, total: totalVisits, prevCount: abonPrev })}
-    ${stackedBar({ x: b4InnerX, y: barY, w: b4InnerW, h: 10, singlePct, colors: ["#fbbf24", "#818cf8"] })}`;
+    ${visitKindCard({ x: abonX, y: cardsY, w: cardW, h: cardsH, label: "АБОНЕМЕНТ", color: "#818cf8", count: abonCur, total: totalVisits, prevCount: abonPrev })}`;
 
-  return `<svg width="1200" height="1280" viewBox="0 0 1200 1280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="BBM monthly digest" font-family="${FONT}">
-  <rect width="1200" height="1280" fill="#111827"/>
-  <text x="32" y="58" fill="#c4b5fd" font-size="32" font-weight="900">BBM · Місячний дайджест</text>
-  <text x="32" y="86" fill="#94a3b8" font-size="18">${dateSubtitle}</text>
-  <text x="1168" y="66" text-anchor="end" fill="#e5e7eb" font-size="22" font-weight="800">${teacherName}</text>
+  const svgH = b4.y + b4.h + 32;
+  return `<svg width="1200" height="${svgH}" viewBox="0 0 1200 ${svgH}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="BBM monthly digest" font-family="${FONT}">
+  <rect width="1200" height="${svgH}" fill="#111827"/>
+  <text x="32" y="52" fill="#c4b5fd" font-size="32" font-weight="900">BBM · Місячний дайджест</text>
+  <text x="32" y="80" fill="#94a3b8" font-size="18">${dateSubtitle}</text>
+  <text x="1168" y="60" text-anchor="end" fill="#e5e7eb" font-size="22" font-weight="800">${teacherName}</text>
   <g>${block1}</g>
   <g>${block2}</g>
   <g>${block3}</g>
