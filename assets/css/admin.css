@@ -1361,6 +1361,10 @@ body.admin-modal-open {
   gap: 6px;
 }
 
+.admin-lesson-finance__stats--with-discount {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .admin-lesson-finance__stat {
   padding: 8px 10px;
   border-radius: 10px;
@@ -1372,6 +1376,15 @@ body.admin-modal-open {
 .admin-lesson-finance__stat--accent {
   background: linear-gradient(135deg, rgba(116, 134, 47, 0.1) 0%, rgba(255, 255, 255, 0.92) 100%);
   border-color: rgba(116, 134, 47, 0.3);
+}
+
+.admin-lesson-finance__stat--discount {
+  background: linear-gradient(135deg, rgba(163, 95, 26, 0.12) 0%, rgba(255, 255, 255, 0.92) 100%);
+  border-color: rgba(163, 95, 26, 0.28);
+}
+
+.admin-lesson-finance__stat--discount .admin-lesson-finance__stat-value {
+  color: #a35f1a;
 }
 
 .admin-lesson-finance__stat-label {
@@ -1438,11 +1451,22 @@ body.admin-modal-open {
   background: rgba(255, 255, 255, 0.88);
 }
 
+.admin-lesson-finance__student--discounted {
+  background: linear-gradient(90deg, rgba(163, 95, 26, 0.08) 0%, rgba(255, 255, 255, 0.92) 55%);
+}
+
 .admin-lesson-finance__student .admin-visit-journal__kind {
   min-width: 2rem;
   height: 1.3rem;
   padding: 0 5px;
   font-size: 0.58rem;
+}
+
+.admin-lesson-finance__student-mid {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .admin-lesson-finance__student-name {
@@ -1455,12 +1479,45 @@ body.admin-modal-open {
   min-width: 0;
 }
 
+.admin-lesson-finance__discount-chip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #8a4e14;
+  background: rgba(163, 95, 26, 0.14);
+  border: 1px solid rgba(163, 95, 26, 0.28);
+}
+
+.admin-lesson-finance__student-amount-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0;
+  line-height: 1.15;
+}
+
+.admin-lesson-finance__student-base {
+  font-size: 0.62rem;
+  color: var(--brown-light);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
 .admin-lesson-finance__student-amount {
   font-family: var(--ff-display);
   font-weight: 700;
   font-size: 0.82rem;
   color: var(--brown-dark);
   white-space: nowrap;
+}
+
+.admin-lesson-finance__student--discounted .admin-lesson-finance__student-amount {
+  color: #8a4e14;
 }
 
 .admin-lesson-finance__empty {
@@ -1545,6 +1602,201 @@ body.admin-modal-open {
   color: #b04545;
 }
 
+/* ── LESSON DISCOUNT MODAL ── */
+#lessonDiscountModal.admin-modal {
+  align-items: center;
+  overflow: hidden;
+  padding: 12px;
+}
+
+.admin-lesson-discount-dialog {
+  max-height: min(92vh, 760px);
+  overflow: hidden;
+}
+
+.admin-lesson-discount-dialog .admin-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 16px 14px;
+  overflow: hidden;
+}
+
+.admin-lesson-discount__hint {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--brown-mid);
+  background: linear-gradient(135deg, rgba(163, 95, 26, 0.08) 0%, rgba(255, 255, 255, 0.7) 100%);
+  border: 1px solid rgba(163, 95, 26, 0.18);
+}
+
+.admin-lesson-discount__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  max-height: min(52vh, 420px);
+  padding-right: 2px;
+}
+
+.admin-lesson-discount__row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--admin-panel-border);
+  background: rgba(255, 255, 255, 0.82);
+  transition: border-color var(--admin-transition), background var(--admin-transition);
+}
+
+.admin-lesson-discount__row.has-discount {
+  border-color: rgba(163, 95, 26, 0.35);
+  background: linear-gradient(135deg, rgba(163, 95, 26, 0.07) 0%, rgba(255, 255, 255, 0.9) 70%);
+}
+
+.admin-lesson-discount__row-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-lesson-discount__name {
+  font-size: 0.88rem;
+  font-weight: 650;
+  color: var(--brown-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.admin-lesson-discount__base {
+  font-family: var(--ff-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--brown-light);
+  white-space: nowrap;
+}
+
+.admin-lesson-discount__controls {
+  display: grid;
+  grid-template-columns: auto minmax(72px, 96px) minmax(72px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-lesson-discount__seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 9px;
+  background: rgba(241, 230, 221, 0.7);
+  border: 1px solid rgba(232, 217, 205, 0.9);
+}
+
+.admin-lesson-discount__seg-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  min-width: 2rem;
+  height: 1.85rem;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-family: var(--ff-display);
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: var(--brown-light);
+  cursor: pointer;
+  transition: background var(--admin-transition), color var(--admin-transition);
+}
+
+.admin-lesson-discount__seg-btn.is-active {
+  background: #fff;
+  color: #8a4e14;
+  box-shadow: var(--admin-shadow-xs);
+}
+
+.admin-lesson-discount__value {
+  width: 100%;
+  height: 2.05rem;
+  padding: 0 10px;
+  border-radius: 9px;
+  border: 1px solid var(--admin-panel-border);
+  background: var(--admin-input-bg);
+  color: var(--brown-dark);
+  font-family: var(--ff-display);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.admin-lesson-discount__value:focus {
+  outline: none;
+  border-color: rgba(163, 95, 26, 0.45);
+  box-shadow: 0 0 0 3px rgba(163, 95, 26, 0.16);
+}
+
+.admin-lesson-discount__preview {
+  font-family: var(--ff-display);
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--brown-dark);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.admin-lesson-discount__preview.is-discounted {
+  color: #8a4e14;
+}
+
+.admin-lesson-discount__clear {
+  appearance: none;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--brown-light);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.admin-lesson-discount__clear:hover {
+  background: rgba(176, 69, 69, 0.08);
+  color: #b04545;
+  border-color: rgba(176, 69, 69, 0.2);
+}
+
+.admin-lesson-discount__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+  border-top: 1px solid var(--admin-panel-border);
+}
+
+.admin-lesson-discount__summary {
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: #8a4e14;
+}
+
+@media (max-width: 640px) {
+  .admin-lesson-discount__controls {
+    grid-template-columns: auto minmax(64px, 1fr) auto;
+  }
+
+  .admin-lesson-discount__preview {
+    grid-column: 1 / -1;
+    text-align: left;
+    padding-left: 2px;
+  }
+}
+
 @media (max-width: 640px) {
   #lessonFinanceModal.admin-modal {
     padding: 8px;
@@ -1558,6 +1810,10 @@ body.admin-modal-open {
   .admin-lesson-finance__stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 4px;
+  }
+
+  .admin-lesson-finance__stats--with-discount {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .admin-lesson-finance__stat {
@@ -3368,6 +3624,19 @@ body[data-admin-page] .btn--ghost:active {
   flex: 0 0 auto;
   min-width: 38px;
   font-weight: 700;
+}
+
+.lesson-card__btn--discount {
+  flex: 0 0 auto;
+  min-width: 38px;
+  font-weight: 800;
+  font-family: var(--ff-display);
+  color: #a35f1a;
+}
+
+.lesson-card__btn--discount:hover {
+  color: #7a4512;
+  background: rgba(163, 95, 26, 0.1);
 }
 
 .lesson-card__btn--del {

@@ -868,6 +868,15 @@ function ensureLessonFinanceModalWired() {
 
 function mountLessonFinanceSummary(container, summary) {
   if (!container) return;
+  const discount = Number(summary.totalDiscountUah) || 0;
+  const discountStat =
+    discount > 0
+      ? `<div class="admin-lesson-finance__stat admin-lesson-finance__stat--discount">
+      <div class="admin-lesson-finance__stat-label">Знижки</div>
+      <div class="admin-lesson-finance__stat-value">− ${escapeHtml(fmtMoney(discount))}</div>
+    </div>`
+      : "";
+  container.classList.toggle("admin-lesson-finance__stats--with-discount", discount > 0);
   container.innerHTML = `
     <div class="admin-lesson-finance__stat admin-lesson-finance__stat--accent">
       <div class="admin-lesson-finance__stat-label">Виручка</div>
@@ -881,7 +890,17 @@ function mountLessonFinanceSummary(container, summary) {
       <div class="admin-lesson-finance__stat-label">Разове</div>
       <div class="admin-lesson-finance__stat-value">${escapeHtml(fmtMoney(summary.singleRevenue))}</div>
     </div>
+    ${discountStat}
   `;
+}
+
+/** @param {any} row */
+function formatDiscountChip(row) {
+  if (!row?.discountKind || !(Number(row.discountUah) > 0)) return "";
+  if (row.discountKind === "percent") {
+    return `−${Number(row.discountValue)}%`;
+  }
+  return `−${fmtMoney(row.discountValue)}`;
 }
 
 /** @param {HTMLElement | null} container @param {any[]} students */
@@ -896,23 +915,45 @@ function mountLessonFinanceStudents(container, students) {
   const frag = document.createDocumentFragment();
   for (const row of students) {
     const isAbon = row.visitKind === "abon";
+    const hasDiscount = Number(row.discountUah) > 0;
     const item = document.createElement("div");
-    item.className = "admin-lesson-finance__student";
+    item.className = `admin-lesson-finance__student${hasDiscount ? " admin-lesson-finance__student--discounted" : ""}`;
 
     const kind = document.createElement("span");
     kind.className = `admin-visit-journal__kind admin-visit-journal__kind--${isAbon ? "abon" : "single"}`;
     kind.textContent = isAbon ? "А" : "Р";
 
+    const mid = document.createElement("div");
+    mid.className = "admin-lesson-finance__student-mid";
+
     const nameEl = document.createElement("div");
     nameEl.className = "admin-lesson-finance__student-name";
     nameEl.textContent = formatStudentLine(row.name, row.telegramUsername);
     nameEl.title = formatStudentLine(row.name, row.telegramUsername);
+    mid.appendChild(nameEl);
 
+    if (hasDiscount) {
+      const chip = document.createElement("span");
+      chip.className = "admin-lesson-finance__discount-chip";
+      chip.textContent = formatDiscountChip(row);
+      chip.title = `База ${fmtMoney(row.baseAmountUah)} → ${fmtMoney(row.amountUah)}`;
+      mid.appendChild(chip);
+    }
+
+    const amountWrap = document.createElement("div");
+    amountWrap.className = "admin-lesson-finance__student-amount-wrap";
+    if (hasDiscount && Number(row.baseAmountUah) !== Number(row.amountUah)) {
+      const base = document.createElement("span");
+      base.className = "admin-lesson-finance__student-base";
+      base.textContent = fmtMoney(row.baseAmountUah);
+      amountWrap.appendChild(base);
+    }
     const amount = document.createElement("div");
     amount.className = "admin-lesson-finance__student-amount";
     amount.textContent = fmtMoney(row.amountUah);
+    amountWrap.appendChild(amount);
 
-    item.append(kind, nameEl, amount);
+    item.append(kind, mid, amountWrap);
     frag.appendChild(item);
   }
   container.appendChild(frag);
@@ -989,6 +1030,258 @@ async function openLessonFinanceModal(row) {
   } catch (err) {
     if (summaryEl) {
       summaryEl.innerHTML = `<p class="admin-lesson-finance__empty">${escapeHtml(err?.message || String(err))}</p>`;
+    }
+    showDashError(err?.message || String(err));
+  }
+
+  modal.querySelector(".admin-modal__close")?.focus();
+}
+
+/** @type {object | null} */
+let editingDiscountLessonRow = null;
+let lessonDiscountModalWired = false;
+
+function closeLessonDiscountModal() {
+  const modal = maybeEl("lessonDiscountModal");
+  if (!modal) return;
+  modal.classList.add("admin-hide");
+  modal.setAttribute("aria-hidden", "true");
+  editingDiscountLessonRow = null;
+  if (
+    (!maybeEl("lessonEditModal") || maybeEl("lessonEditModal")?.classList.contains("admin-hide")) &&
+    (!maybeEl("lessonFinanceModal") || maybeEl("lessonFinanceModal")?.classList.contains("admin-hide"))
+  ) {
+    document.body.classList.remove("admin-modal-open");
+  }
+}
+
+function ensureLessonDiscountModalWired() {
+  if (lessonDiscountModalWired) return;
+  const modal = maybeEl("lessonDiscountModal");
+  if (!modal) return;
+  lessonDiscountModalWired = true;
+
+  modal.querySelectorAll("[data-admin-modal-close]").forEach((node) => {
+    node.addEventListener("click", () => closeLessonDiscountModal());
+  });
+  maybeEl("lessonDiscountSaveBtn")?.addEventListener("click", () => saveLessonDiscounts());
+}
+
+/**
+ * @param {HTMLElement | null} container
+ * @param {any[]} students
+ */
+function mountLessonDiscountEditor(container, students) {
+  if (!container) return;
+  container.innerHTML = "";
+  if (!students.length) {
+    container.innerHTML = `<p class="admin-lesson-finance__empty">Немає відвідувачів. Спочатку додайте учнів у «Змінити».</p>`;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const row of students) {
+    const sid = String(row.studentId || "").trim();
+    if (!sid) continue;
+    const isAbon = row.visitKind === "abon";
+    const kind = row.discountKind === "uah" ? "uah" : row.discountKind === "percent" ? "percent" : "percent";
+    const value =
+      row.discountKind && row.discountValue != null && Number(row.discountValue) > 0
+        ? String(row.discountValue)
+        : "";
+
+    const item = document.createElement("div");
+    item.className = "admin-lesson-discount__row";
+    item.dataset.studentId = sid;
+
+    const head = document.createElement("div");
+    head.className = "admin-lesson-discount__row-head";
+
+    const badge = document.createElement("span");
+    badge.className = `admin-visit-journal__kind admin-visit-journal__kind--${isAbon ? "abon" : "single"}`;
+    badge.textContent = isAbon ? "А" : "Р";
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "admin-lesson-discount__name";
+    nameEl.textContent = formatStudentLine(row.name, row.telegramUsername);
+    nameEl.title = formatStudentLine(row.name, row.telegramUsername);
+
+    const baseEl = document.createElement("div");
+    baseEl.className = "admin-lesson-discount__base";
+    baseEl.textContent = fmtMoney(row.baseAmountUah ?? row.amountUah);
+
+    head.append(badge, nameEl, baseEl);
+
+    const controls = document.createElement("div");
+    controls.className = "admin-lesson-discount__controls";
+
+    const seg = document.createElement("div");
+    seg.className = "admin-lesson-discount__seg";
+    seg.setAttribute("role", "group");
+    seg.setAttribute("aria-label", "Тип знижки");
+
+    const btnPercent = document.createElement("button");
+    btnPercent.type = "button";
+    btnPercent.className = "admin-lesson-discount__seg-btn";
+    btnPercent.dataset.kind = "percent";
+    btnPercent.textContent = "%";
+    btnPercent.title = "Відсотки";
+
+    const btnUah = document.createElement("button");
+    btnUah.type = "button";
+    btnUah.className = "admin-lesson-discount__seg-btn";
+    btnUah.dataset.kind = "uah";
+    btnUah.textContent = "₴";
+    btnUah.title = "Гривні";
+
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "0";
+    input.step = "0.01";
+    input.className = "admin-lesson-discount__value";
+    input.value = value;
+    input.setAttribute("aria-label", "Розмір знижки");
+
+    const preview = document.createElement("div");
+    preview.className = "admin-lesson-discount__preview";
+
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "admin-lesson-discount__clear";
+    clearBtn.title = "Прибрати знижку";
+    clearBtn.textContent = "✕";
+
+    const updatePreview = () => {
+      const raw = Number(input.value);
+      const activeKind = item.dataset.discountKind || "percent";
+      const base = Number(row.baseAmountUah ?? row.amountUah) || 0;
+      if (!Number.isFinite(raw) || raw <= 0) {
+        preview.textContent = fmtMoney(base);
+        preview.classList.remove("is-discounted");
+        item.classList.remove("has-discount");
+        return;
+      }
+      let amount = activeKind === "percent" ? base * (1 - raw / 100) : base - raw;
+      amount = Math.max(0, Math.round(amount * 100) / 100);
+      preview.textContent = fmtMoney(amount);
+      preview.classList.add("is-discounted");
+      item.classList.add("has-discount");
+    };
+
+    const setKind = (next) => {
+      item.dataset.discountKind = next;
+      btnPercent.classList.toggle("is-active", next === "percent");
+      btnUah.classList.toggle("is-active", next === "uah");
+      input.placeholder = next === "percent" ? "0–100" : "грн";
+      updatePreview();
+    };
+
+    btnPercent.addEventListener("click", () => setKind("percent"));
+    btnUah.addEventListener("click", () => setKind("uah"));
+    input.addEventListener("input", () => updatePreview());
+    clearBtn.addEventListener("click", () => {
+      input.value = "";
+      updatePreview();
+    });
+
+    seg.append(btnPercent, btnUah);
+    controls.append(seg, input, preview, clearBtn);
+    item.append(head, controls);
+    frag.appendChild(item);
+    setKind(kind);
+    if (value) updatePreview();
+  }
+  container.appendChild(frag);
+}
+
+function collectLessonDiscountPayload() {
+  const list = maybeEl("lessonDiscountList");
+  if (!list) return [];
+  /** @type {any[]} */
+  const out = [];
+  list.querySelectorAll(".admin-lesson-discount__row").forEach((row) => {
+    const studentId = String(row.dataset.studentId || "").trim();
+    if (!studentId) return;
+    const input = row.querySelector(".admin-lesson-discount__value");
+    const raw = Number(input?.value);
+    if (!Number.isFinite(raw) || raw <= 0) {
+      out.push({ student_id: studentId, clear: true });
+      return;
+    }
+    out.push({
+      student_id: studentId,
+      discount_kind: row.dataset.discountKind === "uah" ? "uah" : "percent",
+      discount_value: raw,
+    });
+  });
+  return out;
+}
+
+async function saveLessonDiscounts() {
+  const row = editingDiscountLessonRow;
+  if (!row?.id) return;
+  const btn = maybeEl("lessonDiscountSaveBtn");
+  if (btn) btn.disabled = true;
+  try {
+    const data = await fetchAdminJson(`/api/admin/lessons/${encodeURIComponent(row.id)}/discounts`, {
+      method: "PUT",
+      body: JSON.stringify({ discounts: collectLessonDiscountPayload() }),
+    });
+    const students = data.students || [];
+    mountLessonDiscountEditor(maybeEl("lessonDiscountList"), students);
+    const sumEl = maybeEl("lessonDiscountSummary");
+    const totalDisc = Number(data.summary?.totalDiscountUah) || 0;
+    if (sumEl) {
+      sumEl.textContent =
+        totalDisc > 0 ? `Разом знижок: − ${fmtMoney(totalDisc)}` : "Без знижок";
+    }
+    showDashOk("Знижки збережено");
+  } catch (err) {
+    showDashError(err?.message || String(err));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function openLessonDiscountModal(row) {
+  ensureLessonDiscountModalWired();
+  const modal = maybeEl("lessonDiscountModal");
+  const subEl = maybeEl("lessonDiscountModalSub");
+  const listEl = maybeEl("lessonDiscountList");
+  const sumEl = maybeEl("lessonDiscountSummary");
+  if (!modal || !row?.id) return;
+
+  editingDiscountLessonRow = row;
+  if (subEl) {
+    subEl.textContent = [
+      fmtKyivDateTime(row.starts_at),
+      lessonTeacherLabel(row),
+      lessonPlaceLabel(row),
+      lessonTypeLabel(row),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  modal.classList.remove("admin-hide");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("admin-modal-open");
+
+  if (listEl) listEl.innerHTML = '<p class="admin-lesson-finance__empty">Завантаження…</p>';
+  if (sumEl) sumEl.textContent = "";
+
+  try {
+    const data = await fetchAdminJson(`/api/admin/lessons/${encodeURIComponent(row.id)}/discounts`);
+    const students = (data.students || []).filter((s) => s.studentId);
+    mountLessonDiscountEditor(listEl, students);
+    const totalDisc = Number(data.summary?.totalDiscountUah) || 0;
+    if (sumEl) {
+      sumEl.textContent =
+        totalDisc > 0 ? `Разом знижок: − ${fmtMoney(totalDisc)}` : "Без знижок";
+    }
+  } catch (err) {
+    if (listEl) {
+      listEl.innerHTML = `<p class="admin-lesson-finance__empty">${escapeHtml(err?.message || String(err))}</p>`;
     }
     showDashError(err?.message || String(err));
   }
@@ -1097,6 +1390,12 @@ function renderLessonCardView(container, row, onEdit, onDelete) {
         title: "Фінанси заняття",
         className: "btn btn--ghost btn--sm lesson-card__btn lesson-card__btn--finance",
         onClick: () => openLessonFinanceModal(row),
+      },
+      {
+        label: "%",
+        title: "Знижки учнів",
+        className: "btn btn--ghost btn--sm lesson-card__btn lesson-card__btn--discount",
+        onClick: () => openLessonDiscountModal(row),
       },
       {
         label: "Змінити",

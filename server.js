@@ -16,6 +16,7 @@ import {
   rollbackVisitsForOccurrence,
 } from "./students-api.js";
 import { parsePlaceRiverBank, runDailyTeacherDigests, runWeeklyTeacherStatsDigests, runMonthlyTeacherStatsDigests, teacherMatchesBank, getCompletedWeekRangeKyiv } from "./admin-notifications.js";
+import { applyVisitDiscount, discountForStudent, normalizeDiscount } from "./lesson-discount.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
@@ -661,20 +662,81 @@ function pickAbonSubForStudentRevenue(ownByStudent, crossByStudent, studentId) {
 }
 
 /**
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {string} lessonId
+ * @returns {Promise<Map<string, { discount_kind: string, discount_value: number }>>}
+ */
+async function loadLessonDiscountsByStudent(supabaseAdmin, lessonId) {
+  const id = String(lessonId || "").trim();
+  /** @type {Map<string, { discount_kind: string, discount_value: number }>} */
+  const map = new Map();
+  if (!id) return map;
+  const { data, error } = await supabaseAdmin
+    .from("lesson_student_discounts")
+    .select("student_id, discount_kind, discount_value")
+    .eq("lesson_id", id);
+  if (error) throw new Error(error.message);
+  for (const row of data || []) {
+    const sid = String(row.student_id || "").trim();
+    if (!sid) continue;
+    map.set(sid, {
+      discount_kind: String(row.discount_kind || ""),
+      discount_value: Number(row.discount_value),
+    });
+  }
+  return map;
+}
+
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
+ * @param {string[]} lessonIds
+ * @returns {Promise<Map<string, Map<string, { discount_kind: string, discount_value: number }>>>}
+ */
+async function loadDiscountsByLessonIds(supabaseAdmin, lessonIds) {
+  /** @type {Map<string, Map<string, { discount_kind: string, discount_value: number }>>} */
+  const byLesson = new Map();
+  const ids = [...new Set((lessonIds || []).map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!ids.length) return byLesson;
+  const { data, error } = await supabaseAdmin
+    .from("lesson_student_discounts")
+    .select("lesson_id, student_id, discount_kind, discount_value")
+    .in("lesson_id", ids);
+  if (error) throw new Error(error.message);
+  for (const row of data || []) {
+    const lid = String(row.lesson_id || "").trim();
+    const sid = String(row.student_id || "").trim();
+    if (!lid || !sid) continue;
+    if (!byLesson.has(lid)) byLesson.set(lid, new Map());
+    byLesson.get(lid).set(sid, {
+      discount_kind: String(row.discount_kind || ""),
+      discount_value: Number(row.discount_value),
+    });
+  }
+  return byLesson;
+}
+
+/**
  * Виручка з фактичних відвідувань журналу (subscription_id на візиті).
  * @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin
  * @param {string} occurrenceId
  * @param {string} lessonTypeId
  * @param {Map<string, { single: number, abonUnit: number }>} priceByType
- * @returns {Promise<{ abonRevenue: number, singleRevenue: number, totalRevenue: number, abonCount: number, singleCount: number } | null>}
+ * @param {Map<string, { discount_kind?: string, discount_value?: number }> | null} [discountsByStudent]
+ * @returns {Promise<{ abonRevenue: number, singleRevenue: number, totalRevenue: number, abonCount: number, singleCount: number, totalDiscountUah: number } | null>}
  */
-async function computeLessonRevenueFromAttendedVisits(supabaseAdmin, occurrenceId, lessonTypeId, priceByType) {
+async function computeLessonRevenueFromAttendedVisits(
+  supabaseAdmin,
+  occurrenceId,
+  lessonTypeId,
+  priceByType,
+  discountsByStudent = null,
+) {
   const occId = String(occurrenceId || "").trim();
   if (!occId) return null;
 
   const { data: visits, error } = await supabaseAdmin
     .from("visits")
-    .select("vote_choice, subscriptions ( amount_uah, total_visits )")
+    .select("student_id, vote_choice, subscriptions ( amount_uah, total_visits )")
     .eq("lesson_vote_occurrence_id", occId)
     .eq("visit_status", "attended");
   if (error) throw new Error(error.message);
@@ -685,29 +747,33 @@ async function computeLessonRevenueFromAttendedVisits(supabaseAdmin, occurrenceI
   let singleRevenue = 0;
   let abonCount = 0;
   let singleCount = 0;
+  let totalDiscountUah = 0;
 
   for (const v of visits) {
     const isAbon = v.vote_choice === "abon";
-    let amount = isAbon ? subscriptionVisitUnitPrice(v.subscriptions) : prices.single;
-    if (isAbon && amount <= 0) amount = prices.abonUnit;
-    amount = Math.round(amount * 100) / 100;
+    let base = isAbon ? subscriptionVisitUnitPrice(v.subscriptions) : prices.single;
+    if (isAbon && base <= 0) base = prices.abonUnit;
+    const applied = applyVisitDiscount(base, discountForStudent(discountsByStudent, v.student_id));
+    totalDiscountUah += applied.discountUah;
     if (isAbon) {
-      abonRevenue += amount;
+      abonRevenue += applied.amountUah;
       abonCount += 1;
     } else {
-      singleRevenue += amount;
+      singleRevenue += applied.amountUah;
       singleCount += 1;
     }
   }
 
   abonRevenue = Math.round(abonRevenue * 100) / 100;
   singleRevenue = Math.round(singleRevenue * 100) / 100;
+  totalDiscountUah = Math.round(totalDiscountUah * 100) / 100;
   return {
     abonRevenue,
     singleRevenue,
     totalRevenue: Math.round((abonRevenue + singleRevenue) * 100) / 100,
     abonCount,
     singleCount,
+    totalDiscountUah,
   };
 }
 
@@ -838,6 +904,7 @@ async function computeLessonAbonRevenueForStats(supabaseAdmin, {
   votesByKind,
   priceByType,
   visitsByOccurrence,
+  discountsByStudent,
 }) {
   const prices = priceByType.get(lessonTypeId) || { single: 0, abonUnit: 0 };
   const staticAbonUnit = prices.abonUnit;
@@ -850,7 +917,8 @@ async function computeLessonAbonRevenueForStats(supabaseAdmin, {
     for (const visit of abonVisits) {
       let unitPrice = subscriptionVisitUnitPrice(visit.subscriptions);
       if (unitPrice <= 0) unitPrice = staticAbonUnit;
-      abonRevenue += unitPrice;
+      const applied = applyVisitDiscount(unitPrice, discountForStudent(discountsByStudent, visit.student_id));
+      abonRevenue += applied.amountUah;
     }
     return Math.round(abonRevenue * 100) / 100;
   }
@@ -982,7 +1050,7 @@ async function computeLessonFinanceBreakdown(supabaseAdmin, lessonId) {
   const placeId = String(lesson.place_id || "");
   const occurrenceId = String(lesson.lesson_vote_occurrence_id || "").trim();
 
-  const [pricesRes, smmRes, placePricesRes, visitsRes] = await Promise.all([
+  const [pricesRes, smmRes, placePricesRes, visitsRes, discountsByStudent] = await Promise.all([
     supabaseAdmin.from("prices").select("lesson_type_id, price_kind, visits_count, amount_uah"),
     supabaseAdmin.from("smm_prices").select("people_from, people_to, amount_uah").order("people_from", { ascending: true }),
     supabaseAdmin.from("places_prices").select("place_id, duration_minutes, amount_uah, effective_from"),
@@ -990,12 +1058,13 @@ async function computeLessonFinanceBreakdown(supabaseAdmin, lessonId) {
       ? supabaseAdmin
           .from("visits")
           .select(
-            "id, vote_choice, students ( display_name, telegram_username ), subscriptions ( amount_uah, total_visits )",
+            "id, student_id, vote_choice, students ( display_name, telegram_username ), subscriptions ( amount_uah, total_visits )",
           )
           .eq("lesson_vote_occurrence_id", occurrenceId)
           .eq("visit_status", "attended")
           .order("created_at", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
+    loadLessonDiscountsByStudent(supabaseAdmin, lessonId),
   ]);
 
   if (pricesRes.error) throw new Error(pricesRes.error.message);
@@ -1007,38 +1076,58 @@ async function computeLessonFinanceBreakdown(supabaseAdmin, lessonId) {
   const prices = priceByType.get(lessonTypeId) || { single: 0, abonUnit: 0 };
   const placePriceIndex = buildPlacePriceIndex(placePricesRes.data || []);
 
-  /** @type {Array<{ name: string, telegramUsername: string | null, visitKind: "abon" | "single", amountUah: number }>} */
+  /** @type {Array<{ studentId: string | null, name: string, telegramUsername: string | null, visitKind: "abon" | "single", baseAmountUah: number, amountUah: number, discountUah: number, discountKind: "percent" | "uah" | null, discountValue: number | null }>} */
   let studentRows = [];
   const visits = visitsRes.data || [];
 
   if (visits.length > 0) {
     for (const v of visits) {
       const isAbon = v.vote_choice === "abon";
-      let amount = isAbon ? subscriptionVisitUnitPrice(v.subscriptions) : prices.single;
-      if (isAbon && amount <= 0) amount = prices.abonUnit;
+      let base = isAbon ? subscriptionVisitUnitPrice(v.subscriptions) : prices.single;
+      if (isAbon && base <= 0) base = prices.abonUnit;
+      const applied = applyVisitDiscount(base, discountForStudent(discountsByStudent, v.student_id));
       studentRows.push({
+        studentId: v.student_id ? String(v.student_id) : null,
         name: String(v.students?.display_name || "").trim() || "—",
         telegramUsername: v.students?.telegram_username || null,
         visitKind: isAbon ? "abon" : "single",
-        amountUah: Math.round(amount * 100) / 100,
+        baseAmountUah: applied.baseAmountUah,
+        amountUah: applied.amountUah,
+        discountUah: applied.discountUah,
+        discountKind: applied.discountKind,
+        discountValue: applied.discountValue,
       });
     }
   } else {
-    studentRows = await buildStudentFinanceRowsFromSnapshot(supabaseAdmin, {
+    const snapshotRows = await buildStudentFinanceRowsFromSnapshot(supabaseAdmin, {
       lessonTypeId,
       voteSnapshot: lesson.vote_snapshot,
       priceByType,
     });
+    studentRows = snapshotRows.map((row) => ({
+      studentId: null,
+      name: row.name,
+      telegramUsername: row.telegramUsername,
+      visitKind: row.visitKind,
+      baseAmountUah: row.amountUah,
+      amountUah: row.amountUah,
+      discountUah: 0,
+      discountKind: null,
+      discountValue: null,
+    }));
   }
 
   let abonRevenue = 0;
   let singleRevenue = 0;
+  let totalDiscountUah = 0;
   for (const row of studentRows) {
     if (row.visitKind === "abon") abonRevenue += row.amountUah;
     else singleRevenue += row.amountUah;
+    totalDiscountUah += row.discountUah;
   }
   abonRevenue = Math.round(abonRevenue * 100) / 100;
   singleRevenue = Math.round(singleRevenue * 100) / 100;
+  totalDiscountUah = Math.round(totalDiscountUah * 100) / 100;
   const totalRevenue = Math.round((abonRevenue + singleRevenue) * 100) / 100;
 
   const peopleCount =
@@ -1055,6 +1144,7 @@ async function computeLessonFinanceBreakdown(supabaseAdmin, lessonId) {
 
   return {
     lesson: {
+      id: String(lesson.id),
       startsAt: lesson.starts_at,
       teacherName,
       placeName: lesson.places?.name?.trim() || "—",
@@ -1066,6 +1156,7 @@ async function computeLessonFinanceBreakdown(supabaseAdmin, lessonId) {
       totalRevenue,
       abonRevenue,
       singleRevenue,
+      totalDiscountUah,
       rent,
       smm,
       smmPool: smmRaw,
@@ -1134,6 +1225,9 @@ async function loadAdminStatsLessonsContext(supabaseAdmin, { fromIso, toIso }) {
     }
   }
 
+  const lessonIds = (lessonsRes.data || []).map((row) => String(row.id || "").trim()).filter(Boolean);
+  const discountsByLesson = await loadDiscountsByLessonIds(supabaseAdmin, lessonIds);
+
   const smmTeacher = smmTeacherRes.data
     ? { id: String(smmTeacherRes.data.id), name: String(smmTeacherRes.data.name || "").trim() || "SMM", chatId: smmTeacherRes.data.chat_id ? String(smmTeacherRes.data.chat_id) : null }
     : null;
@@ -1144,6 +1238,7 @@ async function loadAdminStatsLessonsContext(supabaseAdmin, { fromIso, toIso }) {
     smmRows,
     placePriceIndex,
     visitsByOccurrence,
+    discountsByLesson,
     smmTeacher,
   };
 }
@@ -1161,27 +1256,44 @@ async function computeLessonFinancialsForStats(supabaseAdmin, row, ctx) {
 
   const occurrenceId = String(row.lesson_vote_occurrence_id || "").trim();
   const attendedVisits = occurrenceId ? ctx.visitsByOccurrence.get(occurrenceId) || [] : [];
+  const discountsByStudent = ctx.discountsByLesson?.get(String(row.id || "")) || new Map();
 
   let singleCount;
   let abonPeopleCount;
+  let singleRevenue;
+  let abonRevenue;
+
   if (attendedVisits.length > 0) {
     singleCount = attendedVisits.filter((visit) => visit.vote_choice === "single").length;
     abonPeopleCount = attendedVisits.filter((visit) => visit.vote_choice === "abon").length;
+    // ponytail: with visits, sum per-student discounted amounts (not count × list price)
+    singleRevenue = 0;
+    abonRevenue = 0;
+    for (const visit of attendedVisits) {
+      const isAbon = visit.vote_choice === "abon";
+      let base = isAbon ? subscriptionVisitUnitPrice(visit.subscriptions) : prices.single;
+      if (isAbon && base <= 0) base = prices.abonUnit;
+      const applied = applyVisitDiscount(base, discountForStudent(discountsByStudent, visit.student_id));
+      if (isAbon) abonRevenue += applied.amountUah;
+      else singleRevenue += applied.amountUah;
+    }
+    singleRevenue = Math.round(singleRevenue * 100) / 100;
+    abonRevenue = Math.round(abonRevenue * 100) / 100;
   } else {
     singleCount = Math.max(0, Number(row.single_visitors_count) || 0);
     abonPeopleCount = Math.max(0, Number(row.abon_count) || 0);
+    singleRevenue = singleCount * prices.single;
+    const votesByKind = snapshotToVotesByKind(row.vote_snapshot);
+    abonRevenue = await computeLessonAbonRevenueForStats(supabaseAdmin, {
+      lessonRow: row,
+      lessonTypeId,
+      votesByKind,
+      priceByType: ctx.priceByType,
+      visitsByOccurrence: ctx.visitsByOccurrence,
+      discountsByStudent,
+    });
   }
   const peopleCount = singleCount + abonPeopleCount;
-
-  const singleRevenue = singleCount * prices.single;
-  const votesByKind = snapshotToVotesByKind(row.vote_snapshot);
-  const abonRevenue = await computeLessonAbonRevenueForStats(supabaseAdmin, {
-    lessonRow: row,
-    lessonTypeId,
-    votesByKind,
-    priceByType: ctx.priceByType,
-    visitsByOccurrence: ctx.visitsByOccurrence,
-  });
   const revenue = Math.round((singleRevenue + abonRevenue) * 100) / 100;
 
   const placeId = String(row.place_id || "");
@@ -1722,11 +1834,25 @@ async function computeConductingTeacherPayoutBreakdown(row, votesByKind) {
     }
 
     const priceByType = buildPriceByType(pricesRes.data || []);
+    let discountsByStudent = new Map();
+    try {
+      const { data: lessonForDiscount } = await supabaseAdmin
+        .from("lessons")
+        .select("id")
+        .eq("lesson_vote_occurrence_id", row?.id)
+        .maybeSingle();
+      if (lessonForDiscount?.id) {
+        discountsByStudent = await loadLessonDiscountsByStudent(supabaseAdmin, lessonForDiscount.id);
+      }
+    } catch (e) {
+      console.warn("computeConductingTeacherPayoutBreakdown discounts:", e?.message || e);
+    }
     const revenueFromVisits = await computeLessonRevenueFromAttendedVisits(
       supabaseAdmin,
       row?.id,
       lessonTypeId,
       priceByType,
+      discountsByStudent,
     );
     const revenueBreakdown =
       revenueFromVisits ||
@@ -4081,6 +4207,145 @@ app.get("/api/admin/lessons/:lessonId/finance", async (req, res) => {
   } catch (error) {
     console.error("admin lessons finance failed:", error);
     return res.status(500).json({ ok: false, error: error?.message || "Failed to load lesson finance." });
+  }
+});
+
+app.get("/api/admin/lessons/:lessonId/discounts", async (req, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+    }
+    const lessonId = String(req.params.lessonId || "").trim();
+    if (!lessonId) {
+      return res.status(400).json({ ok: false, error: "Missing lesson id." });
+    }
+    const breakdown = await computeLessonFinanceBreakdown(supabaseAdmin, lessonId);
+    return res.status(200).json({
+      ok: true,
+      lesson: breakdown.lesson,
+      students: breakdown.students,
+      summary: {
+        totalDiscountUah: breakdown.summary.totalDiscountUah,
+        totalRevenue: breakdown.summary.totalRevenue,
+      },
+    });
+  } catch (error) {
+    console.error("admin lessons discounts get failed:", error);
+    return res.status(500).json({ ok: false, error: error?.message || "Failed to load lesson discounts." });
+  }
+});
+
+app.put("/api/admin/lessons/:lessonId/discounts", async (req, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+    }
+    const lessonId = String(req.params.lessonId || "").trim();
+    if (!lessonId) {
+      return res.status(400).json({ ok: false, error: "Missing lesson id." });
+    }
+
+    const { data: lesson, error: lessonErr } = await supabaseAdmin
+      .from("lessons")
+      .select("id, lesson_vote_occurrence_id")
+      .eq("id", lessonId)
+      .maybeSingle();
+    if (lessonErr) throw new Error(lessonErr.message);
+    if (!lesson) {
+      return res.status(404).json({ ok: false, error: "Запис заняття не знайдено." });
+    }
+
+    const occurrenceId = String(lesson.lesson_vote_occurrence_id || "").trim();
+    if (!occurrenceId) {
+      return res.status(400).json({ ok: false, error: "У заняття немає журналу відвідувань для знижок." });
+    }
+
+    const { data: visitRows, error: visitErr } = await supabaseAdmin
+      .from("visits")
+      .select("student_id")
+      .eq("lesson_vote_occurrence_id", occurrenceId)
+      .eq("visit_status", "attended");
+    if (visitErr) throw new Error(visitErr.message);
+
+    const allowedStudents = new Set(
+      (visitRows || []).map((v) => String(v.student_id || "").trim()).filter(Boolean),
+    );
+    if (!allowedStudents.size) {
+      return res.status(400).json({ ok: false, error: "Немає відвідувачів для знижок." });
+    }
+
+    const rawList = Array.isArray(req.body?.discounts) ? req.body.discounts : null;
+    if (!rawList) {
+      return res.status(400).json({ ok: false, error: "Передайте discounts: [] у тілі JSON." });
+    }
+
+    /** @type {string[]} */
+    const toClear = [];
+    /** @type {Array<{ lesson_id: string, student_id: string, discount_kind: string, discount_value: number }>} */
+    const toUpsert = [];
+
+    for (const item of rawList) {
+      const studentId = String(item?.student_id || item?.studentId || "").trim();
+      if (!studentId) {
+        return res.status(400).json({ ok: false, error: "Кожен елемент discounts потребує student_id." });
+      }
+      if (!allowedStudents.has(studentId)) {
+        return res.status(400).json({
+          ok: false,
+          error: `Учень ${studentId} не є відвідувачем цього заняття.`,
+        });
+      }
+
+      const clear = Boolean(item?.clear) || item?.discount_kind === null || item?.discountKind === null;
+      if (clear) {
+        toClear.push(studentId);
+        continue;
+      }
+
+      const norm = normalizeDiscount({
+        discount_kind: item?.discount_kind ?? item?.discountKind,
+        discount_value: item?.discount_value ?? item?.discountValue,
+      });
+      if (!norm) {
+        return res.status(400).json({
+          ok: false,
+          error: `Некоректна знижка для учня ${studentId}. Вкажіть percent (1–100) або uah (>0).`,
+        });
+      }
+      toUpsert.push({
+        lesson_id: lessonId,
+        student_id: studentId,
+        discount_kind: norm.kind,
+        discount_value: norm.value,
+      });
+    }
+
+    if (toClear.length) {
+      const { error: delErr } = await supabaseAdmin
+        .from("lesson_student_discounts")
+        .delete()
+        .eq("lesson_id", lessonId)
+        .in("student_id", toClear);
+      if (delErr) throw new Error(delErr.message);
+    }
+
+    if (toUpsert.length) {
+      const { error: upErr } = await supabaseAdmin.from("lesson_student_discounts").upsert(toUpsert, {
+        onConflict: "lesson_id,student_id",
+      });
+      if (upErr) throw new Error(upErr.message);
+    }
+
+    const breakdown = await computeLessonFinanceBreakdown(supabaseAdmin, lessonId);
+    return res.status(200).json({
+      ok: true,
+      lesson: breakdown.lesson,
+      students: breakdown.students,
+      summary: breakdown.summary,
+    });
+  } catch (error) {
+    console.error("admin lessons discounts put failed:", error);
+    return res.status(500).json({ ok: false, error: error?.message || "Failed to save lesson discounts." });
   }
 });
 
