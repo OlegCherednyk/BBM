@@ -3523,7 +3523,20 @@ body[data-admin-page] .btn--ghost:active {
 .votes-conduct-teacher__name {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   line-height: 1.3;
+}
+
+.votes-conduct-teacher__name-text {
+  font-weight: 600;
+}
+
+.votes-conduct-teacher__tg {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--brown-light);
 }
 
 .votes-conduct-teacher__badge {

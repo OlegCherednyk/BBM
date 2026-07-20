@@ -130,7 +130,7 @@ let editingTeacherId = null;
 /** @type {{ chat_id: string, username: string | null, first_name: string | null, last_name: string | null }[]} */
 let cachedPrivateTelegramTargets = [];
 let votesBatchVoteWired = false;
-/** @type {{ id: string, name: string | null, chat_id?: string | null }[]} */
+/** @type {{ id: string, name: string | null, chat_id: string, telegram_username?: string | null }[]} */
 let cachedVotesConductTeachers = [];
 const LESSONS_PAGE_SIZE = 10;
 let lessonsPage = 1;
@@ -1241,12 +1241,30 @@ function voteCountFromSnapshot(snapshot, key) {
 
 async function ensureVotesConductTeachersLoaded() {
   if (cachedVotesConductTeachers.length) return cachedVotesConductTeachers;
-  const { data, error } = await supabase
-    .from("teachers")
-    .select("id, name, chat_id")
-    .order("sort_order", { ascending: true });
+  const [{ data, error }, targetsRes] = await Promise.all([
+    supabase.from("teachers").select("id, name, chat_id").order("sort_order", { ascending: true }),
+    supabase.from("telegram_chat_targets").select("chat_id, username").eq("chat_type", "private"),
+  ]);
   if (error) throw new Error(error.message);
-  cachedVotesConductTeachers = data || [];
+  if (targetsRes.error) throw new Error(targetsRes.error.message);
+
+  const usernameByChatId = new Map(
+    (targetsRes.data || []).map((row) => [String(row.chat_id), row.username || null]),
+  );
+
+  cachedVotesConductTeachers = (data || [])
+    .map((t) => {
+      const chatId = t.chat_id != null ? String(t.chat_id).trim() : "";
+      if (!chatId) return null;
+      const username = usernameByChatId.get(chatId);
+      return {
+        id: t.id,
+        name: t.name,
+        chat_id: chatId,
+        telegram_username: username ? String(username).replace(/^@/, "") : null,
+      };
+    })
+    .filter(Boolean);
   return cachedVotesConductTeachers;
 }
 
@@ -1282,7 +1300,8 @@ function renderVotesConductTeacherList(teachers, selectedId, currentConductingNa
   list.replaceChildren();
 
   if (!teachers?.length) {
-    list.innerHTML = '<p class="votes-conduct-teachers__empty">Немає викладачів у списку.</p>';
+    list.innerHTML =
+      '<p class="votes-conduct-teachers__empty">Немає викладачів з привʼязаним Telegram-чатом.<br />Спочатку додайте chat_id у картці викладача.</p>';
     return;
   }
 
@@ -1300,11 +1319,20 @@ function renderVotesConductTeacherList(teachers, selectedId, currentConductingNa
     mark.className = "votes-conduct-teacher__mark";
     mark.setAttribute("aria-hidden", "true");
 
+    const nameWrap = document.createElement("span");
+    nameWrap.className = "votes-conduct-teacher__name";
     const name = document.createElement("span");
-    name.className = "votes-conduct-teacher__name";
+    name.className = "votes-conduct-teacher__name-text";
     name.textContent = t.name?.trim() || "—";
+    nameWrap.appendChild(name);
+    if (t.telegram_username) {
+      const nick = document.createElement("span");
+      nick.className = "votes-conduct-teacher__tg";
+      nick.textContent = `@${t.telegram_username}`;
+      nameWrap.appendChild(nick);
+    }
 
-    btn.append(mark, name);
+    btn.append(mark, nameWrap);
 
     const teacherName = t.name?.trim() || "";
     if (currentConductingName && teacherName && currentConductingName === teacherName) {
