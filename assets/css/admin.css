@@ -3379,71 +3379,34 @@ body[data-admin-page] .btn--ghost:active {
   flex: 1;
 }
 
-.lesson-card__btn--conduct {
-  flex: 1.2;
-}
-
-.admin-votes-top-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-
-.admin-votes-me {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+.lesson-card__conduct {
+  flex: 1.35;
   margin: 0;
+  min-width: 0;
 }
 
-.admin-votes-me__label {
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--brown-light);
-}
-
-.admin-votes-me__select {
-  min-width: 9.5rem;
-  max-width: 14rem;
-}
-
-.admin-votes-me__field {
-  margin: 0;
-  min-width: 9.5rem;
-  max-width: 14rem;
-}
-
-.admin-votes-me__field .custom-select {
+.lesson-card__conduct .custom-select {
   width: 100%;
 }
 
-@media (max-width: 560px) {
-  .admin-votes-top-actions {
-    width: 100%;
-  }
-
-  .admin-votes-me {
-    width: 100%;
-  }
-
-  .admin-votes-me__field,
-  .admin-votes-me__select {
-    flex: 1;
-    max-width: none;
-    min-width: 0;
-  }
-
-  .admin-votes-top-actions .btn {
-    width: 100%;
-  }
+.lesson-card__conduct .custom-select__trigger {
+  min-height: 36px;
+  padding: 7px 36px 7px 12px;
+  font-size: 0.85rem;
 }
 
 @media (max-width: 560px) {
   .lesson-cards {
     grid-template-columns: 1fr;
+  }
+
+  .lesson-card__actions {
+    flex-wrap: wrap;
+  }
+
+  .lesson-card__conduct,
+  .lesson-card__btn--close {
+    flex: 1 1 100%;
   }
 }
 

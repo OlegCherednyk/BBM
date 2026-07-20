@@ -4026,7 +4026,7 @@ app.get("/api/admin/lesson-votes/open", async (_req, res) => {
     }
     const { data, error } = await supabaseAdmin
       .from("lesson_vote_occurrences")
-      .select("id, vote_id, occurrence_at, conducting_display_name, votes_snapshot, lesson_snapshot, status, is_test")
+      .select("id, vote_id, occurrence_at, conducting_display_name, conducting_telegram_chat_id, votes_snapshot, lesson_snapshot, status, is_test")
       .eq("status", "open")
       .order("occurrence_at", { ascending: false, nullsFirst: false });
     if (error) {

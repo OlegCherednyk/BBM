@@ -130,10 +130,8 @@ let editingTeacherId = null;
 /** @type {{ chat_id: string, username: string | null, first_name: string | null, last_name: string | null }[]} */
 let cachedPrivateTelegramTargets = [];
 let votesBatchVoteWired = false;
-const VOTES_CONDUCT_TEACHER_STORAGE_KEY = "admin-votes-conduct-teacher-id";
-/** @type {{ id: string, name: string | null }[]} */
+/** @type {{ id: string, name: string | null, chat_id?: string | null }[]} */
 let cachedVotesConductTeachers = [];
-let votesConductTeacherWired = false;
 const LESSONS_PAGE_SIZE = 10;
 let lessonsPage = 1;
 /** @type {{ id: string, name: string }[]} */
@@ -1241,71 +1239,111 @@ function voteCountFromSnapshot(snapshot, key) {
   return Object.keys(group).length;
 }
 
-function getSelectedVotesConductTeacherId() {
-  return maybeEl("votesConductTeacherSelect")?.value?.trim() || "";
+async function ensureVotesConductTeachersLoaded() {
+  if (cachedVotesConductTeachers.length) return cachedVotesConductTeachers;
+  const { data, error } = await supabase
+    .from("teachers")
+    .select("id, name, chat_id")
+    .order("sort_order", { ascending: true });
+  if (error) throw new Error(error.message);
+  cachedVotesConductTeachers = data || [];
+  return cachedVotesConductTeachers;
 }
 
-function persistVotesConductTeacherId(teacherId) {
-  try {
-    if (teacherId) sessionStorage.setItem(VOTES_CONDUCT_TEACHER_STORAGE_KEY, teacherId);
-    else sessionStorage.removeItem(VOTES_CONDUCT_TEACHER_STORAGE_KEY);
-  } catch {
-    /* ignore */
+function resolveConductTeacherIdFromVote(vote, teachers) {
+  const chatId =
+    vote?.conducting_telegram_chat_id != null ? String(vote.conducting_telegram_chat_id).trim() : "";
+  if (chatId) {
+    const byChat = (teachers || []).find((t) => String(t.chat_id || "").trim() === chatId);
+    if (byChat?.id) return byChat.id;
   }
-}
-
-function readPersistedVotesConductTeacherId() {
-  try {
-    return sessionStorage.getItem(VOTES_CONDUCT_TEACHER_STORAGE_KEY) || "";
-  } catch {
-    return "";
+  const name = vote?.conducting_display_name?.trim() || "";
+  if (name) {
+    const byName = (teachers || []).find((t) => (t.name || "").trim() === name);
+    if (byName?.id) return byName.id;
   }
+  return "";
 }
 
-function populateVotesConductTeacherSelect(teachers) {
-  const sel = maybeEl("votesConductTeacherSelect");
-  if (!sel) return;
-  const previous = sel.value || readPersistedVotesConductTeacherId();
-  sel.innerHTML = "";
+function mountOpenVoteConductSelect(actionsEl, vote, teachers, refresh) {
+  if (!actionsEl) return;
+
+  const wrap = document.createElement("div");
+  wrap.className = "admin-field lesson-card__conduct";
+
+  const sel = document.createElement("select");
+  sel.setAttribute("aria-label", "Проводжу урок — оберіть викладача");
+  sel.title = "Проводжу урок";
+
   const noneOpt = document.createElement("option");
   noneOpt.value = "";
-  noneOpt.textContent = "— оберіть себе —";
+  noneOpt.textContent = "Проводжу урок";
   sel.appendChild(noneOpt);
+
   for (const t of teachers || []) {
     const opt = document.createElement("option");
     opt.value = t.id;
     opt.textContent = t.name?.trim() || "—";
     sel.appendChild(opt);
   }
-  const stillValid = previous && (teachers || []).some((t) => t.id === previous);
-  sel.value = stillValid ? previous : "";
-  if (stillValid) persistVotesConductTeacherId(previous);
-  syncCustomSelect(sel);
-}
 
-async function ensureVotesConductTeachersLoaded() {
-  if (cachedVotesConductTeachers.length) {
-    populateVotesConductTeacherSelect(cachedVotesConductTeachers);
-    return cachedVotesConductTeachers;
-  }
-  const { data, error } = await supabase
-    .from("teachers")
-    .select("id, name")
-    .order("sort_order", { ascending: true });
-  if (error) throw new Error(error.message);
-  cachedVotesConductTeachers = data || [];
-  populateVotesConductTeacherSelect(cachedVotesConductTeachers);
-  return cachedVotesConductTeachers;
-}
+  const selectedId = resolveConductTeacherIdFromVote(vote, teachers);
+  sel.value = selectedId;
+  let lastCommittedId = selectedId;
 
-function ensureVotesConductTeacherWired() {
-  if (votesConductTeacherWired) return;
-  const sel = maybeEl("votesConductTeacherSelect");
-  if (!sel) return;
-  votesConductTeacherWired = true;
-  sel.addEventListener("change", () => {
-    persistVotesConductTeacherId(sel.value?.trim() || "");
+  sel.addEventListener("change", async () => {
+    const teacherId = sel.value?.trim() || "";
+    if (!teacherId) {
+      sel.value = lastCommittedId;
+      syncCustomSelect(sel);
+      return;
+    }
+    if (teacherId === lastCommittedId) return;
+
+    const teacherName = (teachers || []).find((t) => t.id === teacherId)?.name?.trim() || "викладач";
+    const currentName = vote.conducting_display_name?.trim() || "";
+    if (currentName && currentName !== teacherName) {
+      if (!confirm(`Зараз проводить «${currentName}». Замінити на «${teacherName}»?`)) {
+        sel.value = lastCommittedId;
+        syncCustomSelect(sel);
+        return;
+      }
+    }
+
+    sel.disabled = true;
+    clearDashMessages();
+    try {
+      const res = await fetch("/api/admin/lesson-votes/conduct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ occurrence_id: vote.id, teacher_id: teacherId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.ok) {
+        showDashError(body.error || `Помилка ${res.status}`);
+        sel.value = lastCommittedId;
+        syncCustomSelect(sel);
+        sel.disabled = false;
+        return;
+      }
+      lastCommittedId = teacherId;
+      vote.conducting_display_name = body.conductingDisplayName || teacherName;
+      if (body.conductingTelegramChatId != null) {
+        vote.conducting_telegram_chat_id = body.conductingTelegramChatId;
+      }
+      showDashOk(`Проводить: ${body.conductingDisplayName || teacherName}.`);
+      await refresh();
+    } catch (err) {
+      showDashError(err?.message || String(err));
+      sel.value = lastCommittedId;
+      syncCustomSelect(sel);
+      sel.disabled = false;
+    }
   });
+
+  wrap.appendChild(sel);
+  actionsEl.insertBefore(wrap, actionsEl.firstChild);
+  syncCustomSelect(sel);
 }
 
 async function fetchOpenLessonVotes() {
@@ -1328,6 +1366,7 @@ async function renderOpenLessonVotesList(openVotesRoot, openVotes, refresh) {
     return;
   }
 
+  const teachers = cachedVotesConductTeachers;
   const grid = document.createElement("div");
   grid.className = "lesson-cards";
 
@@ -1343,49 +1382,6 @@ async function renderOpenLessonVotesList(openVotesRoot, openVotes, refresh) {
       single: voteCountFromSnapshot(vote.votes_snapshot, "single"),
       skip: voteCountFromSnapshot(vote.votes_snapshot, "skip"),
       actions: [
-        {
-          label: conducting ? "Проводжу урок ✓" : "Проводжу урок",
-          title: conducting
-            ? `Зараз проводить: ${conducting}. Натисніть, щоб змінити на себе.`
-            : "Аналог Telegram «Я провожу»",
-          className: conducting
-            ? "btn btn--ghost btn--sm lesson-card__btn lesson-card__btn--conduct"
-            : "btn btn--primary btn--sm lesson-card__btn lesson-card__btn--conduct",
-          onClick: async (ev) => {
-            const conductBtn = ev.currentTarget;
-            const teacherId = getSelectedVotesConductTeacherId();
-            if (!teacherId) {
-              showDashError("Оберіть себе в полі «Я» угорі сторінки, потім натисніть «Проводжу урок».");
-              maybeEl("votesConductTeacherSelect")?.focus();
-              return;
-            }
-            const teacherName =
-              cachedVotesConductTeachers.find((t) => t.id === teacherId)?.name?.trim() || "викладач";
-            if (conducting && conducting !== teacherName) {
-              if (!confirm(`Зараз проводить «${conducting}». Замінити на «${teacherName}»?`)) return;
-            }
-            conductBtn.disabled = true;
-            clearDashMessages();
-            try {
-              const res = await fetch("/api/admin/lesson-votes/conduct", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ occurrence_id: vote.id, teacher_id: teacherId }),
-              });
-              const body = await res.json().catch(() => ({}));
-              if (!res.ok || !body.ok) {
-                showDashError(body.error || `Помилка ${res.status}`);
-                conductBtn.disabled = false;
-                return;
-              }
-              showDashOk(`Проводить: ${body.conductingDisplayName || teacherName}.`);
-              await refresh();
-            } catch (err) {
-              showDashError(err?.message || String(err));
-              conductBtn.disabled = false;
-            }
-          },
-        },
         {
           label: "Закрити",
           title: "Закрити голосування",
@@ -1418,6 +1414,7 @@ async function renderOpenLessonVotesList(openVotesRoot, openVotes, refresh) {
       ],
     });
     card.classList.add("lesson-card--open");
+    mountOpenVoteConductSelect(card.querySelector(".lesson-card__actions"), vote, teachers, refresh);
     grid.appendChild(card);
   }
 
@@ -1428,7 +1425,6 @@ async function renderVotesPanel() {
   const openVotesRoot = maybeEl("openLessonVotesList");
   if (!openVotesRoot) return;
   ensureVotesBatchVoteWired();
-  ensureVotesConductTeacherWired();
   openVotesRoot.innerHTML = '<p class="admin-muted">Завантаження…</p>';
 
   try {
