@@ -2772,6 +2772,13 @@ async function markOccurrenceConductingFromAdmin(occurrenceIdRaw, teacherIdRaw) 
     teacher.chat_id != null && String(teacher.chat_id).trim() !== ""
       ? String(teacher.chat_id).trim()
       : null;
+  if (!chatId) {
+    return {
+      ok: false,
+      error: "У викладача немає привʼязаного Telegram-чату. Привʼяжіть chat_id у картці викладача.",
+      status: 400,
+    };
+  }
 
   const { data: row, error: rowErr } = await supabaseAdmin
     .from("lesson_vote_occurrences")
