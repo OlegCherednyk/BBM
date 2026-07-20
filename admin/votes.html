@@ -93,6 +93,29 @@
       <a href="../index.html">Сайт</a>
     </footer>
 
+    <div id="votesConductModal" class="admin-modal admin-hide" aria-hidden="true">
+      <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+      <div
+        class="admin-modal__dialog votes-conduct-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="votesConductModalTitle"
+      >
+        <div class="admin-modal__head">
+          <h3 id="votesConductModalTitle" class="admin-modal__title">Проводжу урок</h3>
+          <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
+        </div>
+        <div class="admin-modal__body votes-conduct-dialog__body">
+          <p id="votesConductModalSub" class="admin-muted admin-modal__sub"></p>
+          <div id="votesConductTeacherList" class="votes-conduct-teachers" role="listbox" aria-label="Викладачі"></div>
+          <div class="votes-conduct-dialog__actions">
+            <button type="button" class="btn btn--ghost btn--sm" data-admin-modal-close>Скасувати</button>
+            <button type="button" class="btn btn--primary btn--sm" id="votesConductSaveBtn" disabled>Зберегти</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="../assets/js/custom-select.js"></script>
     <script type="module" src="../assets/js/admin.js"></script>
   </body>
