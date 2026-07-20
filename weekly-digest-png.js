@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { Resvg } from "@resvg/resvg-js";
+import { DIGEST_FONT_FAMILY, getDigestResvgFontOptions } from "./digest-png-fonts.js";
 
 const KYIV_TZ = "Europe/Kyiv";
 const UK_MONTHS_SHORT = [
@@ -152,7 +153,7 @@ function conductedShare(conducted, scheduled) {
   return Math.round(((Number(conducted) || 0) / s) * 100);
 }
 
-const FONT = "Inter, Arial, sans-serif";
+const FONT = DIGEST_FONT_FAMILY;
 const KPI_H = 136;
 
 const WEEKLY_METRICS = [
@@ -337,7 +338,7 @@ export async function renderWeeklyDigestPng(payload) {
   const svg = buildWeeklyDigestSvg(payload);
   const resvg = new Resvg(svg, {
     fitTo: { mode: "width", value: 1200 },
-    font: { loadSystemFonts: true },
+    font: getDigestResvgFontOptions(),
   });
   const png = resvg.render().asPng();
   return Buffer.from(png);

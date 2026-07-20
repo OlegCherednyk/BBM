@@ -99,6 +99,7 @@ describe("buildMonthlyDigestSvg", () => {
       },
     });
     assert.match(svg, /Місячний дайджест/);
+    assert.match(svg, /font-family="DejaVu Sans"/);
     assert.match(svg, /Особисте/);
     assert.match(svg, /124/);
     assert.match(svg, /з 144/);
