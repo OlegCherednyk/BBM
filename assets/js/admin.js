@@ -1265,85 +1265,167 @@ function resolveConductTeacherIdFromVote(vote, teachers) {
   return "";
 }
 
-function mountOpenVoteConductSelect(actionsEl, vote, teachers, refresh) {
-  if (!actionsEl) return;
+/** @type {{ vote: any, refresh: (() => Promise<void>) | null, committedTeacherId: string, selectedTeacherId: string } | null} */
+let votesConductModalContext = null;
+let votesConductModalWired = false;
 
-  const wrap = document.createElement("div");
-  wrap.className = "admin-field lesson-card__conduct";
+function syncVotesConductSaveEnabled() {
+  const saveBtn = maybeEl("votesConductSaveBtn");
+  if (!saveBtn || !votesConductModalContext) return;
+  const { selectedTeacherId, committedTeacherId } = votesConductModalContext;
+  saveBtn.disabled = !selectedTeacherId || selectedTeacherId === committedTeacherId;
+}
 
-  const sel = document.createElement("select");
-  sel.setAttribute("aria-label", "Проводжу урок — оберіть викладача");
-  sel.title = "Проводжу урок";
+function renderVotesConductTeacherList(teachers, selectedId, currentConductingName) {
+  const list = maybeEl("votesConductTeacherList");
+  if (!list) return;
+  list.replaceChildren();
 
-  const noneOpt = document.createElement("option");
-  noneOpt.value = "";
-  noneOpt.textContent = "Проводжу урок";
-  sel.appendChild(noneOpt);
-
-  for (const t of teachers || []) {
-    const opt = document.createElement("option");
-    opt.value = t.id;
-    opt.textContent = t.name?.trim() || "—";
-    sel.appendChild(opt);
+  if (!teachers?.length) {
+    list.innerHTML = '<p class="votes-conduct-teachers__empty">Немає викладачів у списку.</p>';
+    return;
   }
 
-  const selectedId = resolveConductTeacherIdFromVote(vote, teachers);
-  sel.value = selectedId;
-  let lastCommittedId = selectedId;
+  for (const t of teachers) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "votes-conduct-teacher";
+    btn.setAttribute("role", "option");
+    btn.dataset.teacherId = t.id;
+    const isSelected = t.id === selectedId;
+    btn.classList.toggle("is-selected", isSelected);
+    btn.setAttribute("aria-selected", String(isSelected));
 
-  sel.addEventListener("change", async () => {
-    const teacherId = sel.value?.trim() || "";
-    if (!teacherId) {
-      sel.value = lastCommittedId;
-      syncCustomSelect(sel);
-      return;
+    const mark = document.createElement("span");
+    mark.className = "votes-conduct-teacher__mark";
+    mark.setAttribute("aria-hidden", "true");
+
+    const name = document.createElement("span");
+    name.className = "votes-conduct-teacher__name";
+    name.textContent = t.name?.trim() || "—";
+
+    btn.append(mark, name);
+
+    const teacherName = t.name?.trim() || "";
+    if (currentConductingName && teacherName && currentConductingName === teacherName) {
+      const badge = document.createElement("span");
+      badge.className = "votes-conduct-teacher__badge";
+      badge.textContent = "зараз";
+      btn.appendChild(badge);
     }
-    if (teacherId === lastCommittedId) return;
 
-    const teacherName = (teachers || []).find((t) => t.id === teacherId)?.name?.trim() || "викладач";
+    btn.addEventListener("click", () => {
+      if (!votesConductModalContext) return;
+      votesConductModalContext.selectedTeacherId = t.id;
+      list.querySelectorAll(".votes-conduct-teacher").forEach((node) => {
+        const on = node.dataset.teacherId === t.id;
+        node.classList.toggle("is-selected", on);
+        node.setAttribute("aria-selected", String(on));
+      });
+      syncVotesConductSaveEnabled();
+    });
+
+    list.appendChild(btn);
+  }
+}
+
+function closeVotesConductModal() {
+  const modal = maybeEl("votesConductModal");
+  if (!modal) return;
+  modal.classList.add("admin-hide");
+  modal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("admin-modal-open");
+  votesConductModalContext = null;
+}
+
+function openVotesConductModal(vote, teachers, refresh) {
+  ensureVotesConductModalWired();
+  const modal = maybeEl("votesConductModal");
+  const subEl = maybeEl("votesConductModalSub");
+  if (!modal || !vote) return;
+
+  const snap = vote.lesson_snapshot && typeof vote.lesson_snapshot === "object" ? vote.lesson_snapshot : {};
+  const when = fmtKyivDateParts(vote.occurrence_at);
+  const bits = [
+    [when.dow, when.date, when.time].filter(Boolean).join(" "),
+    snap.lessonTypeLabel,
+    snap.placeLabel,
+  ].filter(Boolean);
+  if (subEl) subEl.textContent = bits.join(" · ") || "Оберіть, хто проводить заняття";
+
+  const committedTeacherId = resolveConductTeacherIdFromVote(vote, teachers);
+  votesConductModalContext = {
+    vote,
+    refresh,
+    committedTeacherId,
+    selectedTeacherId: committedTeacherId,
+  };
+
+  renderVotesConductTeacherList(teachers, committedTeacherId, vote.conducting_display_name?.trim() || "");
+  syncVotesConductSaveEnabled();
+
+  modal.classList.remove("admin-hide");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("admin-modal-open");
+  const list = maybeEl("votesConductTeacherList");
+  const focusEl =
+    list?.querySelector(".votes-conduct-teacher.is-selected") ||
+    list?.querySelector(".votes-conduct-teacher") ||
+    maybeEl("votesConductSaveBtn");
+  focusEl?.focus();
+}
+
+function ensureVotesConductModalWired() {
+  if (votesConductModalWired) return;
+  const modal = maybeEl("votesConductModal");
+  if (!modal) return;
+  votesConductModalWired = true;
+
+  modal.querySelectorAll("[data-admin-modal-close]").forEach((node) => {
+    node.addEventListener("click", () => closeVotesConductModal());
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (modal.classList.contains("admin-hide")) return;
+    closeVotesConductModal();
+  });
+
+  maybeEl("votesConductSaveBtn")?.addEventListener("click", async () => {
+    if (!votesConductModalContext) return;
+    const { vote, refresh, selectedTeacherId, committedTeacherId } = votesConductModalContext;
+    if (!selectedTeacherId || selectedTeacherId === committedTeacherId) return;
+
+    const teacherName =
+      cachedVotesConductTeachers.find((t) => t.id === selectedTeacherId)?.name?.trim() || "викладач";
     const currentName = vote.conducting_display_name?.trim() || "";
     if (currentName && currentName !== teacherName) {
-      if (!confirm(`Зараз проводить «${currentName}». Замінити на «${teacherName}»?`)) {
-        sel.value = lastCommittedId;
-        syncCustomSelect(sel);
-        return;
-      }
+      if (!confirm(`Зараз проводить «${currentName}». Замінити на «${teacherName}»?`)) return;
     }
 
-    sel.disabled = true;
+    const saveBtn = maybeEl("votesConductSaveBtn");
+    if (saveBtn) saveBtn.disabled = true;
     clearDashMessages();
     try {
       const res = await fetch("/api/admin/lesson-votes/conduct", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ occurrence_id: vote.id, teacher_id: teacherId }),
+        body: JSON.stringify({ occurrence_id: vote.id, teacher_id: selectedTeacherId }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body.ok) {
         showDashError(body.error || `Помилка ${res.status}`);
-        sel.value = lastCommittedId;
-        syncCustomSelect(sel);
-        sel.disabled = false;
+        syncVotesConductSaveEnabled();
         return;
       }
-      lastCommittedId = teacherId;
-      vote.conducting_display_name = body.conductingDisplayName || teacherName;
-      if (body.conductingTelegramChatId != null) {
-        vote.conducting_telegram_chat_id = body.conductingTelegramChatId;
-      }
+      closeVotesConductModal();
       showDashOk(`Проводить: ${body.conductingDisplayName || teacherName}.`);
-      await refresh();
+      if (typeof refresh === "function") await refresh();
     } catch (err) {
       showDashError(err?.message || String(err));
-      sel.value = lastCommittedId;
-      syncCustomSelect(sel);
-      sel.disabled = false;
+      syncVotesConductSaveEnabled();
     }
   });
-
-  wrap.appendChild(sel);
-  actionsEl.insertBefore(wrap, actionsEl.firstChild);
-  syncCustomSelect(sel);
 }
 
 async function fetchOpenLessonVotes() {
@@ -1383,6 +1465,14 @@ async function renderOpenLessonVotesList(openVotesRoot, openVotes, refresh) {
       skip: voteCountFromSnapshot(vote.votes_snapshot, "skip"),
       actions: [
         {
+          label: conducting ? `Проводжу · ${conducting}` : "Проводжу урок",
+          title: conducting ? `Зараз проводить: ${conducting}` : "Обрати, хто проводить урок",
+          className: conducting
+            ? "btn btn--ghost btn--sm lesson-card__btn lesson-card__btn--conduct"
+            : "btn btn--primary btn--sm lesson-card__btn lesson-card__btn--conduct",
+          onClick: () => openVotesConductModal(vote, teachers, refresh),
+        },
+        {
           label: "Закрити",
           title: "Закрити голосування",
           className: "btn btn--danger btn--sm lesson-card__btn lesson-card__btn--close",
@@ -1414,7 +1504,6 @@ async function renderOpenLessonVotesList(openVotesRoot, openVotes, refresh) {
       ],
     });
     card.classList.add("lesson-card--open");
-    mountOpenVoteConductSelect(card.querySelector(".lesson-card__actions"), vote, teachers, refresh);
     grid.appendChild(card);
   }
 
@@ -1425,6 +1514,7 @@ async function renderVotesPanel() {
   const openVotesRoot = maybeEl("openLessonVotesList");
   if (!openVotesRoot) return;
   ensureVotesBatchVoteWired();
+  ensureVotesConductModalWired();
   openVotesRoot.innerHTML = '<p class="admin-muted">Завантаження…</p>';
 
   try {
