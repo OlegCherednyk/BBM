@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { Resvg } from "@resvg/resvg-js";
+import { DIGEST_FONT_FAMILY, getDigestResvgFontOptions } from "./digest-png-fonts.js";
 import {
   percentChange,
   formatPercentLabel,
@@ -61,7 +62,7 @@ export function conductedShare(conducted, scheduled) {
 
 export { percentChange, formatPercentLabel, formatCompactNumber, barHeights };
 
-const FONT = "Inter, Arial, sans-serif";
+const FONT = DIGEST_FONT_FAMILY;
 const GAP = 16;
 const PAD = 24;
 const KPI_H = 136;
@@ -410,7 +411,7 @@ export async function renderMonthlyDigestPng(payload) {
   const svg = buildMonthlyDigestSvg(payload);
   const resvg = new Resvg(svg, {
     fitTo: { mode: "width", value: 1200 },
-    font: { loadSystemFonts: true },
+    font: getDigestResvgFontOptions(),
   });
   return Buffer.from(resvg.render().asPng());
 }

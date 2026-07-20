@@ -159,6 +159,7 @@ describe("buildWeeklyDigestSvg", () => {
     assert.ok(svg.startsWith("<svg"));
     assert.ok(svg.includes('width="1200"'));
     assert.ok(svg.includes("BBM · Тижневий дайджест"));
+    assert.ok(svg.includes('font-family="DejaVu Sans"'));
     assert.ok(svg.includes("Особисте · тиждень"));
     assert.ok(svg.includes("BBM загалом"));
     assert.ok(svg.includes("УРОКИ ПРОВЕДЕНО"));

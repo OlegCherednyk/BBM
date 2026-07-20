@@ -3671,6 +3671,58 @@ app.post("/api/telegram/teachers/vote", async (_req, res) => {
   }
 });
 
+/** Manual trigger: send weekly teacher stats digest PNGs to digest_enabled recipients. */
+app.post("/api/telegram/teachers/weekly-digest", async (_req, res) => {
+  try {
+    if (!bot) {
+      return res.status(500).json({ ok: false, error: "TELEGRAM_BOT_TOKEN is not configured." });
+    }
+    if (!supabaseAdmin) {
+      return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+    }
+
+    const result = await runWeeklyTeacherStatsDigests(
+      supabaseAdmin,
+      bot,
+      computeTeacherLessonsJournal,
+      computeAdminStatsDashboard,
+    );
+    if (result?.skipped) {
+      return res.status(503).json({ ok: false, error: "Weekly digest skipped (bot/stats not ready).", ...result });
+    }
+    return res.status(200).json({ ok: true, ...result });
+  } catch (error) {
+    console.error("Failed to send weekly teacher digests:", error);
+    return res.status(500).json({ ok: false, error: error?.message || "Failed to send weekly digests." });
+  }
+});
+
+/** Manual trigger: send monthly teacher stats digest PNGs to digest_enabled recipients. */
+app.post("/api/telegram/teachers/monthly-digest", async (_req, res) => {
+  try {
+    if (!bot) {
+      return res.status(500).json({ ok: false, error: "TELEGRAM_BOT_TOKEN is not configured." });
+    }
+    if (!supabaseAdmin) {
+      return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+    }
+
+    const result = await runMonthlyTeacherStatsDigests(
+      supabaseAdmin,
+      bot,
+      computeTeacherLessonsJournal,
+      computeMonthlyDigestOverall,
+    );
+    if (result?.skipped) {
+      return res.status(503).json({ ok: false, error: "Monthly digest skipped (bot/stats not ready).", ...result });
+    }
+    return res.status(200).json({ ok: true, ...result });
+  } catch (error) {
+    console.error("Failed to send monthly teacher digests:", error);
+    return res.status(500).json({ ok: false, error: error?.message || "Failed to send monthly digests." });
+  }
+});
+
 app.post("/api/telegram/teachers/test-vote/close", async (req, res) => {
   try {
     if (!bot) {
