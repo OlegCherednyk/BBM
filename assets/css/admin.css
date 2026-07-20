@@ -3379,20 +3379,8 @@ body[data-admin-page] .btn--ghost:active {
   flex: 1;
 }
 
-.lesson-card__conduct {
+.lesson-card__btn--conduct {
   flex: 1.35;
-  margin: 0;
-  min-width: 0;
-}
-
-.lesson-card__conduct .custom-select {
-  width: 100%;
-}
-
-.lesson-card__conduct .custom-select__trigger {
-  min-height: 36px;
-  padding: 7px 36px 7px 12px;
-  font-size: 0.85rem;
 }
 
 @media (max-width: 560px) {
@@ -3404,9 +3392,167 @@ body[data-admin-page] .btn--ghost:active {
     flex-wrap: wrap;
   }
 
-  .lesson-card__conduct,
+  .lesson-card__btn--conduct,
   .lesson-card__btn--close {
     flex: 1 1 100%;
+  }
+}
+
+/* ── Votes: conduct teacher picker modal ── */
+#votesConductModal.admin-modal {
+  align-items: center;
+}
+
+.votes-conduct-dialog {
+  width: min(420px, 100%);
+  animation: votesConductDialogIn 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes votesConductDialogIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.votes-conduct-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 16px;
+}
+
+.votes-conduct-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.votes-conduct-teachers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(52vh, 360px);
+  overflow-y: auto;
+  padding: 2px;
+  margin: 0 -2px;
+}
+
+.votes-conduct-teacher {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1.5px solid rgba(232, 217, 205, 0.9);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--brown-dark);
+  font-family: var(--ff-body);
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--admin-transition),
+    background var(--admin-transition),
+    box-shadow var(--admin-transition),
+    transform var(--admin-transition);
+}
+
+.votes-conduct-teacher:hover {
+  border-color: rgba(116, 134, 47, 0.45);
+  background: rgba(255, 255, 255, 0.95);
+  transform: translateY(-1px);
+  box-shadow: var(--admin-shadow-xs);
+}
+
+.votes-conduct-teacher:focus-visible {
+  outline: none;
+  box-shadow: var(--admin-shadow-focus);
+  border-color: var(--olive);
+}
+
+.votes-conduct-teacher.is-selected {
+  border-color: var(--olive);
+  background: linear-gradient(135deg, rgba(116, 134, 47, 0.14), rgba(255, 255, 255, 0.92));
+  box-shadow: inset 0 0 0 1px rgba(116, 134, 47, 0.18);
+}
+
+.votes-conduct-teacher__mark {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1.5px solid var(--cream-mid);
+  background: rgba(255, 255, 255, 0.85);
+  display: grid;
+  place-items: center;
+  transition:
+    border-color var(--admin-transition),
+    background var(--admin-transition),
+    transform var(--admin-transition);
+}
+
+.votes-conduct-teacher__mark::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: transparent;
+  transition: background var(--admin-transition), transform var(--admin-transition);
+  transform: scale(0.4);
+}
+
+.votes-conduct-teacher.is-selected .votes-conduct-teacher__mark {
+  border-color: var(--olive);
+  background: var(--olive);
+}
+
+.votes-conduct-teacher.is-selected .votes-conduct-teacher__mark::after {
+  background: #fff;
+  transform: scale(1);
+}
+
+.votes-conduct-teacher__name {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.votes-conduct-teacher__badge {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--olive);
+  background: var(--admin-accent-dim);
+  border-radius: 999px;
+  padding: 4px 8px;
+}
+
+.votes-conduct-teachers__empty {
+  margin: 0;
+  padding: 18px 12px;
+  text-align: center;
+  color: var(--brown-light);
+  font-size: 0.9rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .votes-conduct-dialog {
+    animation: none;
+  }
+
+  .votes-conduct-teacher {
+    transition: none;
   }
 }
 
