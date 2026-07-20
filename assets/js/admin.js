@@ -130,6 +130,10 @@ let editingTeacherId = null;
 /** @type {{ chat_id: string, username: string | null, first_name: string | null, last_name: string | null }[]} */
 let cachedPrivateTelegramTargets = [];
 let votesBatchVoteWired = false;
+const VOTES_CONDUCT_TEACHER_STORAGE_KEY = "admin-votes-conduct-teacher-id";
+/** @type {{ id: string, name: string | null }[]} */
+let cachedVotesConductTeachers = [];
+let votesConductTeacherWired = false;
 const LESSONS_PAGE_SIZE = 10;
 let lessonsPage = 1;
 /** @type {{ id: string, name: string }[]} */
@@ -1237,6 +1241,73 @@ function voteCountFromSnapshot(snapshot, key) {
   return Object.keys(group).length;
 }
 
+function getSelectedVotesConductTeacherId() {
+  return maybeEl("votesConductTeacherSelect")?.value?.trim() || "";
+}
+
+function persistVotesConductTeacherId(teacherId) {
+  try {
+    if (teacherId) sessionStorage.setItem(VOTES_CONDUCT_TEACHER_STORAGE_KEY, teacherId);
+    else sessionStorage.removeItem(VOTES_CONDUCT_TEACHER_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function readPersistedVotesConductTeacherId() {
+  try {
+    return sessionStorage.getItem(VOTES_CONDUCT_TEACHER_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function populateVotesConductTeacherSelect(teachers) {
+  const sel = maybeEl("votesConductTeacherSelect");
+  if (!sel) return;
+  const previous = sel.value || readPersistedVotesConductTeacherId();
+  sel.innerHTML = "";
+  const noneOpt = document.createElement("option");
+  noneOpt.value = "";
+  noneOpt.textContent = "— оберіть себе —";
+  sel.appendChild(noneOpt);
+  for (const t of teachers || []) {
+    const opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent = t.name?.trim() || "—";
+    sel.appendChild(opt);
+  }
+  const stillValid = previous && (teachers || []).some((t) => t.id === previous);
+  sel.value = stillValid ? previous : "";
+  if (stillValid) persistVotesConductTeacherId(previous);
+  syncCustomSelect(sel);
+}
+
+async function ensureVotesConductTeachersLoaded() {
+  if (cachedVotesConductTeachers.length) {
+    populateVotesConductTeacherSelect(cachedVotesConductTeachers);
+    return cachedVotesConductTeachers;
+  }
+  const { data, error } = await supabase
+    .from("teachers")
+    .select("id, name")
+    .order("sort_order", { ascending: true });
+  if (error) throw new Error(error.message);
+  cachedVotesConductTeachers = data || [];
+  populateVotesConductTeacherSelect(cachedVotesConductTeachers);
+  return cachedVotesConductTeachers;
+}
+
+function ensureVotesConductTeacherWired() {
+  if (votesConductTeacherWired) return;
+  const sel = maybeEl("votesConductTeacherSelect");
+  if (!sel) return;
+  votesConductTeacherWired = true;
+  sel.addEventListener("change", () => {
+    persistVotesConductTeacherId(sel.value?.trim() || "");
+  });
+}
+
 async function fetchOpenLessonVotes() {
   const res = await fetch("/api/admin/lesson-votes/open");
   if (!res.ok) {
@@ -1262,15 +1333,59 @@ async function renderOpenLessonVotesList(openVotesRoot, openVotes, refresh) {
 
   for (const vote of openVotes) {
     const snap = vote.lesson_snapshot && typeof vote.lesson_snapshot === "object" ? vote.lesson_snapshot : {};
+    const conducting = vote.conducting_display_name?.trim() || "";
     const card = buildLessonCard({
       when: fmtKyivDateParts(vote.occurrence_at),
-      teacher: vote.conducting_display_name?.trim() || "—",
+      teacher: conducting || "—",
       place: snap.placeLabel || "—",
       type: snap.lessonTypeLabel || "—",
       abon: voteCountFromSnapshot(vote.votes_snapshot, "abon"),
       single: voteCountFromSnapshot(vote.votes_snapshot, "single"),
       skip: voteCountFromSnapshot(vote.votes_snapshot, "skip"),
       actions: [
+        {
+          label: conducting ? "Проводжу урок ✓" : "Проводжу урок",
+          title: conducting
+            ? `Зараз проводить: ${conducting}. Натисніть, щоб змінити на себе.`
+            : "Аналог Telegram «Я провожу»",
+          className: conducting
+            ? "btn btn--ghost btn--sm lesson-card__btn lesson-card__btn--conduct"
+            : "btn btn--primary btn--sm lesson-card__btn lesson-card__btn--conduct",
+          onClick: async (ev) => {
+            const conductBtn = ev.currentTarget;
+            const teacherId = getSelectedVotesConductTeacherId();
+            if (!teacherId) {
+              showDashError("Оберіть себе в полі «Я» угорі сторінки, потім натисніть «Проводжу урок».");
+              maybeEl("votesConductTeacherSelect")?.focus();
+              return;
+            }
+            const teacherName =
+              cachedVotesConductTeachers.find((t) => t.id === teacherId)?.name?.trim() || "викладач";
+            if (conducting && conducting !== teacherName) {
+              if (!confirm(`Зараз проводить «${conducting}». Замінити на «${teacherName}»?`)) return;
+            }
+            conductBtn.disabled = true;
+            clearDashMessages();
+            try {
+              const res = await fetch("/api/admin/lesson-votes/conduct", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ occurrence_id: vote.id, teacher_id: teacherId }),
+              });
+              const body = await res.json().catch(() => ({}));
+              if (!res.ok || !body.ok) {
+                showDashError(body.error || `Помилка ${res.status}`);
+                conductBtn.disabled = false;
+                return;
+              }
+              showDashOk(`Проводить: ${body.conductingDisplayName || teacherName}.`);
+              await refresh();
+            } catch (err) {
+              showDashError(err?.message || String(err));
+              conductBtn.disabled = false;
+            }
+          },
+        },
         {
           label: "Закрити",
           title: "Закрити голосування",
@@ -1313,7 +1428,14 @@ async function renderVotesPanel() {
   const openVotesRoot = maybeEl("openLessonVotesList");
   if (!openVotesRoot) return;
   ensureVotesBatchVoteWired();
+  ensureVotesConductTeacherWired();
   openVotesRoot.innerHTML = '<p class="admin-muted">Завантаження…</p>';
+
+  try {
+    await ensureVotesConductTeachersLoaded();
+  } catch (err) {
+    showDashError(err?.message || String(err));
+  }
 
   const result = await fetchOpenLessonVotes();
   if (!result.ok) {
