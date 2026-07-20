@@ -161,6 +161,32 @@
       </div>
     </div>
 
+    <div id="lessonDiscountModal" class="admin-modal admin-hide" aria-hidden="true">
+      <div class="admin-modal__backdrop" data-admin-modal-close tabindex="-1" aria-hidden="true"></div>
+      <div
+        class="admin-modal__dialog admin-modal__dialog--wide admin-lesson-discount-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lessonDiscountModalTitle"
+      >
+        <div class="admin-modal__head">
+          <h3 id="lessonDiscountModalTitle" class="admin-modal__title">Знижки учнів</h3>
+          <button type="button" class="admin-modal__close" data-admin-modal-close aria-label="Закрити">✕</button>
+        </div>
+        <div class="admin-modal__body">
+          <p id="lessonDiscountModalSub" class="admin-lesson-finance__meta"></p>
+          <div class="admin-lesson-discount__hint">
+            Знижка на конкретного учня в цьому занятті — у відсотках або в гривнях від базової ціни візиту.
+          </div>
+          <div id="lessonDiscountList" class="admin-lesson-discount__list" aria-live="polite"></div>
+          <div class="admin-lesson-discount__actions">
+            <div id="lessonDiscountSummary" class="admin-lesson-discount__summary"></div>
+            <button type="button" class="btn btn--primary btn--sm" id="lessonDiscountSaveBtn">Зберегти</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <footer class="footer">
       <span>mozok.tilo.ruh — адмін</span>
       <a href="../index.html">Сайт</a>
