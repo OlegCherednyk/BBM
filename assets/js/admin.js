@@ -130,7 +130,7 @@ let editingTeacherId = null;
 /** @type {{ chat_id: string, username: string | null, first_name: string | null, last_name: string | null }[]} */
 let cachedPrivateTelegramTargets = [];
 let votesBatchVoteWired = false;
-/** @type {{ id: string, name: string | null, chat_id?: string | null }[]} */
+/** @type {{ id: string, name: string | null, chat_id: string, telegram_username?: string | null }[]} */
 let cachedVotesConductTeachers = [];
 const LESSONS_PAGE_SIZE = 10;
 let lessonsPage = 1;
