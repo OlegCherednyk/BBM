@@ -2787,10 +2787,17 @@ async function markOccurrenceConductingFromAdmin(occurrenceIdRaw, teacherIdRaw) 
   }
 
   const found = await ensureActiveLessonVoteByOccurrenceId(occurrenceId);
-  if (found?.stateKey) {
+  if (found?.state) {
+    found.state.conductingDisplayName = displayName;
+    found.state.conductingTelegramChatId = chatId;
+  }
+
+  // Завжди пишемо в БД спочатку: refreshGroupAttendanceAfterConduct при !bot одразу return.
+  await persistOccurrenceConducting(occurrenceId, displayName, chatId);
+
+  if (found?.stateKey && bot) {
     await refreshGroupAttendanceAfterConduct(found.stateKey, displayName, chatId);
-  } else {
-    await persistOccurrenceConducting(occurrenceId, displayName, chatId);
+  } else if (bot) {
     const lessonContext = lessonContextFromOccurrenceRow(row);
     const conductText = buildLessonConductMessage(lessonContext, displayName);
     const conducts = Array.isArray(row.conduct_messages) ? row.conduct_messages : [];
@@ -2802,7 +2809,6 @@ async function markOccurrenceConductingFromAdmin(occurrenceIdRaw, teacherIdRaw) 
       const cKey = attendanceGroupMemoryKey(String(cid), Number(mid));
       const cState = activeConductVotes.get(cKey);
       if (cState) cState.conductorDisplayName = displayName;
-      if (!bot) continue;
       try {
         await bot.telegram.editMessageText(String(cid), Number(mid), undefined, conductText, {
           reply_markup: buildLessonConductKeyboard(String(conductId)),
