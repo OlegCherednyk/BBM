@@ -3379,9 +3379,34 @@ body[data-admin-page] .btn--ghost:active {
   flex: 1;
 }
 
+.lesson-card__conduct {
+  flex: 1.35;
+  margin: 0;
+  min-width: 0;
+}
+
+.lesson-card__conduct .custom-select {
+  width: 100%;
+}
+
+.lesson-card__conduct .custom-select__trigger {
+  min-height: 36px;
+  padding: 7px 36px 7px 12px;
+  font-size: 0.85rem;
+}
+
 @media (max-width: 560px) {
   .lesson-cards {
     grid-template-columns: 1fr;
+  }
+
+  .lesson-card__actions {
+    flex-wrap: wrap;
+  }
+
+  .lesson-card__conduct,
+  .lesson-card__btn--close {
+    flex: 1 1 100%;
   }
 }
 

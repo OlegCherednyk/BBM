@@ -2678,6 +2678,15 @@ function findActiveLessonVoteByVoteId(voteIdRaw) {
   return null;
 }
 
+function findActiveLessonVoteByOccurrenceId(occurrenceIdRaw) {
+  const needle = String(occurrenceIdRaw || "").trim();
+  if (!needle) return null;
+  for (const [stateKey, st] of activeLessonVotes.entries()) {
+    if (st.voteOccurrenceId === needle) return { stateKey, state: st };
+  }
+  return null;
+}
+
 async function ensureActiveLessonVoteByVoteId(voteIdRaw) {
   const found = findActiveLessonVoteByVoteId(voteIdRaw);
   if (found) return found;
@@ -2701,6 +2710,125 @@ async function ensureActiveLessonVoteByVoteId(voteIdRaw) {
 
   await hydrateLessonVoteOccurrenceRow(row);
   return findActiveLessonVoteByVoteId(voteId);
+}
+
+async function ensureActiveLessonVoteByOccurrenceId(occurrenceIdRaw) {
+  const found = findActiveLessonVoteByOccurrenceId(occurrenceIdRaw);
+  if (found) return found;
+  if (!supabaseAdmin) return null;
+
+  const occurrenceId = String(occurrenceIdRaw || "").trim();
+  if (!occurrenceId) return null;
+
+  const { data: row, error } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .select("*")
+    .eq("status", "open")
+    .eq("id", occurrenceId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("ensureActiveLessonVoteByOccurrenceId:", error.message);
+    return null;
+  }
+  if (!row) return null;
+
+  await hydrateLessonVoteOccurrenceRow(row);
+  return findActiveLessonVoteByOccurrenceId(occurrenceId);
+}
+
+/**
+ * Адмін-аналог Telegram «Я провожу»: фіксує conducting і синхронізує TG-повідомлення.
+ * @returns {Promise<{ ok: true, conductingDisplayName: string, conductingTelegramChatId: string | null } | { ok: false, error: string, status?: number }>}
+ */
+async function markOccurrenceConductingFromAdmin(occurrenceIdRaw, teacherIdRaw) {
+  if (!supabaseAdmin) {
+    return { ok: false, error: "Supabase admin client is not configured.", status: 500 };
+  }
+
+  const occurrenceId = String(occurrenceIdRaw || "").trim();
+  const teacherId = String(teacherIdRaw || "").trim();
+  if (!occurrenceId) {
+    return { ok: false, error: "Передайте occurrence_id у тілі JSON.", status: 400 };
+  }
+  if (!teacherId) {
+    return { ok: false, error: "Передайте teacher_id у тілі JSON.", status: 400 };
+  }
+
+  const { data: teacher, error: teacherErr } = await supabaseAdmin
+    .from("teachers")
+    .select("id, name, chat_id")
+    .eq("id", teacherId)
+    .maybeSingle();
+  if (teacherErr) {
+    return { ok: false, error: teacherErr.message, status: 500 };
+  }
+  if (!teacher) {
+    return { ok: false, error: "Викладача не знайдено.", status: 404 };
+  }
+
+  const displayName = String(teacher.name || "").trim() || "Викладач";
+  const chatId =
+    teacher.chat_id != null && String(teacher.chat_id).trim() !== ""
+      ? String(teacher.chat_id).trim()
+      : null;
+
+  const { data: row, error: rowErr } = await supabaseAdmin
+    .from("lesson_vote_occurrences")
+    .select("*")
+    .eq("id", occurrenceId)
+    .eq("status", "open")
+    .maybeSingle();
+  if (rowErr) {
+    return { ok: false, error: rowErr.message, status: 500 };
+  }
+  if (!row) {
+    return { ok: false, error: "Відкрите голосування не знайдено або вже закрите.", status: 404 };
+  }
+
+  const found = await ensureActiveLessonVoteByOccurrenceId(occurrenceId);
+  if (found?.state) {
+    found.state.conductingDisplayName = displayName;
+    found.state.conductingTelegramChatId = chatId;
+  }
+
+  // Завжди пишемо в БД спочатку: refreshGroupAttendanceAfterConduct при !bot одразу return.
+  await persistOccurrenceConducting(occurrenceId, displayName, chatId);
+
+  if (found?.stateKey && bot) {
+    await refreshGroupAttendanceAfterConduct(found.stateKey, displayName, chatId);
+  } else if (bot) {
+    const lessonContext = lessonContextFromOccurrenceRow(row);
+    const conductText = buildLessonConductMessage(lessonContext, displayName);
+    const conducts = Array.isArray(row.conduct_messages) ? row.conduct_messages : [];
+    for (const c of conducts) {
+      const cid = c?.chat_id;
+      const mid = c?.message_id;
+      const conductId = c?.conduct_id;
+      if (!cid || !Number.isFinite(Number(mid)) || !conductId) continue;
+      const cKey = attendanceGroupMemoryKey(String(cid), Number(mid));
+      const cState = activeConductVotes.get(cKey);
+      if (cState) cState.conductorDisplayName = displayName;
+      try {
+        await bot.telegram.editMessageText(String(cid), Number(mid), undefined, conductText, {
+          reply_markup: buildLessonConductKeyboard(String(conductId)),
+        });
+      } catch (err) {
+        if (!isTelegramMessageNotModifiedError(err)) {
+          console.error(
+            "admin conduct refresh teacher message:",
+            err?.description || err?.message || err,
+          );
+        }
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    conductingDisplayName: displayName,
+    conductingTelegramChatId: chatId,
+  };
 }
 
 /**
@@ -3898,7 +4026,7 @@ app.get("/api/admin/lesson-votes/open", async (_req, res) => {
     }
     const { data, error } = await supabaseAdmin
       .from("lesson_vote_occurrences")
-      .select("id, vote_id, occurrence_at, conducting_display_name, votes_snapshot, lesson_snapshot, status, is_test")
+      .select("id, vote_id, occurrence_at, conducting_display_name, conducting_telegram_chat_id, votes_snapshot, lesson_snapshot, status, is_test")
       .eq("status", "open")
       .order("occurrence_at", { ascending: false, nullsFirst: false });
     if (error) {
@@ -3908,6 +4036,27 @@ app.get("/api/admin/lesson-votes/open", async (_req, res) => {
   } catch (error) {
     console.error("admin lesson-votes open failed:", error);
     return res.status(500).json({ ok: false, error: error?.message || "Failed to load open lesson votes." });
+  }
+});
+
+/** Адмін-аналог Telegram «Я провожу». */
+app.post("/api/admin/lesson-votes/conduct", async (req, res) => {
+  try {
+    const occurrenceId = String(req.body?.occurrence_id || req.body?.occurrenceId || "").trim();
+    const teacherId = String(req.body?.teacher_id || req.body?.teacherId || "").trim();
+    const result = await markOccurrenceConductingFromAdmin(occurrenceId, teacherId);
+    if (!result.ok) {
+      return res.status(result.status || 400).json({ ok: false, error: result.error });
+    }
+    return res.status(200).json({
+      ok: true,
+      occurrenceId,
+      conductingDisplayName: result.conductingDisplayName,
+      conductingTelegramChatId: result.conductingTelegramChatId,
+    });
+  } catch (error) {
+    console.error("admin lesson-votes conduct failed:", error);
+    return res.status(500).json({ ok: false, error: error?.message || "Failed to mark conducting teacher." });
   }
 });
 

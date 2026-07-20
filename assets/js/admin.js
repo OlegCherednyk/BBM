@@ -130,6 +130,8 @@ let editingTeacherId = null;
 /** @type {{ chat_id: string, username: string | null, first_name: string | null, last_name: string | null }[]} */
 let cachedPrivateTelegramTargets = [];
 let votesBatchVoteWired = false;
+/** @type {{ id: string, name: string | null, chat_id?: string | null }[]} */
+let cachedVotesConductTeachers = [];
 const LESSONS_PAGE_SIZE = 10;
 let lessonsPage = 1;
 /** @type {{ id: string, name: string }[]} */
@@ -1237,6 +1239,113 @@ function voteCountFromSnapshot(snapshot, key) {
   return Object.keys(group).length;
 }
 
+async function ensureVotesConductTeachersLoaded() {
+  if (cachedVotesConductTeachers.length) return cachedVotesConductTeachers;
+  const { data, error } = await supabase
+    .from("teachers")
+    .select("id, name, chat_id")
+    .order("sort_order", { ascending: true });
+  if (error) throw new Error(error.message);
+  cachedVotesConductTeachers = data || [];
+  return cachedVotesConductTeachers;
+}
+
+function resolveConductTeacherIdFromVote(vote, teachers) {
+  const chatId =
+    vote?.conducting_telegram_chat_id != null ? String(vote.conducting_telegram_chat_id).trim() : "";
+  if (chatId) {
+    const byChat = (teachers || []).find((t) => String(t.chat_id || "").trim() === chatId);
+    if (byChat?.id) return byChat.id;
+  }
+  const name = vote?.conducting_display_name?.trim() || "";
+  if (name) {
+    const byName = (teachers || []).find((t) => (t.name || "").trim() === name);
+    if (byName?.id) return byName.id;
+  }
+  return "";
+}
+
+function mountOpenVoteConductSelect(actionsEl, vote, teachers, refresh) {
+  if (!actionsEl) return;
+
+  const wrap = document.createElement("div");
+  wrap.className = "admin-field lesson-card__conduct";
+
+  const sel = document.createElement("select");
+  sel.setAttribute("aria-label", "Проводжу урок — оберіть викладача");
+  sel.title = "Проводжу урок";
+
+  const noneOpt = document.createElement("option");
+  noneOpt.value = "";
+  noneOpt.textContent = "Проводжу урок";
+  sel.appendChild(noneOpt);
+
+  for (const t of teachers || []) {
+    const opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent = t.name?.trim() || "—";
+    sel.appendChild(opt);
+  }
+
+  const selectedId = resolveConductTeacherIdFromVote(vote, teachers);
+  sel.value = selectedId;
+  let lastCommittedId = selectedId;
+
+  sel.addEventListener("change", async () => {
+    const teacherId = sel.value?.trim() || "";
+    if (!teacherId) {
+      sel.value = lastCommittedId;
+      syncCustomSelect(sel);
+      return;
+    }
+    if (teacherId === lastCommittedId) return;
+
+    const teacherName = (teachers || []).find((t) => t.id === teacherId)?.name?.trim() || "викладач";
+    const currentName = vote.conducting_display_name?.trim() || "";
+    if (currentName && currentName !== teacherName) {
+      if (!confirm(`Зараз проводить «${currentName}». Замінити на «${teacherName}»?`)) {
+        sel.value = lastCommittedId;
+        syncCustomSelect(sel);
+        return;
+      }
+    }
+
+    sel.disabled = true;
+    clearDashMessages();
+    try {
+      const res = await fetch("/api/admin/lesson-votes/conduct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ occurrence_id: vote.id, teacher_id: teacherId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.ok) {
+        showDashError(body.error || `Помилка ${res.status}`);
+        sel.value = lastCommittedId;
+        syncCustomSelect(sel);
+        sel.disabled = false;
+        return;
+      }
+      lastCommittedId = teacherId;
+      vote.conducting_display_name = body.conductingDisplayName || teacherName;
+      if (body.conductingTelegramChatId != null) {
+        vote.conducting_telegram_chat_id = body.conductingTelegramChatId;
+      }
+      showDashOk(`Проводить: ${body.conductingDisplayName || teacherName}.`);
+      await refresh();
+    } catch (err) {
+      showDashError(err?.message || String(err));
+      sel.value = lastCommittedId;
+      syncCustomSelect(sel);
+      sel.disabled = false;
+    }
+  });
+
+  wrap.appendChild(sel);
+  actionsEl.insertBefore(wrap, actionsEl.firstChild);
+  syncCustomSelect(sel);
+}
+
 async function fetchOpenLessonVotes() {
   const res = await fetch("/api/admin/lesson-votes/open");
   if (!res.ok) {
@@ -1257,14 +1366,16 @@ async function renderOpenLessonVotesList(openVotesRoot, openVotes, refresh) {
     return;
   }
 
+  const teachers = cachedVotesConductTeachers;
   const grid = document.createElement("div");
   grid.className = "lesson-cards";
 
   for (const vote of openVotes) {
     const snap = vote.lesson_snapshot && typeof vote.lesson_snapshot === "object" ? vote.lesson_snapshot : {};
+    const conducting = vote.conducting_display_name?.trim() || "";
     const card = buildLessonCard({
       when: fmtKyivDateParts(vote.occurrence_at),
-      teacher: vote.conducting_display_name?.trim() || "—",
+      teacher: conducting || "—",
       place: snap.placeLabel || "—",
       type: snap.lessonTypeLabel || "—",
       abon: voteCountFromSnapshot(vote.votes_snapshot, "abon"),
@@ -1303,6 +1414,7 @@ async function renderOpenLessonVotesList(openVotesRoot, openVotes, refresh) {
       ],
     });
     card.classList.add("lesson-card--open");
+    mountOpenVoteConductSelect(card.querySelector(".lesson-card__actions"), vote, teachers, refresh);
     grid.appendChild(card);
   }
 
@@ -1314,6 +1426,12 @@ async function renderVotesPanel() {
   if (!openVotesRoot) return;
   ensureVotesBatchVoteWired();
   openVotesRoot.innerHTML = '<p class="admin-muted">Завантаження…</p>';
+
+  try {
+    await ensureVotesConductTeachersLoaded();
+  } catch (err) {
+    showDashError(err?.message || String(err));
+  }
 
   const result = await fetchOpenLessonVotes();
   if (!result.ok) {
