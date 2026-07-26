@@ -4474,9 +4474,11 @@ app.post("/api/signup", async (req, res) => {
       return res.status(500).json({ ok: false, error: "TELEGRAM_BOT_TOKEN is not configured." });
     }
 
+    // Сервер у UTC; без timeZone час у Telegram був на 3 год раніше за Київ (літо UTC+3).
     const when = new Date().toLocaleString("uk-UA", {
       dateStyle: "long",
       timeStyle: "short",
+      timeZone: KYIV_TZ,
     });
 
     const text = [
