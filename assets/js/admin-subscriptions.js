@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { getSupabaseConfig } from "./runtime-supabase-config.js";
+import { buildSubscriptionPatchBody } from "../../subscription-utils.js";
 
 function el(id) {
   return document.getElementById(id);
@@ -144,6 +145,10 @@ let subsPage = 1;
 let cachedSubRows = [];
 /** @type {string | null} */
 let currentSubId = null;
+/** @type {string} */
+let currentSubInitialStatus = "";
+/** @type {number} */
+let currentSubAttended = 0;
 let subsAdminWired = false;
 
 export async function setupSubscriptionsAdmin() {
@@ -582,7 +587,8 @@ export async function setupSubscriptionsAdmin() {
       if (rolledBack) {
         const st = document.createElement("span");
         st.className = "admin-visit-journal__status";
-        st.textContent = "Не був";
+        const hasLesson = visit?.lesson_vote_occurrences?.has_lesson;
+        st.textContent = hasLesson === false ? "Не проведено" : "Не був";
         item.appendChild(st);
       }
 
@@ -628,9 +634,11 @@ export async function setupSubscriptionsAdmin() {
       el("subEditStudentName").textContent = `Учень: ${studentLabel}`;
       el("subEditId").value = String(sub.id);
       el("subEditLessonType").value = sub.lesson_types?.name || sub.lesson_type_id || "";
+      currentSubInitialStatus = String(sub.status || "pending");
+      currentSubAttended = Number(sub.visits_attended) || 0;
       const statusSel = el("subEditStatus");
       if (statusSel) {
-        statusSel.value = String(sub.status || "pending");
+        statusSel.value = currentSubInitialStatus;
         syncSelectUi(statusSel);
       }
       el("subEditTotalVisits").value = sub.total_visits != null ? String(sub.total_visits) : "";
@@ -801,11 +809,6 @@ export async function setupSubscriptionsAdmin() {
         return;
       }
 
-      const attendedNow = Number(
-        cachedSubRows.find((r) => String(r.id) === String(id))?.visits_attended ?? 0,
-      );
-      const used_visits_override = uNum === attendedNow ? null : Math.max(0, uNum - attendedNow);
-
       const amountRaw = el("subEditAmount")?.value.trim();
       const amount_uah = amountRaw === "" ? null : Number(amountRaw);
       if (amountRaw !== "" && !Number.isFinite(amount_uah)) {
@@ -816,16 +819,23 @@ export async function setupSubscriptionsAdmin() {
       const saveBtn = el("subEditSaveBtn");
       if (saveBtn) saveBtn.disabled = true;
       try {
+        // Перечитуємо список, щоб attended був після rollback видаленого заняття.
+        await refreshList();
+        const freshRow = cachedSubRows.find((r) => String(r.id) === String(id));
+        const attendedNow = Number(freshRow?.visits_attended ?? currentSubAttended) || 0;
+        const body = buildSubscriptionPatchBody({
+          total_visits,
+          valid_until: el("subEditValidUntil")?.value.trim() || null,
+          amount_uah,
+          purchased_at: el("subEditPurchasedAt")?.value.trim() || null,
+          status: el("subEditStatus")?.value || currentSubInitialStatus,
+          initialStatus: currentSubInitialStatus,
+          attendedNow,
+          usedVisitsInput: uNum,
+        });
         await fetchJson(`/api/admin/subscriptions/${encodeURIComponent(id)}`, {
           method: "PATCH",
-          body: JSON.stringify({
-            total_visits,
-            valid_until: el("subEditValidUntil")?.value.trim() || null,
-            amount_uah,
-            purchased_at: el("subEditPurchasedAt")?.value.trim() || null,
-            status: el("subEditStatus")?.value,
-            used_visits_override,
-          }),
+          body: JSON.stringify(body),
         });
         await refreshList();
         await openSubDetail(id);

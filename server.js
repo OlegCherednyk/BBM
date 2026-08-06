@@ -1655,9 +1655,14 @@ async function deleteAdminLessonRecord(lessonId) {
 
   const linkedOccurrenceId = String(lessonRow.lesson_vote_occurrence_id || "").trim() || null;
 
+  /** @type {string[]} */
+  let restoredSubscriptionIds = [];
+  let rolledBackVisits = 0;
   if (linkedOccurrenceId) {
     try {
-      await rollbackVisitsForOccurrence(supabaseAdmin, linkedOccurrenceId);
+      const rb = await rollbackVisitsForOccurrence(supabaseAdmin, linkedOccurrenceId);
+      rolledBackVisits = Number(rb?.rolledBack) || 0;
+      restoredSubscriptionIds = Array.isArray(rb?.subscriptionIds) ? rb.subscriptionIds : [];
     } catch (e) {
       return { ok: false, error: e?.message || "Failed to rollback visits." };
     }
@@ -1670,7 +1675,13 @@ async function deleteAdminLessonRecord(lessonId) {
 
   // Рядок lesson_vote_occurrences лишається finalized — інакше планувальник знову створить
   // голосування на той самий слот і дату (loadOccupiedOccurrenceAtByLessonTimeId).
-  return { ok: true, lessonId: id, linkedOccurrenceId };
+  return {
+    ok: true,
+    lessonId: id,
+    linkedOccurrenceId,
+    rolledBackVisits,
+    restoredSubscriptionIds,
+  };
 }
 
 function buildTwoStudentReviewMessage(lessonContext, abonCount, singleCount, netIncome) {
@@ -4402,7 +4413,13 @@ app.post("/api/admin/lessons/delete", async (req, res) => {
       return res.status(status).json({ ok: false, error: result.error, lessonDeleted: result.lessonDeleted ?? false });
     }
 
-    return res.status(200).json({ ok: true, lessonId: result.lessonId, linkedOccurrenceId: result.linkedOccurrenceId });
+    return res.status(200).json({
+      ok: true,
+      lessonId: result.lessonId,
+      linkedOccurrenceId: result.linkedOccurrenceId,
+      rolledBackVisits: result.rolledBackVisits ?? 0,
+      restoredSubscriptionIds: result.restoredSubscriptionIds ?? [],
+    });
   } catch (error) {
     console.error("admin lessons delete failed:", error);
     return res.status(500).json({ ok: false, error: error?.message || "Failed to delete lesson." });
