@@ -512,7 +512,6 @@ export async function setupStudentsAdmin() {
       visitsIn.step = "1";
       visitsIn.value = sub.total_visits != null ? String(sub.total_visits) : "";
 
-      const attendedCount = countAttendedVisitsForSubscription(visits, sub.id);
       const displayedUsed = computeUsedVisitsDisplay(sub, visits);
       const initialUsedDisplay = displayedUsed;
 
