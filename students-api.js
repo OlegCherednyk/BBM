@@ -1,7 +1,11 @@
 import { DateTime } from "luxon";
-import { buildSubscriptionPatchBody, computeSubscriptionUsedVisits } from "./subscription-utils.js";
+import {
+  buildSubscriptionPatchBody,
+  computeSubscriptionUsedVisits,
+  resolveUsedVisitsForPatch,
+} from "./subscription-utils.js";
 
-export { buildSubscriptionPatchBody, computeSubscriptionUsedVisits };
+export { buildSubscriptionPatchBody, computeSubscriptionUsedVisits, resolveUsedVisitsForPatch };
 
 const KYIV_TZ = "Europe/Kyiv";
 

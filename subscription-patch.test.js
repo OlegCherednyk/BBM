@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildSubscriptionPatchBody, computeSubscriptionUsedVisits } from "./subscription-utils.js";
+import {
+  buildSubscriptionPatchBody,
+  computeSubscriptionUsedVisits,
+  resolveUsedVisitsForPatch,
+} from "./subscription-utils.js";
 
 describe("computeSubscriptionUsedVisits", () => {
   it("counts only journal when override is null", () => {
@@ -14,6 +18,55 @@ describe("computeSubscriptionUsedVisits", () => {
   it("decreases when a journal visit is rolled back (journal 2 → 1)", () => {
     assert.equal(computeSubscriptionUsedVisits(2, 1, 8), 3);
     assert.equal(computeSubscriptionUsedVisits(1, 1, 8), 2);
+  });
+});
+
+describe("resolveUsedVisitsForPatch", () => {
+  it("keeps manual used edits when the admin changed the field", () => {
+    assert.equal(
+      resolveUsedVisitsForPatch({
+        usedVisitsInput: 5,
+        initialUsedDisplay: 2,
+        attendedNow: 1,
+        currentOverride: null,
+        totalVisits: 8,
+      }),
+      5,
+    );
+  });
+
+  it("does not re-lock used via override after lesson delete when field was not edited", () => {
+    // Form opened with used=2 (two attended). Lesson deleted → attended=1.
+    // Stale input still shows 2; Save must follow live journal, not freeze override=1.
+    const used = resolveUsedVisitsForPatch({
+      usedVisitsInput: 2,
+      initialUsedDisplay: 2,
+      attendedNow: 1,
+      currentOverride: null,
+      totalVisits: 8,
+    });
+    assert.equal(used, 1);
+    const body = buildSubscriptionPatchBody({
+      total_visits: 8,
+      status: "active",
+      initialStatus: "active",
+      attendedNow: 1,
+      usedVisitsInput: used,
+    });
+    assert.equal(body.used_visits_override, null);
+  });
+
+  it("follows live used when override already exists and field was not edited", () => {
+    assert.equal(
+      resolveUsedVisitsForPatch({
+        usedVisitsInput: 3,
+        initialUsedDisplay: 3,
+        attendedNow: 1,
+        currentOverride: 1,
+        totalVisits: 8,
+      }),
+      2,
+    );
   });
 });
 

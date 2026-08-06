@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { getSupabaseConfig } from "./runtime-supabase-config.js";
-import { buildSubscriptionPatchBody } from "../../subscription-utils.js";
+import { buildSubscriptionPatchBody, resolveUsedVisitsForPatch } from "../../subscription-utils.js";
 
 function el(id) {
   return document.getElementById(id);
@@ -149,6 +149,10 @@ let currentSubId = null;
 let currentSubInitialStatus = "";
 /** @type {number} */
 let currentSubAttended = 0;
+/** @type {number} */
+let currentSubInitialUsed = 0;
+/** @type {unknown} */
+let currentSubOverride = null;
 let subsAdminWired = false;
 
 export async function setupSubscriptionsAdmin() {
@@ -636,13 +640,15 @@ export async function setupSubscriptionsAdmin() {
       el("subEditLessonType").value = sub.lesson_types?.name || sub.lesson_type_id || "";
       currentSubInitialStatus = String(sub.status || "pending");
       currentSubAttended = Number(sub.visits_attended) || 0;
+      currentSubOverride = sub.used_visits_override;
+      currentSubInitialUsed = Number(sub.visits_used ?? sub.visits_attended) || 0;
       const statusSel = el("subEditStatus");
       if (statusSel) {
         statusSel.value = currentSubInitialStatus;
         syncSelectUi(statusSel);
       }
       el("subEditTotalVisits").value = sub.total_visits != null ? String(sub.total_visits) : "";
-      el("subEditUsedVisits").value = String(Number(sub.visits_used ?? sub.visits_attended) || 0);
+      el("subEditUsedVisits").value = String(currentSubInitialUsed);
       el("subEditValidUntil").value = toDateInputValue(sub.valid_until);
       el("subEditAmount").value = sub.amount_uah != null ? String(Number(sub.amount_uah)) : "";
       el("subEditPurchasedAt").value = toDateInputValue(sub.purchased_at);
@@ -819,10 +825,21 @@ export async function setupSubscriptionsAdmin() {
       const saveBtn = el("subEditSaveBtn");
       if (saveBtn) saveBtn.disabled = true;
       try {
-        // Перечитуємо список, щоб attended був після rollback видаленого заняття.
+        // Перечитуємо список, щоб attended/override були після rollback видаленого заняття.
         await refreshList();
         const freshRow = cachedSubRows.find((r) => String(r.id) === String(id));
         const attendedNow = Number(freshRow?.visits_attended ?? currentSubAttended) || 0;
+        const freshOverride =
+          freshRow && Object.prototype.hasOwnProperty.call(freshRow, "used_visits_override")
+            ? freshRow.used_visits_override
+            : currentSubOverride;
+        const usedVisitsInput = resolveUsedVisitsForPatch({
+          usedVisitsInput: uNum,
+          initialUsedDisplay: currentSubInitialUsed,
+          attendedNow,
+          currentOverride: freshOverride,
+          totalVisits: total_visits,
+        });
         const body = buildSubscriptionPatchBody({
           total_visits,
           valid_until: el("subEditValidUntil")?.value.trim() || null,
@@ -831,7 +848,7 @@ export async function setupSubscriptionsAdmin() {
           status: el("subEditStatus")?.value || currentSubInitialStatus,
           initialStatus: currentSubInitialStatus,
           attendedNow,
-          usedVisitsInput: uNum,
+          usedVisitsInput,
         });
         await fetchJson(`/api/admin/subscriptions/${encodeURIComponent(id)}`, {
           method: "PATCH",

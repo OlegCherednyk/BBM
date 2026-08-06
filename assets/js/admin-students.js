@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { getSupabaseConfig } from "./runtime-supabase-config.js";
-import { buildSubscriptionPatchBody } from "../../subscription-utils.js";
+import { buildSubscriptionPatchBody, resolveUsedVisitsForPatch } from "../../subscription-utils.js";
 
 function el(id) {
   return document.getElementById(id);
@@ -514,6 +514,7 @@ export async function setupStudentsAdmin() {
 
       const attendedCount = countAttendedVisitsForSubscription(visits, sub.id);
       const displayedUsed = computeUsedVisitsDisplay(sub, visits);
+      const initialUsedDisplay = displayedUsed;
 
       const usedIn = document.createElement("input");
       usedIn.type = "number";
@@ -609,6 +610,14 @@ export async function setupStudentsAdmin() {
           // Свіжий журнал: після видалення заняття attended вже без цього візиту.
           const fresh = await fetchJson(`/api/admin/students/${encodeURIComponent(studentId)}`);
           const attendedNow = countAttendedVisitsForSubscription(fresh.visits || [], sub.id);
+          const freshSub = (fresh.subscriptions || []).find((s) => String(s.id) === String(sub.id)) || sub;
+          const usedVisitsInput = resolveUsedVisitsForPatch({
+            usedVisitsInput: u,
+            initialUsedDisplay,
+            attendedNow,
+            currentOverride: freshSub.used_visits_override,
+            totalVisits: total_visits,
+          });
           const body = buildSubscriptionPatchBody({
             total_visits,
             valid_until,
@@ -616,7 +625,7 @@ export async function setupStudentsAdmin() {
             status: statusSel.value,
             initialStatus,
             attendedNow,
-            usedVisitsInput: u,
+            usedVisitsInput,
           });
           await fetchJson(`/api/admin/subscriptions/${encodeURIComponent(sub.id)}`, {
             method: "PATCH",

@@ -17,6 +17,26 @@ export function computeSubscriptionUsedVisits(fromVisits, ovRaw, totalVisits) {
 }
 
 /**
+ * Значення «Використано» для PATCH.
+ * Якщо адмін не змінював поле — беремо живий підрахунок (журнал + override),
+ * щоб Save після видалення заняття не заморожував старе число через used_visits_override.
+ *
+ * @param {{
+ *   usedVisitsInput: number,
+ *   initialUsedDisplay: number,
+ *   attendedNow: number,
+ *   currentOverride: unknown,
+ *   totalVisits: number | null | undefined,
+ * }} args
+ */
+export function resolveUsedVisitsForPatch(args) {
+  const input = Math.max(0, Math.floor(Number(args.usedVisitsInput) || 0));
+  const initial = Math.max(0, Math.floor(Number(args.initialUsedDisplay) || 0));
+  if (input !== initial) return input;
+  return computeSubscriptionUsedVisits(args.attendedNow, args.currentOverride, args.totalVisits);
+}
+
+/**
  * Тіло PATCH абонемента для адмінки.
  * status додаємо лише якщо адмін явно змінив його — інакше сервер
  * перерахує статус після rollback візитів (видалення заняття).
