@@ -4090,6 +4090,7 @@ pre {
 
 .admin-stats-kpi-card--olive::after { background: linear-gradient(90deg, #74862f, #9db458); }
 .admin-stats-kpi-card--blue::after  { background: linear-gradient(90deg, #2e7d8c, #5ba8b8); }
+.admin-stats-kpi-card--teal::after  { background: linear-gradient(90deg, #1f7a6c, #4db6a5); }
 .admin-stats-kpi-card--green::after { background: linear-gradient(90deg, #2e7d32, #4caf50); }
 .admin-stats-kpi-card--red::after   { background: linear-gradient(90deg, #c04f4f, #e57373); }
 .admin-stats-kpi-card--amber::after { background: linear-gradient(90deg, #c98a2b, #f0b96c); }
@@ -4116,6 +4117,10 @@ pre {
 .admin-stats-kpi-card--blue .admin-stats-kpi-card__icon {
   background: rgba(46, 125, 140, 0.12);
   color: #2e7d8c;
+}
+.admin-stats-kpi-card--teal .admin-stats-kpi-card__icon {
+  background: rgba(31, 122, 108, 0.12);
+  color: #1f7a6c;
 }
 .admin-stats-kpi-card--green .admin-stats-kpi-card__icon,
 .admin-stats-kpi-card--green-pos .admin-stats-kpi-card__icon {
@@ -4577,6 +4582,15 @@ pre {
   color: var(--brown-light) !important;
 }
 
+.admin-stats-teacher-card__stat--smm {
+  background: rgba(201, 138, 43, 0.08);
+  border-color: rgba(201, 138, 43, 0.2);
+}
+
+.admin-stats-teacher-card__stat--smm-income {
+  color: #8a5a12 !important;
+}
+
 .admin-stats-teacher-card__stat--payout {
   grid-column: 1 / -1;
   flex-direction: row;
@@ -4616,6 +4630,16 @@ pre {
   background: linear-gradient(135deg, rgba(116, 134, 47, 0.08), rgba(255, 255, 255, 0.88));
 }
 
+.admin-stats-journal-totals--smm {
+  border-color: rgba(201, 138, 43, 0.28);
+  background: linear-gradient(
+    135deg,
+    rgba(116, 134, 47, 0.07) 0%,
+    rgba(201, 138, 43, 0.07) 55%,
+    rgba(255, 255, 255, 0.92) 100%
+  );
+}
+
 .admin-stats-journal-totals__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4626,6 +4650,10 @@ pre {
   .admin-stats-journal-totals__grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+
+  .admin-stats-journal-totals__grid--with-smm {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
 }
 
 .admin-stats-journal-totals__item {
@@ -4633,6 +4661,14 @@ pre {
   flex-direction: column;
   gap: 3px;
   min-width: 0;
+}
+
+.admin-stats-journal-totals__item--smm .admin-stats-journal-totals__label {
+  color: #9a6a1f;
+}
+
+.admin-stats-journal-totals__item--smm .admin-stats-journal-totals__value {
+  color: #8a5a12;
 }
 
 .admin-stats-journal-totals__label {
@@ -4659,6 +4695,37 @@ pre {
   min-width: 0;
 }
 
+.admin-stats-journal__smm-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(201, 138, 43, 0.28);
+}
+
+.admin-stats-journal__smm-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 2px;
+}
+
+.admin-stats-journal__smm-eyebrow {
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9a6a1f;
+}
+
+.admin-stats-journal__smm-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--brown-light);
+  line-height: 1.35;
+}
+
 .admin-stats-journal__item {
   display: flex;
   flex-direction: column;
@@ -4668,6 +4735,65 @@ pre {
   border: 1px solid var(--admin-panel-border);
   background: rgba(255, 255, 255, 0.78);
   min-width: 0;
+}
+
+.admin-stats-journal__item--smm {
+  gap: 0;
+  padding: 10px 12px;
+  border-color: rgba(201, 138, 43, 0.28);
+  background: linear-gradient(135deg, rgba(201, 138, 43, 0.07), rgba(255, 255, 255, 0.9));
+}
+
+.admin-stats-journal__smm-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  min-width: 0;
+}
+
+.admin-stats-journal__smm-text {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35em;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.admin-stats-journal__smm-when {
+  flex: 0 0 auto;
+  font-family: var(--ff-display);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--brown-dark);
+  letter-spacing: -0.02em;
+}
+
+.admin-stats-journal__smm-sep {
+  flex: 0 0 auto;
+  color: var(--brown-light);
+}
+
+.admin-stats-journal__smm-details {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.82rem;
+  color: var(--brown-light);
+  line-height: 1.35;
+}
+
+.admin-stats-journal__smm-amount {
+  flex: 0 0 auto;
+  font-family: var(--ff-display);
+  font-size: clamp(0.88rem, 2.4vw, 1rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #8a5a12;
+  white-space: nowrap;
 }
 
 .admin-stats-journal__main {

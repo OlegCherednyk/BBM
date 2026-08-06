@@ -2937,13 +2937,19 @@ let statsPayoutChartInstance = null;
 let statsBreakdownChartInstance = null;
 
 /**
- * Render the 4 KPI cards on the stats page.
- * @param {{ totalLessons: number, totalScheduledLessons?: number | null, totalPeople: number, totalNetAfterRent: number, totalSmm: number }} summary — totalPeople = unique students in period
+ * Render the KPI cards on the stats page.
+ * @param {{ totalLessons: number, totalScheduledLessons?: number | null, totalPeople: number, websiteSignups?: number, totalNetAfterRent: number }} summary — totalPeople = unique students in period
  */
 function renderStatsKpiCards(summary) {
   const root = maybeEl("statsSummaryCards");
   if (!root) return;
-  const { totalLessons, totalScheduledLessons, totalPeople, totalNetAfterRent, totalSmm } = summary;
+  const {
+    totalLessons,
+    totalScheduledLessons,
+    totalPeople,
+    websiteSignups = 0,
+    totalNetAfterRent,
+  } = summary;
   const netColor = totalNetAfterRent >= 0 ? "green" : "red";
 
   const lessonsValueHtml =
@@ -2953,14 +2959,14 @@ function renderStatsKpiCards(summary) {
 
   const ICON_CALENDAR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>`;
   const ICON_PEOPLE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
+  const ICON_GLOBE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`;
   const ICON_MONEY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`;
-  const ICON_SEND = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2 15 22 11 13 2 9l20-7z"/></svg>`;
 
   const cards = [
     { color: "olive", icon: ICON_CALENDAR, label: "Проведено занять",    valueHtml: lessonsValueHtml },
     { color: "blue",  icon: ICON_PEOPLE,   label: "Унікальних учнів", value: String(totalPeople) },
-    { color: netColor, icon: ICON_MONEY,   label: "Чистий після оренди", value: fmtMoney(totalNetAfterRent) },
-    { color: "amber", icon: ICON_SEND,     label: "SMM дохід (загалом)", value: fmtMoney(totalSmm) },
+    { color: "teal",  icon: ICON_GLOBE,    label: "Заявки з сайту", value: String(websiteSignups) },
+    { color: netColor, icon: ICON_MONEY,   label: "Чистий прибуток", value: fmtMoney(totalNetAfterRent) },
   ];
 
   root.innerHTML = cards.map((c) => `
@@ -3166,6 +3172,9 @@ function renderStatsTeachersTable(rows) {
       ? fmtMoney(Number(row.smmIncome) || 0)
       : `− ${fmtMoney(row.smm)}`;
     const smmLabel = row.isSmm ? "SMM дохід" : "SMM";
+    const smmDdCls = row.isSmm
+      ? "admin-stats-teacher-card__stat--smm-income"
+      : "admin-stats-teacher-card__stat--muted";
     return `
       <article class="admin-stats-teacher-card${topMod}">
         <header class="admin-stats-teacher-card__head">
@@ -3188,9 +3197,9 @@ function renderStatsTeachersTable(rows) {
             <dt>Оренда</dt>
             <dd class="admin-stats-teacher-card__stat--muted">${escapeHtml(rentSigned)}</dd>
           </div>
-          <div class="admin-stats-teacher-card__stat">
+          <div class="admin-stats-teacher-card__stat${row.isSmm ? " admin-stats-teacher-card__stat--smm" : ""}">
             <dt>${smmLabel}</dt>
-            <dd class="admin-stats-teacher-card__stat--muted">${escapeHtml(smmSigned)}</dd>
+            <dd class="${smmDdCls}">${escapeHtml(smmSigned)}</dd>
           </div>
           <div class="admin-stats-teacher-card__journal-cell">
             <button
@@ -3223,8 +3232,17 @@ function closeStatsTeacherJournalModal() {
 function mountStatsTeacherJournalTotals(container, summary) {
   if (!container) return;
   const payoutCls = summary.payout >= 0 ? "admin-stats-payout-positive" : "admin-stats-payout-negative";
+  const showSmmIncome = Boolean(summary.isSmm);
+  const smmIncome = Number(summary.smmIncome) || 0;
+  const gridMod = showSmmIncome ? " admin-stats-journal-totals__grid--with-smm" : "";
+  const smmItem = showSmmIncome
+    ? `<div class="admin-stats-journal-totals__item admin-stats-journal-totals__item--smm">
+        <span class="admin-stats-journal-totals__label">SMM дохід</span>
+        <span class="admin-stats-journal-totals__value">${escapeHtml(fmtMoney(smmIncome))}</span>
+      </div>`
+    : "";
   container.innerHTML = `
-    <div class="admin-stats-journal-totals__grid">
+    <div class="admin-stats-journal-totals__grid${gridMod}">
       <div class="admin-stats-journal-totals__item">
         <span class="admin-stats-journal-totals__label">Уроків</span>
         <span class="admin-stats-journal-totals__value">${summary.lessonsCount}</span>
@@ -3237,27 +3255,39 @@ function mountStatsTeacherJournalTotals(container, summary) {
         <span class="admin-stats-journal-totals__label">Виручка</span>
         <span class="admin-stats-journal-totals__value">${escapeHtml(fmtMoney(summary.revenue))}</span>
       </div>
+      ${smmItem}
       <div class="admin-stats-journal-totals__item">
         <span class="admin-stats-journal-totals__label">Виплата</span>
         <span class="admin-stats-journal-totals__value ${payoutCls}">${escapeHtml(fmtMoney(summary.payout))}</span>
       </div>
     </div>
   `;
+  container.classList.toggle("admin-stats-journal-totals--smm", showSmmIncome);
   container.classList.remove("admin-hide");
+}
+
+function peopleWordUa(n) {
+  const count = Number(n) || 0;
+  if (count === 1) return "людина";
+  if (count >= 2 && count <= 4) return "людини";
+  return "людей";
 }
 
 /**
  * @param {HTMLElement | null} container
- * @param {Array<{ startsAt: string, lessonTypeName: string, placeName: string, peopleCount: number, revenue: number, rent: number, smm: number, payout: number }>} lessons
+ * @param {Array<{ startsAt: string, lessonTypeName: string, placeName: string, peopleCount: number, revenue: number, rent: number, smm: number, payout: number, hideSmm?: boolean }>} lessons
+ * @param {Array<{ startsAt: string, lessonTypeName: string, placeName: string, teacherName: string, peopleCount: number, smm: number }> | null | undefined} [smmLessons]
  */
-function mountStatsTeacherJournalList(container, lessons) {
+function mountStatsTeacherJournalList(container, lessons, smmLessons) {
   if (!container) return;
-  if (!lessons.length) {
+  const ownLessons = Array.isArray(lessons) ? lessons : [];
+  const smmRows = Array.isArray(smmLessons) ? smmLessons : [];
+  if (!ownLessons.length && !smmRows.length) {
     container.innerHTML = '<p class="admin-muted">Немає уроків за обраний період.</p>';
     return;
   }
 
-  container.innerHTML = lessons.map((lesson) => {
+  const ownHtml = ownLessons.map((lesson) => {
     const payoutCls = lesson.payout >= 0 ? "admin-stats-payout-positive" : "admin-stats-payout-negative";
     const financeMod = lesson.hideSmm ? " admin-stats-journal__finance--no-smm" : "";
     const rentSigned = `− ${fmtMoney(lesson.rent)}`;
@@ -3271,7 +3301,7 @@ function mountStatsTeacherJournalList(container, lessons) {
       <article class="admin-stats-journal__item">
         <div class="admin-stats-journal__main">
           <div class="admin-stats-journal__date">${escapeHtml(fmtKyivDateTime(lesson.startsAt))}</div>
-          <div class="admin-stats-journal__meta">${escapeHtml(lesson.lessonTypeName)} · ${escapeHtml(lesson.placeName)} · ${lesson.peopleCount} ${lesson.peopleCount === 1 ? "людина" : lesson.peopleCount >= 2 && lesson.peopleCount <= 4 ? "людини" : "людей"}</div>
+          <div class="admin-stats-journal__meta">${escapeHtml(lesson.lessonTypeName)} · ${escapeHtml(lesson.placeName)} · ${lesson.peopleCount} ${peopleWordUa(lesson.peopleCount)}</div>
         </div>
         <dl class="admin-stats-journal__finance${financeMod}">
           <div class="admin-stats-journal__finance-item">
@@ -3291,6 +3321,30 @@ function mountStatsTeacherJournalList(container, lessons) {
       </article>
     `;
   }).join("");
+
+  const smmSectionHtml = smmRows.length
+    ? `
+      <div class="admin-stats-journal__smm-section">
+        <div class="admin-stats-journal__smm-head">
+          <span class="admin-stats-journal__smm-eyebrow">SMM нарахування</span>
+          <p class="admin-stats-journal__smm-hint">З уроків інших викладачів за період</p>
+        </div>
+        ${smmRows.map((row) => `
+          <article class="admin-stats-journal__item admin-stats-journal__item--smm">
+            <div class="admin-stats-journal__smm-row">
+              <div class="admin-stats-journal__smm-text">
+                <span class="admin-stats-journal__smm-when">${escapeHtml(fmtKyivDateTime(row.startsAt))}</span>
+                <span class="admin-stats-journal__smm-sep" aria-hidden="true">·</span>
+                <span class="admin-stats-journal__smm-details">${escapeHtml(row.lessonTypeName)} · ${escapeHtml(row.placeName)} · ${escapeHtml(row.teacherName || "—")} · ${row.peopleCount} ${peopleWordUa(row.peopleCount)}</span>
+              </div>
+              <div class="admin-stats-journal__smm-amount" title="SMM дохід">+ ${escapeHtml(fmtMoney(row.smm))}</div>
+            </div>
+          </article>
+        `).join("")}
+      </div>`
+    : "";
+
+  container.innerHTML = `${ownHtml}${smmSectionHtml}` || '<p class="admin-muted">Немає уроків за обраний період.</p>';
 }
 
 async function openStatsTeacherJournalModal({ teacherId, teacherName }) {
@@ -3339,7 +3393,7 @@ async function openStatsTeacherJournalModal({ teacherId, teacherName }) {
       }
     }
     mountStatsTeacherJournalTotals(totalsEl, json.summary || { lessonsCount: 0, peopleCount: 0, revenue: 0, payout: 0 });
-    mountStatsTeacherJournalList(listEl, json.lessons || []);
+    mountStatsTeacherJournalList(listEl, json.lessons || [], json.smmLessons || []);
   } catch (err) {
     if (subEl) subEl.textContent = "";
     listEl.innerHTML = `<p class="admin-muted">${escapeHtml(err instanceof Error ? err.message : String(err))}</p>`;
@@ -3408,7 +3462,7 @@ async function renderStatsDashboard() {
     json = await res.json().catch(() => ({}));
     if (!res.ok || !json.ok) {
       const msg = json.error || `Помилка ${res.status}`;
-      renderStatsKpiCards({ totalLessons: 0, totalPeople: 0, totalNetAfterRent: 0, totalSmm: 0 });
+      renderStatsKpiCards({ totalLessons: 0, totalPeople: 0, websiteSignups: 0, totalNetAfterRent: 0, totalSmm: 0 });
       if (tableRoot) {
         tableRoot.className = "admin-stats-teacher-cards admin-stats-teacher-cards--empty";
         tableRoot.innerHTML = `<p class="admin-muted">${escapeHtml(msg)}</p>`;
@@ -3417,7 +3471,7 @@ async function renderStatsDashboard() {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    renderStatsKpiCards({ totalLessons: 0, totalPeople: 0, totalNetAfterRent: 0, totalSmm: 0 });
+    renderStatsKpiCards({ totalLessons: 0, totalPeople: 0, websiteSignups: 0, totalNetAfterRent: 0, totalSmm: 0 });
     if (tableRoot) {
       tableRoot.className = "admin-stats-teacher-cards admin-stats-teacher-cards--empty";
       tableRoot.innerHTML = `<p class="admin-muted">${escapeHtml(msg)}</p>`;

@@ -1,6 +1,9 @@
 /**
  * ponytail: self-check for SMM teacher payout math (no framework).
  * Run: node scripts/smm-teacher-payout-check.js
+ *
+ * Rule: SMM fee from an SMM-teacher's own lesson is NOT pooled —
+ * it is already kept because we do not deduct it from that lesson's payout.
  */
 
 function lessonPayout({ revenue, rent, smm, isSmmTeacher }) {
@@ -12,7 +15,7 @@ function dashboardForSmm({ lessons, smmTeacherId }) {
   const by = new Map();
   let pool = 0;
   for (const L of lessons) {
-    pool += L.smm;
+    if (!L.isSmmTeacher) pool += L.smm;
     const payout = lessonPayout(L);
     const key = L.teacherId;
     const agg = by.get(key) || { payout: 0, smm: 0, isSmm: false };
@@ -41,9 +44,9 @@ assert(lessonPayout(lessons[0]) === 550, "regular payout");
 assert(lessonPayout(lessons[1]) === 600, "smm teacher lesson payout without smm deduct");
 
 const { pool, by } = dashboardForSmm({ lessons, smmTeacherId: "b" });
-assert(pool === 600, "pool smm");
+assert(pool === 250, "pool smm from non-smm lessons only");
 assert(by.get("a").payout === 550, "regular unchanged");
 assert(by.get("b").smm === 0, "no smm line on smm teacher");
-assert(by.get("b").payout === 1200, "overall payout includes smm pool");
+assert(by.get("b").payout === 850, "overall payout = own lessons + pool (no double-count)");
 
 console.log("ok");

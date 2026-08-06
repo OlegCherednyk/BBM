@@ -1300,7 +1300,7 @@ async function computeLessonFinancialsForStats(supabaseAdmin, row, ctx) {
   const rent = lookupPlaceRent(ctx.placePriceIndex, placeId, duration, row.starts_at);
   const smm = pickSmmAmount(ctx.smmRows, peopleCount);
   const isSmmTeacher = Boolean(row.teachers?.is_smm);
-  // ponytail: SMM teacher keeps full lesson payout; pool SMM is added later in dashboard/journal
+  // ponytail: SMM-teacher lesson keeps full payout (no SMM deduct) — that fee is NOT pooled again
   const payout = Math.round((revenue - rent - (isSmmTeacher ? 0 : smm)) * 100) / 100;
 
   const teacherName =
@@ -1347,11 +1347,12 @@ async function computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso, fromD
 
   /** @type {Map<string, { id: string | null, name: string, lessonsCount: number, peopleCount: number, revenue: number, rent: number, smm: number, smmIncome: number, isSmm: boolean, payout: number }>} */
   const byTeacher = new Map();
+  // Pool = SMM fees actually deducted from non-SMM lessons only
   let totalSmm = 0;
 
   for (const row of ctx.lessons) {
     const fin = await computeLessonFinancialsForStats(supabaseAdmin, row, ctx);
-    totalSmm += fin.smm;
+    if (!fin.isSmmTeacher) totalSmm += fin.smm;
     const teacherKey = fin.teacherId || fin.teacherName;
     const agg = byTeacher.get(teacherKey) || {
       id: fin.teacherId,
@@ -1369,7 +1370,7 @@ async function computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso, fromD
     agg.peopleCount += fin.peopleCount;
     agg.revenue += fin.revenue;
     agg.rent += fin.rent;
-    // SMM fee is school-level only; never on SMM teacher's card
+    // SMM fee is school-level only; never on SMM teacher's card as a deduction
     if (!fin.isSmmTeacher) agg.smm += fin.smm;
     agg.payout += fin.payout;
     if (fin.isSmmTeacher) agg.isSmm = true;
@@ -1391,7 +1392,7 @@ async function computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso, fromD
       payout: 0,
     };
     agg.isSmm = true;
-    // SMM pool goes into overall teacher payout (chart + card total)
+    // SMM pool (from other teachers) → SMM income + overall payout
     agg.smmIncome = Math.round(totalSmm * 100) / 100;
     agg.payout = Math.round((agg.payout + totalSmm) * 100) / 100;
     byTeacher.set(key, agg);
@@ -1422,6 +1423,22 @@ async function computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso, fromD
     totalScheduledLessons = countScheduledLessonOccurrencesInRange(scheduleSlots || [], fromDate, toDate);
   }
 
+  let websiteSignups = 0;
+  {
+    let signupQuery = supabaseAdmin
+      .from("website_signups")
+      .select("id", { count: "exact", head: true });
+    if (fromIso) signupQuery = signupQuery.gte("created_at", fromIso);
+    if (toIso) signupQuery = signupQuery.lte("created_at", toIso);
+    const { count, error: signupErr } = await signupQuery;
+    if (signupErr) {
+      // Table may not exist yet — keep dashboard usable
+      console.warn("website_signups count:", signupErr.message);
+    } else {
+      websiteSignups = Number(count) || 0;
+    }
+  }
+
   return {
     summary: {
       totalLessons,
@@ -1430,6 +1447,7 @@ async function computeAdminStatsDashboard(supabaseAdmin, { fromIso, toIso, fromD
       totalPeopleAll,
       totalNetAfterRent: totalRevenue - totalRent,
       totalSmm,
+      websiteSignups,
     },
     teachers,
   };
@@ -1562,12 +1580,27 @@ async function computeTeacherLessonsJournal(supabaseAdmin, { teacherId, teacherN
     ((teacherId && ctx.smmTeacher.id === teacherId) ||
       (!teacherId && teacherName && ctx.smmTeacher.name === String(teacherName).trim()) ||
       lessons.some((l) => l.isSmmTeacher));
+
+  /** @type {Array<{ id: string, startsAt: string, lessonTypeName: string, placeName: string, teacherName: string, peopleCount: number, smm: number }>} */
+  const smmLessons = [];
   if (isSmmJournal) {
     let poolSmm = 0;
     for (const row of ctx.lessons) {
       const fin = await computeLessonFinancialsForStats(supabaseAdmin, row, ctx);
+      // Skip SMM-teacher lessons: fee was not deducted, already kept in that lesson payout
+      if (fin.isSmmTeacher || !(fin.smm > 0)) continue;
       poolSmm += fin.smm;
+      smmLessons.push({
+        id: fin.id,
+        startsAt: fin.startsAt,
+        lessonTypeName: fin.lessonTypeName,
+        placeName: fin.placeName,
+        teacherName: fin.teacherName,
+        peopleCount: fin.peopleCount,
+        smm: fin.smm,
+      });
     }
+    smmLessons.sort((a, b) => String(b.startsAt || "").localeCompare(String(a.startsAt || "")));
     summary.isSmm = true;
     summary.smmIncome = Math.round(poolSmm * 100) / 100;
     summary.payout = Math.round((summary.payout + poolSmm) * 100) / 100;
@@ -1588,6 +1621,7 @@ async function computeTeacherLessonsJournal(supabaseAdmin, { teacherId, teacherN
       payout,
       hideSmm: Boolean(isSmmTeacher),
     })),
+    smmLessons,
   };
 }
 
@@ -1948,7 +1982,10 @@ async function notifyConductingTeacherPayout({
       await bot.telegram.sendMessage(teacherChatId, payoutText);
     }
 
-    await notifySmmTeacherPayout(breakdown.smmPool);
+    // Only pool SMM when it was actually deducted from a non-SMM lesson
+    if (!breakdown.isSmmTeacher) {
+      await notifySmmTeacherPayout(breakdown.smmPool);
+    }
   } catch (e) {
     console.warn("notifyConductingTeacherPayout:", e?.description || e?.message || e);
   }
@@ -4516,6 +4553,17 @@ app.post("/api/signup", async (req, res) => {
             ? `Telegram send failed: ${firstError.reason?.description || firstError.reason?.message || "unknown error"}`
             : "Failed to send Telegram message to all discovered chats.",
       });
+    }
+
+    // ponytail: persist successful website join lead for admin stats
+    if (supabaseAdmin) {
+      const { error: insertErr } = await supabaseAdmin.from("website_signups").insert({
+        name,
+        contact,
+      });
+      if (insertErr) {
+        console.error("website_signups insert failed:", insertErr.message);
+      }
     }
 
     return res.json({ ok: true, delivered, total: targetChatIds.length });
