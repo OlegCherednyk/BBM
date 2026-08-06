@@ -1462,13 +1462,15 @@ async function renderLessonsPanel() {
           async () => {
             if (!confirm("Видалити цей запис заняття?")) return;
             clearDashMessages();
+            /** @type {{ ok?: boolean, error?: string, rolledBackVisits?: number }} */
+            let body = {};
             try {
               const res = await fetch("/api/admin/lessons/delete", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ lesson_id: row.id }),
               });
-              const body = await res.json().catch(() => ({}));
+              body = await res.json().catch(() => ({}));
               if (!res.ok || !body.ok) {
                 showDashError(body.error || `Помилка ${res.status}`);
                 return;
@@ -1478,7 +1480,12 @@ async function renderLessonsPanel() {
               return;
             }
             await renderLessonsPanel();
-            showDashOk("Запис заняття видалено.");
+            const restored = Number(body?.rolledBackVisits) || 0;
+            showDashOk(
+              restored > 0
+                ? `Запис заняття видалено. Повернено ${restored} візит(и) на абонементи.`
+                : "Запис заняття видалено.",
+            );
           },
         );
       };

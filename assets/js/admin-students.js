@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { getSupabaseConfig } from "./runtime-supabase-config.js";
+import { buildSubscriptionPatchBody } from "../../subscription-utils.js";
 
 function el(id) {
   return document.getElementById(id);
@@ -368,7 +369,8 @@ function mountVisitJournal(container, visits) {
     if (rolledBack) {
       const st = document.createElement("span");
       st.className = "admin-visit-journal__status";
-      st.textContent = "Не був";
+      const hasLesson = visit?.lesson_vote_occurrences?.has_lesson;
+      st.textContent = hasLesson === false ? "Не проведено" : "Не був";
       item.appendChild(st);
     }
     frag.appendChild(item);
@@ -558,6 +560,7 @@ export async function setupStudentsAdmin() {
         statusSel.appendChild(o);
       }
       statusSel.value = String(sub.status || "pending");
+      const initialStatus = String(sub.status || "pending");
 
       grid.appendChild(visitsField);
       grid.appendChild(field("Діє до", validUntil));
@@ -594,27 +597,30 @@ export async function setupStudentsAdmin() {
           return;
         }
 
-        const attendedNow = countAttendedVisitsForSubscription(visits, sub.id);
         const u = Number.parseInt(String(usedIn.value).trim(), 10);
         if (!Number.isFinite(u) || u < 0) {
           showStudentsLocalError("Некоректна кількість використаних візитів.");
           return;
         }
-        /** Авто з журналу — якщо лишили число як у журналі. Інакше override = «використано до журналу» (u − journal). */
-        const used_visits_override = u === attendedNow ? null : Math.max(0, u - attendedNow);
 
         saveBtn.disabled = true;
         delBtn.disabled = true;
         try {
+          // Свіжий журнал: після видалення заняття attended вже без цього візиту.
+          const fresh = await fetchJson(`/api/admin/students/${encodeURIComponent(studentId)}`);
+          const attendedNow = countAttendedVisitsForSubscription(fresh.visits || [], sub.id);
+          const body = buildSubscriptionPatchBody({
+            total_visits,
+            valid_until,
+            amount_uah,
+            status: statusSel.value,
+            initialStatus,
+            attendedNow,
+            usedVisitsInput: u,
+          });
           await fetchJson(`/api/admin/subscriptions/${encodeURIComponent(sub.id)}`, {
             method: "PATCH",
-            body: JSON.stringify({
-              total_visits,
-              valid_until,
-              amount_uah,
-              status: statusSel.value,
-              used_visits_override,
-            }),
+            body: JSON.stringify(body),
           });
           await reloadSubs();
           showStudentEditOk("Абонемент збережено.");

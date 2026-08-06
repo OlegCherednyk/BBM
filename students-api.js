@@ -1,4 +1,7 @@
 import { DateTime } from "luxon";
+import { buildSubscriptionPatchBody, computeSubscriptionUsedVisits } from "./subscription-utils.js";
+
+export { buildSubscriptionPatchBody, computeSubscriptionUsedVisits };
 
 const KYIV_TZ = "Europe/Kyiv";
 
@@ -10,24 +13,6 @@ const KYIV_TZ = "Europe/Kyiv";
 const CROSS_ABON_ACCESS = {
   training: ["contemporary"],
 };
-
-/**
- * Скільки візитів уже використано по абонементу.
- * Без override — лише журнал. З override — вже використані до журналу + attended у журналі.
- * @param {number} fromVisits
- * @param {unknown} ovRaw
- * @param {number | null | undefined} totalVisits
- */
-export function computeSubscriptionUsedVisits(fromVisits, ovRaw, totalVisits) {
-  const journal = Math.max(0, Math.floor(Number(fromVisits) || 0));
-  if (ovRaw == null || ovRaw === "" || !Number.isFinite(Number(ovRaw))) return journal;
-  const opening = Math.max(0, Math.floor(Number(ovRaw)));
-  const used = opening + journal;
-  if (totalVisits != null && Number.isFinite(Number(totalVisits))) {
-    return Math.min(Math.max(0, Math.floor(Number(totalVisits))), used);
-  }
-  return used;
-}
 
 /** @param {import("@supabase/supabase-js").SupabaseClient} supabaseAdmin */
 export async function resolveLessonTypeIdForOccurrence(supabaseAdmin, row) {
@@ -999,7 +984,7 @@ export async function adminUpsertLessonVisit(supabaseAdmin, { occurrenceId, stud
  */
 export async function rollbackVisitsForOccurrence(supabaseAdmin, occurrenceId) {
   const occId = String(occurrenceId || "").trim();
-  if (!occId) return { rolledBack: 0 };
+  if (!occId) return { rolledBack: 0, subscriptionIds: [] };
 
   const { data: visits, error: vErr } = await supabaseAdmin
     .from("visits")
@@ -1010,21 +995,23 @@ export async function rollbackVisitsForOccurrence(supabaseAdmin, occurrenceId) {
 
   let rolledBack = 0;
   const subIds = new Set();
+  const rolledAt = new Date().toISOString();
   for (const v of visits || []) {
     const { error: upErr } = await supabaseAdmin
       .from("visits")
-      .update({ visit_status: "rolled_back", rolled_back_at: new Date().toISOString() })
+      .update({ visit_status: "rolled_back", rolled_back_at: rolledAt })
       .eq("id", v.id);
     if (upErr) throw new Error(upErr.message);
     rolledBack += 1;
     if (v.subscription_id) subIds.add(String(v.subscription_id));
   }
 
-  for (const subId of subIds) {
+  const subscriptionIds = [...subIds];
+  for (const subId of subscriptionIds) {
     await recomputeSubscriptionStatus(supabaseAdmin, subId);
   }
 
-  return { rolledBack };
+  return { rolledBack, subscriptionIds };
 }
 
 export async function adminRemoveLessonVisit(supabaseAdmin, visitId) {
@@ -1139,11 +1126,45 @@ export function registerStudentRoutes(app, supabaseAdmin) {
         .limit(100);
       if (vErr) return res.status(500).json({ ok: false, error: vErr.message });
 
+      const occIds = [
+        ...new Set(
+          (visits || [])
+            .map((v) => String(v.lesson_vote_occurrence_id || "").trim())
+            .filter(Boolean),
+        ),
+      ];
+      /** @type {Set<string>} */
+      const occWithLesson = new Set();
+      if (occIds.length > 0) {
+        const { data: lessonRows, error: lesErr } = await supabaseAdmin
+          .from("lessons")
+          .select("lesson_vote_occurrence_id")
+          .in("lesson_vote_occurrence_id", occIds);
+        if (lesErr) return res.status(500).json({ ok: false, error: lesErr.message });
+        for (const row of lessonRows || []) {
+          const oid = String(row.lesson_vote_occurrence_id || "").trim();
+          if (oid) occWithLesson.add(oid);
+        }
+      }
+
+      const enrichedVisits = (visits || []).map((v) => {
+        const oid = String(v.lesson_vote_occurrence_id || "").trim();
+        const occ = v.lesson_vote_occurrences;
+        if (!occ || typeof occ !== "object") return v;
+        return {
+          ...v,
+          lesson_vote_occurrences: {
+            ...occ,
+            has_lesson: oid ? occWithLesson.has(oid) : false,
+          },
+        };
+      });
+
       return res.status(200).json({
         ok: true,
         student,
         subscriptions: subscriptions || [],
-        visits: visits || [],
+        visits: enrichedVisits,
       });
     } catch (e) {
       console.error("GET /api/admin/students/:id:", e?.message || e);
