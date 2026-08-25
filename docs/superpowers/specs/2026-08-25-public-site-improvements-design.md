@@ -2,7 +2,7 @@
 
 Date: 2026-08-25  
 Target: `/` landing (`index.html`)  
-Status: design proposal (Superdesign canvas blocked until CLI login)
+Status: interactive preview at `/preview.html` (production `/` unchanged)
 
 ## Product
 

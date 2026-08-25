@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/png" href="logo_bbm_circle.png" />
+    <title>Порівняння лендінгу — mozok.tilo.ruh</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Montserrat:wght@200;300;400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/css/styles.css" />
+    <link rel="stylesheet" href="assets/css/testimonials.css" />
+    <link rel="stylesheet" href="assets/css/preview.css" />
+    <script>
+      window.__bbmPublicConfig = fetch("/api/public-config", {
+        headers: { Accept: "application/json" },
+        credentials: "same-origin",
+      })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; });
+    </script>
+  </head>
+  <body class="preview-page preview-on-nav preview-on-hero preview-on-calendar preview-on-footer preview-on-modal preview-on-sticky">
+
+    <!-- ── SITE BACKGROUND (fixed layer — glass sections see through here) ── -->
+    <div class="site-bg" aria-hidden="true"></div>
+
+    <!-- ── NAV ── -->
+    <nav class="nav nav--hero" id="nav">
+      <div class="nav__brand">
+        <a class="nav__logo" href="#">
+          <img class="nav__logo-mark" src="logo_bbm_circle.png" alt="" width="24" height="24" />
+          <span>mozok.tilo.ruh</span>
+        </a>
+        <a
+          class="nav__ig"
+          href="https://www.instagram.com/mozok.tilo.ruh/"
+          target="_blank"
+          rel="noopener"
+          aria-label="Instagram"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+            <circle cx="12" cy="12" r="4"/>
+            <circle cx="17.5" cy="6.5" r=".7" fill="currentColor" stroke="none"/>
+          </svg>
+        </a>
+      </div>
+      <ul class="nav__links" id="previewNavLinks">
+        <li><a href="#classes-spotlight">Практики</a></li>
+        <li><a href="#schedule">Розклад</a></li>
+        <li><a href="#testimonials">Відгуки</a></li>
+        <li><a href="#pricing">Ціни</a></li>
+      </ul>
+      <button class="btn btn--primary nav__cta" type="button" id="openModalNavDesktop" data-open-signup>Записатись</button>
+      <button class="nav__hamburger" id="navHamburger" aria-label="Меню" aria-expanded="false">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </nav>
+
+    <!-- ── MOBILE NAV ── -->
+    <nav class="mobile-nav" id="mobileNav" aria-hidden="true">
+      <a href="#classes-spotlight" class="mobile-nav__link">Практики</a>
+      <a href="#schedule" class="mobile-nav__link">Розклад</a>
+      <a href="#values" class="mobile-nav__link">Цінності</a>
+      <a href="#pricing" class="mobile-nav__link">Ціни</a>
+      <button class="btn btn--primary mobile-nav__cta" id="openModalNav">Записатись</button>
+    </nav>
+
+    <!-- ── HERO ── -->
+    <section class="hero" id="hero">
+      <div class="hero__bg" aria-hidden="true">
+        <img
+          class="hero__bg-img"
+          id="heroBgImg"
+          src="assets/images/hero-background.png"
+          alt=""
+          decoding="async"
+          fetchpriority="high"
+        />
+      </div>
+      <div class="hero__vignette" aria-hidden="true"></div>
+      <div class="hero__inner">
+        <p class="hero__eyebrow">мозок · тіло · рух · Київ</p>
+        <h1 class="hero__title">
+          це не просто танець —<br />
+          <span class="hero__rotating-wrap">
+            <span class="hero__rotating" id="rotatingWord">це подорож</span>
+          </span>
+        </h1>
+        <p class="hero__trust" id="heroTrust">
+          <span>10 історій у відгуках</span>
+          <span class="hero__trust-dot" aria-hidden="true"></span>
+          <span>без вікових обмежень</span>
+          <span class="hero__trust-dot" aria-hidden="true"></span>
+          <span>Київ · два береги</span>
+        </p>
+
+        <div class="hero__actions">
+          <button class="btn btn--primary" id="openModal">Записатись</button>
+          <a class="btn btn--ghost" href="#classes-spotlight" data-hero-extra>Практики</a>
+          <a class="btn btn--ghost" href="#schedule" id="heroScheduleBtn">Розклад</a>
+          <a class="btn btn--ghost" href="#pricing" data-hero-extra>Ціни</a>
+        </div>
+      </div>
+      <div class="hero__grain" aria-hidden="true"></div>
+    </section>
+
+    <!-- ── CLASSES (IG-style spotlight) ── -->
+    <section class="section spotlight" id="classes-spotlight" aria-labelledby="spotlight-heading">
+      <div class="section__inner spotlight__inner">
+        <p class="spotlight__label section__label">Практики</p>
+        <h2 class="spotlight__heading" id="spotlight-heading">Напрями практик</h2>
+
+        <div class="spotlight__grid">
+          <article class="spotlight-card spotlight-card--trenazh reveal">
+            <h3 class="spotlight-card__title">Тренаж</h3>
+            <p class="spotlight-card__duration">Тривалість практики 1 година</p>
+            <ul class="ig-list">
+              <li>
+                <span class="ig-list__rule" aria-hidden="true"></span>
+                <span class="ig-list__text">Повернення уваги в тіло через роботу з диханням і напругою.</span>
+              </li>
+              <li>
+                <span class="ig-list__rule" aria-hidden="true"></span>
+                <span class="ig-list__text">Комбінації вправ з хореографічного тренажу, йоги, реабілітаційних технік і пілатесу.</span>
+              </li>
+              <li>
+                <span class="ig-list__rule" aria-hidden="true"></span>
+                <span class="ig-list__text">Розвиток сили, гнучкості й витривалості.</span>
+              </li>
+            </ul>
+          </article>
+
+          <article class="spotlight-card spotlight-card--dance reveal reveal--delay-1">
+            <h3 class="spotlight-card__title">Сучасний танець</h3>
+            <p class="spotlight-card__duration">Тривалість практики 1,5 години</p>
+            <ul class="ig-list">
+              <li>
+                <span class="ig-list__rule" aria-hidden="true"></span>
+                <span class="ig-list__text">Опанування різних технік і способів руху, дослідження тілесних відчуттів у них.</span>
+              </li>
+              <li>
+                <span class="ig-list__rule" aria-hidden="true"></span>
+                <span class="ig-list__text">Розвиток реакції й координації.</span>
+              </li>
+              <li>
+                <span class="ig-list__rule" aria-hidden="true"></span>
+                <span class="ig-list__text">Вивчення окремих рухів і їхніх комбінацій.</span>
+              </li>
+              <li>
+                <span class="ig-list__rule" aria-hidden="true"></span>
+                <span class="ig-list__text">Імпровізаційні вправи й цікаві задачі на самопрацювання з матеріалом.</span>
+              </li>
+            </ul>
+          </article>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── SCHEDULE CALENDAR ── -->
+    <section class="section schedule-calendar-section" id="schedule" aria-labelledby="schedule-heading">
+      <div class="section__inner schedule-calendar-section__inner">
+        <p class="section__label">Розклад</p>
+        <h2 class="section__title reveal" id="schedule-heading">Календар практик</h2>
+
+        <div class="schedule-calendar-section__filters reveal reveal--delay-1">
+          <div class="schedule-calendar-section__filter">
+            <label class="schedule-calendar-section__filter-label" for="bankSelect">Берег</label>
+            <select class="schedule-calendar-section__select" id="bankSelect" name="river_bank" aria-label="Фільтр за берегом Дніпра">
+              <option value="all">Будь-який</option>
+              <option value="right">Правий берег</option>
+              <option value="left">Лівий берег</option>
+            </select>
+          </div>
+          <div class="schedule-calendar-section__filter">
+            <label class="schedule-calendar-section__filter-label" for="typeSelect">Напрям</label>
+            <select class="schedule-calendar-section__select" id="typeSelect" name="lesson_type" aria-label="Фільтр за типом заняття">
+              <option value="all">Будь-який напрям</option>
+              <option value="Тренаж">Тренаж</option>
+              <option value="Сучасний танець">Сучасний танець</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="hero-cal hero-cal--embedded reveal reveal--delay-2" id="heroCal" aria-label="Календар занять">
+          <div class="hero-cal__toolbar">
+            <button type="button" class="hero-cal__nav" id="calPrev" aria-label="Попередній місяць">‹</button>
+            <h3 class="hero-cal__month" id="calMonthLabel"></h3>
+            <button type="button" class="hero-cal__nav" id="calNext" aria-label="Наступний місяць">›</button>
+          </div>
+          <div class="hero-cal__weekdays">
+            <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Нд</span>
+          </div>
+          <div class="hero-cal__grid" id="calGrid" role="grid" aria-labelledby="calMonthLabel"></div>
+          <div class="hero-cal__detail" id="calDetail">
+            <p class="hero-cal__detail-date" id="calDetailDate"></p>
+            <ul class="hero-cal__sessions" id="calSessions"></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── VALUES ACCORDION ── -->
+    <section class="section values" id="values">
+      <div class="section__inner section__inner--split">
+        <div class="values__left reveal">
+          <p class="section__label">Наші цінності</p>
+          <h2 class="section__title">Чому ми не схожі на звичайну студію</h2>
+        </div>
+        <div class="values__right">
+          <div class="accordion" id="accordion">
+
+            <details class="accordion__item reveal reveal--delay-1">
+              <summary class="accordion__q">
+                Танець — це навичка, не талант
+                <span class="accordion__icon" aria-hidden="true"></span>
+              </summary>
+              <div class="accordion__body">
+                <p class="accordion__a">
+                  Ми вивчаємо рух поетапно — так само, як малювання, гру на
+                  інструменті чи програмування. Без «природженого хисту»,
+                  без вікових обмежень.
+                </p>
+              </div>
+            </details>
+
+            <details class="accordion__item reveal reveal--delay-2">
+              <summary class="accordion__q">
+                Рух — поза стилями
+                <span class="accordion__icon" aria-hidden="true"></span>
+              </summary>
+              <div class="accordion__body">
+                <p class="accordion__a">
+                  Ми не навчаємо «hip-hop» або «contemporary». Ми вивчаємо типи
+                  і якість руху, які лежать в основі будь-якого танцю.
+                </p>
+              </div>
+            </details>
+
+            <details class="accordion__item reveal reveal--delay-3">
+              <summary class="accordion__q">
+                Різні педагоги — максимальний прогрес
+                <span class="accordion__icon" aria-hidden="true"></span>
+              </summary>
+              <div class="accordion__body">
+                <p class="accordion__a">
+                  Практики у різних викладачів дає різні підходи, техніки і мову
+                  тіла. Це найважливіший інструмент для всебічного розвитку.
+                </p>
+              </div>
+            </details>
+
+            <details class="accordion__item reveal reveal--delay-4">
+              <summary class="accordion__q">
+                Тебе не зламають — ні фізично, ні морально
+                <span class="accordion__icon" aria-hidden="true"></span>
+              </summary>
+              <div class="accordion__body">
+                <p class="accordion__a">
+                  Усі педагоги вивчали анатомію й біомеханіку. Ми просимо
+                  досліджувати, що може тіло — не тиснути, не рвати, а слухати.
+                </p>
+              </div>
+            </details>
+
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── QUOTES SLIDER ── -->
+    <section class="section quotes" id="quotes">
+      <div class="section__inner">
+        <div class="quotes__slider" id="quotesSlider">
+          <blockquote class="quote quote--active">
+            <p>«Наші практики — це не просто зазубрювання рухів, це подорож крізь тіло у глибини своєї особистості.»</p>
+          </blockquote>
+          <blockquote class="quote">
+            <p>«Свідомий рух — це навичка, доступна лише тим, хто не чекає швидких результатів. Ти маєш бути готова до руху у власному темпі.»</p>
+          </blockquote>
+          <blockquote class="quote">
+            <p>«Ми віримо в поетапне оволодіння технікою, щоб ти змогла відкрити нові можливості власного тіла і вільно почуватись у русі.»</p>
+          </blockquote>
+        </div>
+        <div class="quotes__dots" id="quotesDots">
+          <button class="dot dot--active" aria-label="Цитата 1"></button>
+          <button class="dot" aria-label="Цитата 2"></button>
+          <button class="dot" aria-label="Цитата 3"></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── TESTIMONIALS ── -->
+    <section class="section testimonials" id="testimonials" aria-labelledby="testimonials-heading">
+      <div class="section__inner testimonials__inner">
+        <h2 class="section__title reveal" id="testimonials-heading">Відгуки</h2>
+        <p class="testimonials__hint reveal reveal--delay-1">10 історій про досвід</p>
+        <div class="testimonials__carousel reveal reveal--delay-2" id="testimonialsCarousel">
+          <div class="testimonials__stack" aria-hidden="true">
+            <span class="testimonials__stack-layer"></span>
+            <span class="testimonials__stack-layer"></span>
+          </div>
+          <button type="button" class="testimonials__nav testimonials__nav--prev" id="testimonialsPrev" aria-label="Попередній відгук">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div class="testimonials__viewport" id="testimonialsViewport">
+            <div class="testimonials__track" id="testimonialsTrack" role="list"></div>
+          </div>
+          <button type="button" class="testimonials__nav testimonials__nav--next" id="testimonialsNext" aria-label="Наступний відгук">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <p class="testimonials__swipe-hint" id="testimonialsSwipeHint" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11l5-5 5 5"/><path d="M12 6v12"/></svg>
+            свайпни, щоб читати далі
+          </p>
+        </div>
+        <div class="testimonials__footer reveal reveal--delay-3">
+          <div class="testimonials__progress" aria-hidden="true"><span class="testimonials__progress-fill" id="testimonialsProgress"></span></div>
+          <div class="testimonials__dots" id="testimonialsDots" role="tablist" aria-label="Відгуки"></div>
+          <p class="testimonials__counter" aria-live="polite"><span id="testimonialsCurrent">1</span><span class="testimonials__counter-sep">/</span><span id="testimonialsTotal">10</span></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── PRICING ── -->
+    <section class="section pricing" id="pricing" aria-labelledby="pricing-heading">
+      <div class="section__inner">
+        <p class="section__label">Вартість</p>
+        <h2 class="section__title reveal" id="pricing-heading">Ціни та абонементи</h2>
+
+        <div class="pricing__grid">
+
+          <article class="pricing-card reveal reveal--delay-1">
+            <div class="pricing-card__header">
+              <h3 class="pricing-card__title">Тренаж</h3>
+              <p class="pricing-card__duration">1 година</p>
+            </div>
+            <ul class="pricing-card__tiers">
+              <li class="pricing-tier">
+                <span class="pricing-tier__label">Разова практика</span>
+                <span class="pricing-tier__price"><span id="priceTrainingSingle">500</span> <span class="pricing-tier__currency">грн</span></span>
+              </li>
+              <li class="pricing-tier pricing-tier--highlight">
+                <div class="pricing-tier__main">
+                  <span class="pricing-tier__label">8 практик</span>
+                  <span class="pricing-tier__badge">вигідно</span>
+                </div>
+                <span class="pricing-tier__price"><span id="priceTrainingAbon">2 600</span> <span class="pricing-tier__currency">грн</span></span>
+              </li>
+            </ul>
+            <button class="btn btn--primary btn--full pricing-card__cta" id="openModal3">Записатись</button>
+          </article>
+
+          <article class="pricing-card reveal reveal--delay-2">
+            <div class="pricing-card__header">
+              <h3 class="pricing-card__title">Сучасний танець</h3>
+              <p class="pricing-card__duration">1,5 години</p>
+            </div>
+            <ul class="pricing-card__tiers">
+              <li class="pricing-tier">
+                <span class="pricing-tier__label">Разова практика</span>
+                <span class="pricing-tier__price"><span id="priceContemporarySingle">600</span> <span class="pricing-tier__currency">грн</span></span>
+              </li>
+              <li class="pricing-tier pricing-tier--highlight">
+                <div class="pricing-tier__main">
+                    <span class="pricing-tier__label">8 практик</span>
+                  <span class="pricing-tier__badge">вигідно</span>
+                </div>
+                <span class="pricing-tier__price"><span id="priceContemporaryAbon">3 200</span> <span class="pricing-tier__currency">грн</span></span>
+              </li>
+            </ul>
+            <button class="btn btn--primary btn--full pricing-card__cta" id="openModal4">Записатись</button>
+          </article>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ── SIGN-UP MODAL ── -->
+    <dialog class="modal" id="signupModal">
+      <button class="modal__close" id="closeModal" aria-label="Закрити">✕</button>
+      <div id="modalIntro">
+        <p class="modal__eyebrow">мозок.тіло.рух</p>
+        <h2 class="modal__title">Почнемо разом</h2>
+        <p class="modal__sub">Залиш своє ім'я та контакт (Instagram або Telegram) — ми напишемо тобі першою.</p>
+      </div>
+      <form class="modal__form" id="signupForm" novalidate>
+        <div class="form-group">
+          <label for="name">Ім'я</label>
+          <input id="name" name="name" type="text" placeholder="Наприклад, Настя" autocomplete="given-name" required />
+          <span class="form-error" id="nameError"></span>
+        </div>
+        <div class="form-group">
+          <label for="contact">Instagram або Telegram</label>
+          <input id="contact" name="contact" type="text" placeholder="@instagram або @telegram" required />
+          <span class="form-error" id="contactError"></span>
+        </div>
+        <div class="preview-modal-extras" id="previewModalExtras">
+          <div class="form-group">
+            <label for="previewPractice">Напрям</label>
+            <select id="previewPractice" name="practice">
+              <option value="">Ще не знаю</option>
+              <option value="Тренаж">Тренаж</option>
+              <option value="Сучасний танець">Сучасний танець</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="previewBank">Берег</label>
+            <select id="previewBank" name="bank">
+              <option value="">Будь-який</option>
+              <option value="right">Правий</option>
+              <option value="left">Лівий</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn--primary btn--full" type="submit" id="signupSubmit">Відправити</button>
+      </form>
+      <div class="modal__success" id="signupSuccess" hidden>
+        <div class="modal__checkmark modal__checkmark--always" aria-hidden="true">✓</div>
+        <p>Заявку відправлено!</p>
+        <p class="modal__sub modal__sub--success">Ми напишемо тобі найближчим часом.</p>
+      </div>
+    </dialog>
+    <div class="modal__backdrop" id="modalBackdrop"></div>
+
+    <!-- ── FOOTER ── -->
+    <footer class="footer" id="siteFooter">
+      <div class="footer__current" id="footerCurrent">
+        <span>mozok.tilo.ruh © 2026</span>
+        <a href="https://www.instagram.com/mozok.tilo.ruh/" target="_blank" rel="noopener">Instagram</a>
+      </div>
+      <div class="footer__proposed" id="footerProposed">
+        <div class="footer__brand">
+          <img src="logo_bbm_circle.png" alt="" width="28" height="28" />
+          <strong>mozok.tilo.ruh</strong>
+          <p>Свідомий рух · Київ</p>
+        </div>
+        <nav class="footer__nav" aria-label="Розділи сайту">
+          <a href="#classes-spotlight">Практики</a>
+          <a href="#schedule">Розклад</a>
+          <a href="#values">Цінності</a>
+          <a href="#testimonials">Відгуки</a>
+          <a href="#pricing">Ціни</a>
+        </nav>
+        <div class="footer__meta">
+          <p>Правий і лівий берег Дніпра</p>
+          <a href="https://www.instagram.com/mozok.tilo.ruh/" target="_blank" rel="noopener">Instagram</a>
+          <p>© 2026</p>
+        </div>
+      </div>
+    </footer>
+
+    <div class="preview-sticky" id="previewSticky">
+      <p>Готова спробувати практику?</p>
+      <button class="btn btn--primary btn--sm" type="button" data-open-signup>Записатись</button>
+    </div>
+
+    <aside class="preview-dock" id="previewDock">
+      <button type="button" class="preview-dock__toggle" id="previewDockToggle" aria-expanded="true">
+        Порівняння лендінгу
+      </button>
+      <div class="preview-dock__body" id="previewDockBody">
+        <p class="preview-dock__note">Бойовий сайт не змінюється. Увімкни або вимкни кожну зміну.</p>
+        <div class="preview-dock__presets">
+          <button type="button" class="btn btn--ghost btn--sm" id="previewAllOff">Як зараз</button>
+          <button type="button" class="btn btn--primary btn--sm" id="previewAllOn">Уся пропозиція</button>
+        </div>
+        <ul class="preview-dock__list">
+          <li><label><input type="checkbox" data-feature="nav" checked /> Меню: лінки + Записатись</label></li>
+          <li><label><input type="checkbox" data-feature="hero" checked /> Простіший hero і рядок довіри</label></li>
+          <li><label><input type="checkbox" data-feature="calendar" checked /> Кремовий календар</label></li>
+          <li><label><input type="checkbox" data-feature="footer" checked /> Футер з навігацією</label></li>
+          <li><label><input type="checkbox" data-feature="modal" checked /> Модалка: напрям і берег</label></li>
+          <li><label><input type="checkbox" data-feature="sticky" checked /> Липка кнопка запису</label></li>
+        </ul>
+        <p class="preview-dock__summary" id="previewSummary">Обрано 6 з 6 змін</p>
+        <a class="preview-dock__live" href="/">Відкрити поточний сайт</a>
+      </div>
+    </aside>
+
+    <!-- ── TOAST CONTAINER ── -->
+    <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="false"></div>
+
+    <button class="scroll-top" id="scrollTop" aria-label="Повернутись нагору">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="18 15 12 9 6 15"/>
+      </svg>
+    </button>
+
+    <script src="assets/js/custom-select.js"></script>
+    <script src="assets/js/testimonials.js" defer></script>
+    <script type="module" src="assets/js/script.js"></script>
+    <script src="assets/js/preview.js" defer></script>
+  </body>
+</html>
