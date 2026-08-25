@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "targets": {
+    "/": {
+      "targetKind": "existing-ui",
+      "projectId": "87f4a1ae-2722-437f-a693-65338fde9f1a",
+      "baselineDraftId": "283e135e-eef9-4d8e-a0b1-84d20a1d7c3d",
+      "activeDraftId": "283e135e-eef9-4d8e-a0b1-84d20a1d7c3d",
+      "designSystemPath": ".superdesign/design-system.md",
+      "referenceIds": [
+        "logo_bbm_circle.png",
+        "348238af-edf6-400a-9f05-28e5d181075c",
+        "957a97b6-a6bf-4e9a-9214-81865ddb0a3e",
+        "8701681b-3c5b-45ed-b3f7-e8bb28749dc5",
+        "62b38088-ec23-48b6-911c-627d9c1cf12d",
+        "80eba143-e5c4-430a-9ea4-ef7e5a2f6ffb"
+      ],
+      "brandAssets": {
+        "logo": {
+          "assetKey": "logo_bbm_circle.png",
+          "url": "https://vgbujcuwptvheqijyjbe.supabase.co/storage/v1/object/public/hmac-uploads/projects/87f4a1ae-2722-437f-a693-65338fde9f1a/brand-assets/logo_bbm_circle.png/logo_bbm_circle.png",
+          "sourcePath": "logo_bbm_circle.png"
+        }
+      },
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        ".superdesign/init/theme.md:1:80",
+        "index.html",
+        "preview.html",
+        "assets/css/styles.css:1:180",
+        "assets/css/preview.css",
+        "assets/css/testimonials.css"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "c9c6c5c5bd1a0093ab982326903e6e69180b36152157f3235e5c45ba931dc6dc",
+        ".superdesign/init/theme.md": "50e377665d5708248ef155780888a1902c719777aa3a22a116ef67d7dd2990e7",
+        "index.html": "90c778869ddd2a98a57393f0c1eaf1e3d26a23afb2a4116c622803722bc8bae5",
+        "preview.html": "a49eeb0d875296460e7ae646f2caec3b90b1cfe04077869607fd4298ef212fe6",
+        "assets/css/styles.css": "e1bdcea9d207669fb31eae318c2d8b744482d531433d5c54affde82a4bcfd790",
+        "assets/css/preview.css": "f02ad438410e64f0dad1bb813da1f52e2ad491ca9c367d6dbc5c54eb1e5b80bb",
+        "assets/css/testimonials.css": "5375f2e5dccc1f3c19819429811a7368ed37bdf7df33ec13b16ed820d3145efb"
+      },
+      "components": [
+        {
+          "name": "NavBar",
+          "id": "b3239558-09ff-4705-8023-560bc0c1618c",
+          "sourcePath": "index.html",
+          "logoAssetKey": "logo_bbm_circle.png"
+        },
+        {
+          "name": "Footer",
+          "id": "f1cf9aee-07d0-49ff-ad34-a1dc10987bdf",
+          "sourcePath": "index.html",
+          "logoAssetKey": "logo_bbm_circle.png"
+        }
+      ],
+      "drafts": {
+        "283e135e-eef9-4d8e-a0b1-84d20a1d7c3d": {
+          "title": "Current landing",
+          "visualDirection": "pixel-perfect current homepage",
+          "currentVersion": 1
+        },
+        "d7b1d958-bc64-43a0-bc25-9c87d5b943fd": {
+          "title": "Approach A \u2014 conversion",
+          "visualDirection": "same brand, better IA and signup path",
+          "parentDraftId": "283e135e-eef9-4d8e-a0b1-84d20a1d7c3d",
+          "currentVersion": 1
+        },
+        "817aa888-be46-492d-9607-a51e8cd52c9e": {
+          "title": "Approach B \u2014 editorial studio",
+          "visualDirection": "same tokens, more editorial photography",
+          "parentDraftId": "283e135e-eef9-4d8e-a0b1-84d20a1d7c3d",
+          "currentVersion": 1
+        }
+      },
+      "updatedAt": "2026-08-25T14:19:18Z"
+    }
+  }
+}

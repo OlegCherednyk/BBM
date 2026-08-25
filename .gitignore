@@ -31,3 +31,6 @@ build/
 nginx/
 .superpowers/
 .worktrees/
+
+# Superdesign temp HTML (never commit)
+.superdesign/tmp/
