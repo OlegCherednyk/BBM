@@ -7,10 +7,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Unbounded:wght@700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?r=7" />
+    <link rel="stylesheet" href="styles.css?r=9" />
     <link rel="icon" href="assets/logo.png" />
   </head>
-  <body class="play" data-v="1">
+  <body class="play">
     <section class="hero" aria-label="Тизер Open Day">
       <div class="stage">
         <p class="edge edge-l">обирай здорове й сильне тіло</p>
@@ -18,11 +18,9 @@
           <span>обирай свідомий рух</span>
           <span>тіло знижує тривожність</span>
         </div>
-        <img class="mark mark-a" src="assets/logo.png" alt="" />
-        <img class="mark mark-b" src="assets/logo.png" alt="" />
-        <button class="cluster cluster-top" type="button" data-day="sprouts" aria-label="04.10 Паростки">
+        <div class="cluster cluster-top">
           <img src="assets/cluster-top.jpg" alt="Тестуй нові напрями" />
-        </button>
+        </div>
         <div class="lockup">
           <p class="brand">мозок.тіло.рух</p>
           <h1 class="word" aria-label="OPEN DAY">
@@ -42,25 +40,15 @@
           <a class="reg" href="form.html" aria-label="Реєстрація">
             <span style="--i:0">Р</span><span style="--i:1">Е</span><span style="--i:2">Є</span><span style="--i:3">С</span><span style="--i:4">Т</span><span style="--i:5">Р</span><span style="--i:6">А</span><span style="--i:7">Ц</span><span style="--i:8">І</span><span style="--i:9">Я</span>
           </a>
-          <a class="soon soon-go" href="form.html">записатись</a>
           <button class="soon soon-details" id="details" type="button" aria-expanded="false">деталі</button>
-          <p class="hint">далі програма</p>
         </div>
-        <button class="cluster cluster-bot" type="button" data-day="grunt" aria-label="03.10 Ґрунт">
+        <div class="cluster cluster-bot">
           <img src="assets/cluster-bot.jpg" alt="Два дні, знижки на перший абонемент" />
-        </button>
+        </div>
       </div>
     </section>
 
-    <p class="v2-note">Верхнє гроно — неділя «Паростки». Нижнє — субота «Ґрунт».</p>
-
-    <div class="day-panels">
-      <article id="day-sprouts" hidden></article>
-      <article id="day-grunt" hidden></article>
-      <section class="prices" id="prices-v2"></section>
-    </div>
-
     <div class="story" id="story"></div>
-    <script src="landing.js?r=5"></script>
+    <script src="landing.js?r=6"></script>
   </body>
 </html>

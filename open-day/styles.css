@@ -153,41 +153,12 @@ img { max-width: 100%; display: block; }
 }
 .cluster-top { top: 0; right: 0; width: 86%; }
 .cluster-bot { bottom: 0; left: 0; width: 88%; }
-.mark {
-  position: absolute;
-  z-index: 2;
-  width: 72px;
-  height: 72px;
-  object-fit: contain;
-  opacity: 0;
-}
-.mark-a { top: 11%; right: 16%; }
-.mark-b { bottom: 12%; left: 18%; }
-.hint {
-  margin: 14px 0 0;
-  text-align: center;
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: lowercase;
-  color: var(--muted);
-  opacity: 0;
-}
 
-body[data-v="2"] .cluster { cursor: pointer; }
-body:not([data-v="3"]) .soon-details { display: none; }
-body[data-v="3"] .soon-go { display: none; }
-body:not([data-v="1"]) .hint { display: none; }
-body:not([data-v="2"]) .v2-note { display: none; }
-body[data-v="2"] .story { display: none; }
-body[data-v="1"] .day-panels,
-body[data-v="3"] .day-panels { display: none; }
-body[data-v="3"] .story { display: none; }
-body[data-v="3"] .story.is-open { display: block; }
+.story { display: none; }
+.story.is-open { display: block; }
 
 .play .letter { animation: pop 0.32s var(--ease) forwards; animation-delay: calc(0.08s + var(--i) * 0.12s); }
 .play .brand { animation: rise 0.45s var(--ease) 1.15s forwards; }
-.play .mark-a { animation: mark 0.7s var(--ease) 1.35s forwards, mark-out 0.3s linear 2.7s forwards; }
-.play .mark-b { animation: mark 0.7s var(--ease) 1.6s forwards, mark-out 0.3s linear 3.9s forwards; }
 .play .d1 { animation: rise 0.4s var(--ease) 2.15s forwards; }
 .play .d2 { animation: rise 0.4s var(--ease) 2.35s forwards; }
 .play .stage { animation: camera 6.6s linear forwards; }
@@ -196,7 +167,6 @@ body[data-v="3"] .story.is-open { display: block; }
 .play .edge { animation: fade 0.6s var(--ease) 4.6s forwards; }
 .play .reg span { animation: pop 0.26s var(--ease) forwards; animation-delay: calc(5.15s + var(--i) * 0.06s); }
 .play .soon { animation: rise 0.35s var(--ease) 5.85s forwards; }
-.play .hint { animation: rise 0.4s var(--ease) 6.4s forwards; }
 
 @keyframes pop {
   to { opacity: 1; transform: scale(1); }
@@ -209,11 +179,6 @@ body[data-v="3"] .story.is-open { display: block; }
   from { opacity: 0; }
   to { opacity: 1; }
 }
-@keyframes mark {
-  from { opacity: 0; transform: scale(0.7); }
-  to { opacity: 1; transform: scale(1); }
-}
-@keyframes mark-out { to { opacity: 0; } }
 @keyframes cluster {
   to { opacity: 1; transform: scale(1); }
 }
@@ -229,8 +194,7 @@ body.settled .brand,
 body.settled .dates span,
 body.settled .reg span,
 body.settled .soon,
-body.settled .cluster,
-body.settled .hint {
+body.settled .cluster {
   animation: none !important;
   opacity: 1 !important;
   transform: none !important;
@@ -239,23 +203,18 @@ body.settled .edge {
   animation: none !important;
   opacity: 1 !important;
 }
-body.settled .mark { animation: none !important; opacity: 0 !important; }
 body.settled .stage { animation: none !important; transform: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
-  .letter, .brand, .dates span, .reg span, .soon, .cluster, .edge, .hint {
+  .letter, .brand, .dates span, .reg span, .soon, .cluster, .edge {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
   }
-  .mark, .stage { animation: none !important; }
-  .mark { opacity: 0 !important; }
+  .stage { animation: none !important; }
 }
 
 /* ── story / вивіска ── */
-.story, .day-panels, .v2-note {
-  padding: 28px 22px 48px;
-}
 .story {
   padding: 22px 16px 64px;
 }
@@ -413,16 +372,6 @@ body.settled .stage { animation: none !important; transform: none !important; }
   font-size: 14px;
 }
 .story .go { margin-top: 18px; }
-.v2-note {
-  margin: 0;
-  padding-bottom: 0;
-  text-align: center;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--muted);
-}
-.day-panels article { padding-top: 8px; }
-.day-panels article[hidden] { display: none; }
 
 /* ── form ── */
 .form-page {
@@ -769,19 +718,17 @@ input:focus, textarea:focus { outline: none; border-bottom-color: var(--olive); 
   }
   .cluster-bot { grid-column: 1; grid-row: 1; justify-self: start; }
   .cluster-top { grid-column: 3; grid-row: 1; justify-self: end; }
-  .mark-a { top: 14%; right: 10%; }
-  .mark-b { bottom: 12%; left: 8%; }
   .edge { font-size: 12px; }
   .edge-l { top: 22%; }
   .edge-r { bottom: 18%; }
 
-  body[data-v="3"] .story {
+  .story {
     display: block;
     max-width: 760px;
     margin: 0 auto;
     padding: 64px 28px 96px;
   }
-  body[data-v="3"] .soon-details { display: none; }
+  .soon-details { display: none; }
   .sign { padding: 44px 56px 36px; }
   .story .day h2 { font-size: 40px; }
   .story .day p,

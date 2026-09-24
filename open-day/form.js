@@ -1,7 +1,5 @@
-const params = new URLSearchParams(location.search);
-const variant = ["1", "2", "3"].includes(params.get("v")) ? params.get("v") : "3";
+if (location.search) history.replaceState(null, "", location.pathname);
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-document.getElementById("back").href = "landing.html?v=" + variant;
 
 const form = document.getElementById("reg");
 const nickRe = /^@?[A-Za-z0-9_]{5,32}$/;

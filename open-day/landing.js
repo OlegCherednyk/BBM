@@ -1,18 +1,12 @@
-const params = new URLSearchParams(location.search);
-const variant = ["1", "2", "3"].includes(params.get("v")) ? params.get("v") : "3";
-document.body.dataset.v = variant;
+if (location.search) history.replaceState(null, "", location.pathname);
 
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-if (params.get("settle") === "1" || reduce) document.body.classList.add("settled");
+if (reduce) document.body.classList.add("settled");
 else setTimeout(() => document.body.classList.add("settled"), 7000);
 
 window.addEventListener("scroll", () => {
   if (window.scrollY > 12) document.body.classList.add("settled");
 }, { passive: true });
-
-document.querySelectorAll('a[href="form.html"]').forEach((a) => {
-  a.href = "form.html?v=" + variant;
-});
 
 const grunt = `
   <p class="when">03.10, субота</p>
@@ -47,7 +41,7 @@ const prices = `
     <li><span>Одна практика в будь-який день</span><b>400 грн</b></li>
   </ul>
   <p class="fine">Подія передбачає 12 місць. Місце бронюється лише після оплати, а оплата проходить у чаті події в Telegram.</p>
-  <a class="go" href="form.html?v=${variant}">Записатись</a>
+  <a class="go" href="form.html">Записатись</a>
 `;
 
 const story = document.getElementById("story");
@@ -62,26 +56,6 @@ story.innerHTML = `
     <section class="prices">${prices}</section>
   </div>
 `;
-
-document.getElementById("day-grunt").innerHTML = `<article class="day">${grunt}</article>`;
-document.getElementById("day-sprouts").innerHTML = `<article class="day">${sprouts}</article>`;
-document.getElementById("prices-v2").innerHTML = prices;
-
-document.querySelectorAll(".cluster").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    if (document.body.dataset.v !== "2") return;
-    const id = "day-" + btn.dataset.day;
-    const panel = document.getElementById(id);
-    const open = panel.hasAttribute("hidden");
-    document.querySelectorAll(".day-panels > article").forEach((el) => el.setAttribute("hidden", ""));
-    document.querySelectorAll(".cluster").forEach((el) => el.classList.remove("is-on"));
-    if (open) {
-      panel.removeAttribute("hidden");
-      btn.classList.add("is-on");
-      panel.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
-    }
-  });
-});
 
 document.getElementById("details").addEventListener("click", () => {
   const open = story.classList.toggle("is-open");
