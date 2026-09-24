@@ -51,3 +51,16 @@ using (
     where aa.user_id = auth.uid()
   )
 );
+
+drop policy if exists "admin_delete_open_day_signups" on public.open_day_signups;
+create policy "admin_delete_open_day_signups"
+on public.open_day_signups
+for delete
+to authenticated
+using (
+  exists (
+    select 1
+    from public.admin_allowlist aa
+    where aa.user_id = auth.uid()
+  )
+);

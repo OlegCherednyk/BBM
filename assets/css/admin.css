@@ -5147,6 +5147,7 @@ pre {
   white-space: pre-wrap;
 }
 .event-detail__value a { color: var(--olive); }
+.event-actions { margin-top: 18px; }
 @media (max-width: 640px) {
   .event-hero { align-items: flex-start; padding: 18px; }
   .event-row { align-items: flex-start; }

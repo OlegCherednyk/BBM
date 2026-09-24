@@ -65,12 +65,32 @@ export async function setupEventsAdmin() {
   const modalTitle = el("eventModalTitle");
   let rows = [];
   let filter = "all";
+  let supabase = null;
 
   function showError(message) {
     const box = el("dashError");
     if (!box) return;
     box.textContent = message;
     box.classList.toggle("admin-hide", !message);
+  }
+
+  async function removeSignup(row, button) {
+    const name = row.name || "цю заявку";
+    if (!confirm("Видалити заявку «" + name + "»?")) return;
+    if (!supabase) return;
+    button.disabled = true;
+    const { error } = await supabase.from("open_day_signups").delete().eq("id", row.id);
+    if (error) {
+      button.disabled = false;
+      showError(error.message);
+      return;
+    }
+    rows = rows.filter((item) => item.id !== row.id);
+    showError("");
+    closeModal();
+    renderHero();
+    renderFilters();
+    renderList();
   }
 
   function closeModal() {
@@ -119,6 +139,15 @@ export async function setupEventsAdmin() {
     const source = SOURCES[row.source] || "";
     addField(modalBody, "Звідки дізнався_лась", row.source === "other" && row.source_other ? source + ": " + row.source_other : source);
     addField(modalBody, "Чого чекає", row.hope);
+    const actions = document.createElement("div");
+    actions.className = "event-actions";
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "btn btn--danger btn--sm";
+    del.textContent = "Видалити заявку";
+    del.addEventListener("click", () => removeSignup(row, del));
+    actions.appendChild(del);
+    modalBody.appendChild(actions);
     modal.classList.remove("admin-hide");
     modal.setAttribute("aria-hidden", "false");
     document.body.classList.add("admin-modal-open");
@@ -213,7 +242,7 @@ export async function setupEventsAdmin() {
     showError("Немає підключення до бази. Перезапустіть сервер.");
     return;
   }
-  const supabase = createClient(url, anonKey);
+  supabase = createClient(url, anonKey);
   const { data, error } = await supabase
     .from("open_day_signups")
     .select("id, name, telegram, phone, pass, practice, source, source_other, hope, created_at")

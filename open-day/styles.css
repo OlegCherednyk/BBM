@@ -351,6 +351,12 @@ body.settled .stage { animation: none !important; transform: none !important; }
   font-weight: 400;
 }
 .fine, .note { color: var(--muted); font-size: 13px; }
+p.refund {
+  margin: 0 0 16px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
 .slots { list-style: none; margin: 0 0 18px; padding: 0; }
 .slots li { margin: 0 0 14px; text-align: left; }
 .slots span {
