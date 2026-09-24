@@ -16,7 +16,7 @@ function syncCustomSelect(selectEl) {
   }
 }
 
-/** @type {"login"|"lesson-types"|"prices"|"places"|"teachers"|"students"|"subscriptions"|"votes"|"lessons"|"stats"} */
+/** @type {"login"|"lesson-types"|"prices"|"places"|"teachers"|"students"|"subscriptions"|"votes"|"lessons"|"stats"|"events"} */
 const ADMIN_PAGE = /** @type {any} */ (document.body?.dataset.adminPage ?? "lesson-types");
 
 const isLoginPage = ADMIN_PAGE === "login";
@@ -31,6 +31,7 @@ const ADMIN_NAV_PAGES = [
   { id: "votes", href: "votes.html", label: "Голосування" },
   { id: "lessons", href: "lessons.html", label: "Заняття" },
   { id: "stats", href: "stats.html", label: "Статистика" },
+  { id: "events", href: "events.html", label: "Івенти" },
 ];
 
 function renderAdminNavLinks() {
@@ -2886,6 +2887,11 @@ async function refreshDashboard() {
       case "stats":
         await renderStatsDashboard();
         break;
+      case "events": {
+        const mod = await import("./admin-events.js");
+        await mod.setupEventsAdmin();
+        break;
+      }
       default:
         break;
     }

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/png" href="../logo_bbm_circle.png" />
+    <title>Адмін — івенти</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+    <link rel="stylesheet" href="../assets/css/admin.css" />
+  </head>
+  <body data-admin-page="events">
+    <nav class="nav nav--admin scrolled" aria-label="Адмін">
+      <div class="admin-nav__inner">
+        <div class="admin-nav__brand">
+          <a class="admin-nav__logo nav__logo" href="../index.html">
+            <img class="admin-nav__logo-mark" src="../logo_bbm_circle.png" alt="" width="28" height="28" decoding="async" />
+            <span class="admin-nav__logo-text">mozok.tilo.ruh</span>
+          </a>
+          <span class="admin-nav__badge">Адмін</span>
+        </div>
+        <div id="adminNavBackdrop" class="admin-nav__backdrop admin-hide" aria-hidden="true"></div>
+        <div id="adminNavDrawer" class="admin-nav__drawer admin-hide" aria-hidden="true">
+          <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі"></ol>
+          <div id="adminNavDrawerFooter" class="admin-nav__drawer-footer admin-hide">
+            <button type="button" class="admin-nav__signout" id="adminNavSignOut">
+              <svg class="admin-nav__signout-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              <span class="admin-nav__signout-label">Вийти</span>
+            </button>
+          </div>
+        </div>
+        <button
+          type="button"
+          class="admin-nav__toggle nav__hamburger admin-hide"
+          id="adminNavToggle"
+          aria-label="Меню"
+          aria-expanded="false"
+          aria-controls="adminNavDrawer"
+        >
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+      </div>
+    </nav>
+
+    <main class="admin-page">
+      <div id="authSection" class="admin-hide"></div>
+      <div id="blockedSection" class="admin-hide">
+        <div class="admin-top">
+          <h1 style="margin: 0">Немає прав</h1>
+          <button type="button" class="btn btn--ghost btn--sm" id="signOutBlocked">Вийти</button>
+        </div>
+        <p class="admin-muted">
+          Обліковий запис не у списку адміністраторів. Виконай у Supabase → SQL Editor (ідентифікатор користувача підставлено):
+        </p>
+        <pre
+          style="
+            font-size: 0.82rem;
+            background: var(--cream-soft);
+            border: 1px solid var(--cream-mid);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            overflow: auto;
+            line-height: 1.45;
+          "
+          id="allowlistSnippet"
+        ></pre>
+      </div>
+
+      <div id="dashSection" class="admin-hide">
+        <div class="admin-top admin-top--title-only">
+          <h1>Івенти</h1>
+        </div>
+        <div id="dashError" class="admin-alert admin-alert--error admin-hide" role="status"></div>
+        <div id="dashOk" class="admin-alert admin-alert--ok admin-hide" role="status"></div>
+
+        <div id="section-events">
+          <article class="event-hero" id="eventHero"></article>
+          <div class="event-filters" id="eventFilters" role="tablist" aria-label="Формат"></div>
+          <div id="eventList"><p class="admin-muted">Завантаження…</p></div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span>mozok.tilo.ruh — адмін</span>
+      <a href="../index.html">Сайт</a>
+    </footer>
+
+    <div id="eventModal" class="admin-modal admin-hide" aria-hidden="true">
+      <div class="admin-modal__backdrop" data-event-close tabindex="-1" aria-hidden="true"></div>
+      <div class="admin-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="eventModalTitle">
+        <div class="admin-modal__head">
+          <h3 id="eventModalTitle" class="admin-modal__title">Учасник</h3>
+          <button type="button" class="admin-modal__close" data-event-close aria-label="Закрити">✕</button>
+        </div>
+        <div class="admin-modal__body" id="eventModalBody"></div>
+      </div>
+    </div>
+
+    <script src="../assets/js/custom-select.js"></script>
+    <script type="module" src="../assets/js/admin.js"></script>
+  </body>
+</html>

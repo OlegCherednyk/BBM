@@ -4515,6 +4515,60 @@ app.get("/api/telegram/chats", async (_req, res) => {
   }
 });
 
+const OPEN_DAY_PASSES = new Set(["full", "grunt", "sprouts", "one"]);
+const OPEN_DAY_PRACTICES = new Set(["trenazh", "dance", "game", "contact", "health", "stretch"]);
+const OPEN_DAY_SOURCES = new Set(["ig", "tg", "friend", "other"]);
+
+function readOpenDaySignup(body) {
+  const name = String(body?.name || "").trim().slice(0, 120);
+  const nickRaw = String(body?.nick || "").trim();
+  const phone = String(body?.phone || "").trim();
+  const pass = String(body?.pass || "").trim();
+  const practiceRaw = String(body?.practice || "").trim();
+  const sourceRaw = String(body?.source || "").trim();
+  const sourceOther = String(body?.other || "").trim().slice(0, 300);
+  const hope = String(body?.hope || "").trim().slice(0, 2000);
+  if (!name) return { error: "Напиши прізвище та імʼя" };
+  if (!/^@?[A-Za-z0-9_]{5,32}$/.test(nickRaw)) return { error: "Перевір нік: лише латиниця, цифри і _" };
+  if (!/^\+?[0-9 ()-]{10,17}$/.test(phone)) return { error: "Схоже, в номері помилка" };
+  if (!OPEN_DAY_PASSES.has(pass)) return { error: "Обери формат" };
+  if (pass === "one" && !OPEN_DAY_PRACTICES.has(practiceRaw)) return { error: "Обери практику" };
+  if (body?.agree !== true) return { error: "Потрібна ця згода, щоб забронювати місце" };
+  const source = OPEN_DAY_SOURCES.has(sourceRaw) ? sourceRaw : null;
+  return {
+    row: {
+      event_slug: "open-day",
+      name,
+      telegram: nickRaw.startsWith("@") ? nickRaw : "@" + nickRaw,
+      phone,
+      pass,
+      practice: pass === "one" ? practiceRaw : null,
+      source,
+      source_other: source === "other" && sourceOther ? sourceOther : null,
+      hope: hope || null,
+    },
+  };
+}
+
+app.post("/api/open-day", async (req, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ ok: false, error: "Не вдалося зберегти запис. Спробуй ще раз." });
+    }
+    const parsed = readOpenDaySignup(req.body);
+    if (parsed.error) return res.status(400).json({ ok: false, error: parsed.error });
+    const { error } = await supabaseAdmin.from("open_day_signups").insert(parsed.row);
+    if (error) {
+      console.error("open_day_signups insert failed:", error.message);
+      return res.status(500).json({ ok: false, error: "Не вдалося зберегти запис. Спробуй ще раз." });
+    }
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error("open-day signup failed:", error);
+    return res.status(500).json({ ok: false, error: "Не вдалося зберегти запис. Спробуй ще раз." });
+  }
+});
+
 app.post("/api/signup", async (req, res) => {
   try {
     const name = String(req.body?.name || "").trim();

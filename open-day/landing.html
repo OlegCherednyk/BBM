@@ -7,48 +7,103 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Unbounded:wght@700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?r=9" />
+    <link rel="stylesheet" href="styles.css?r=19" />
     <link rel="icon" href="assets/logo.png" />
   </head>
   <body class="play">
-    <section class="hero" aria-label="Тизер Open Day">
-      <div class="stage">
-        <p class="edge edge-l">обирай здорове й сильне тіло</p>
-        <div class="edge edge-r">
-          <span>обирай свідомий рух</span>
-          <span>тіло знижує тривожність</span>
-        </div>
-        <div class="cluster cluster-top">
-          <img src="assets/cluster-top.jpg" alt="Тестуй нові напрями" />
-        </div>
-        <div class="lockup">
-          <p class="brand">мозок.тіло.рух</p>
-          <h1 class="word" aria-label="OPEN DAY">
-            <span class="letter" style="--i:0">O</span>
-            <span class="letter" style="--i:1">P</span>
-            <span class="letter" style="--i:2">E</span>
-            <span class="letter" style="--i:3">N</span>
-            <span class="gap"></span>
-            <span class="letter" style="--i:4">D</span>
-            <span class="letter" style="--i:5">A</span>
-            <span class="letter" style="--i:6">Y</span>
-          </h1>
-          <div class="dates">
-            <p><span class="d1">03.10</span><span class="d2">«ґрунт»</span></p>
-            <p><span class="d1">04.10</span><span class="d2">«паростки»</span></p>
+    <section class="hero" id="poster" aria-label="Тизер Open Day">
+      <div class="frame">
+        <div class="stage">
+          <p class="edge edge-l">обирай здорове й сильне тіло</p>
+          <div class="edge edge-r">
+            <span>обирай свідомий рух</span>
+            <span>тіло знижує тривожність</span>
           </div>
-          <a class="reg" href="form.html" aria-label="Реєстрація">
-            <span style="--i:0">Р</span><span style="--i:1">Е</span><span style="--i:2">Є</span><span style="--i:3">С</span><span style="--i:4">Т</span><span style="--i:5">Р</span><span style="--i:6">А</span><span style="--i:7">Ц</span><span style="--i:8">І</span><span style="--i:9">Я</span>
-          </a>
-          <button class="soon soon-details" id="details" type="button" aria-expanded="false">деталі</button>
-        </div>
-        <div class="cluster cluster-bot">
-          <img src="assets/cluster-bot.jpg" alt="Два дні, знижки на перший абонемент" />
+          <div class="cluster cluster-top">
+            <img src="assets/cluster-top.jpg" alt="Тестуй нові напрями" />
+          </div>
+          <div class="lockup">
+            <p class="brand">мозок.тіло.рух</p>
+            <div class="title-block">
+            <h1 class="word" aria-label="OPEN DAY">
+              <span class="letter" style="--i:0">O</span>
+              <span class="letter" style="--i:1">P</span>
+              <span class="letter" style="--i:2">E</span>
+              <span class="letter" style="--i:3">N</span>
+              <span class="gap"></span>
+              <span class="letter" style="--i:4">D</span>
+              <span class="letter" style="--i:5">A</span>
+              <span class="letter" style="--i:6">Y</span>
+            </h1>
+            <div class="dates">
+              <p><span class="d1">03.10</span><span class="d2">«ґрунт»</span></p>
+              <p><span class="d1">04.10</span><span class="d2">«паростки»</span></p>
+            </div>
+            </div>
+            <a class="reg" href="form.html" aria-label="Реєстрація">
+              <span style="--i:0">Р</span><span style="--i:1">Е</span><span style="--i:2">Є</span><span style="--i:3">С</span><span style="--i:4">Т</span><span style="--i:5">Р</span><span style="--i:6">А</span><span style="--i:7">Ц</span><span style="--i:8">І</span><span style="--i:9">Я</span>
+            </a>
+            <a class="soon" href="#details">деталі</a>
+          </div>
+          <div class="cluster cluster-bot">
+            <img src="assets/cluster-bot.jpg" alt="Два дні, знижки на перший абонемент" />
+          </div>
         </div>
       </div>
     </section>
 
-    <div class="story" id="story"></div>
-    <script src="landing.js?r=6"></script>
+    <div class="below">
+    <section class="sheet" id="details">
+      <div class="sign">
+        <article class="day">
+          <p class="when">03.10, субота</p>
+          <h2>Ґрунт</h2>
+          <p>Практики, які вже не перший рік дієво змінюють стан наших учениць і прокачують звʼязок із тілом. Рівень підготовки не має значення: рухаєшся у власному темпі, з увагою педагогині. А на виході маєш тишу в голові й легкість після напруженого дня.</p>
+          <ul class="slots">
+            <li>
+              <strong>14:00–15:00 · Тренаж</strong>
+              <span>Комплекс вправ на мобільність і функціональність мʼязів.</span>
+            </li>
+            <li>
+              <strong>15:15–17:45 · Сучасний танець</strong>
+              <span>Опановуємо принципи руху, напрацьовуємо техніку, розвиваємо витривалість тіла і гнучкість мислення.</span>
+            </li>
+          </ul>
+          <p>Приходь, якщо ще жодного разу в нас не був_ла!</p>
+        </article>
+
+        <article class="day">
+          <p class="when">04.10, неділя</p>
+          <h2>Паростки</h2>
+          <p>Осінь — час оновлень, тож ми запроваджуємо нові напрями. Стань першою_им, хто їх затестить: твій вибір вплине на розклад нового сезону. А ще це чудова нагода повернутися до практик після паузи.</p>
+          <ul class="slots">
+            <li><strong>12:00–13:00 · Рух як гра</strong></li>
+            <li><strong>13:10–14:10 · Контактна практика</strong></li>
+            <li><strong>15:00–16:00 · Dance and health</strong></li>
+            <li><strong>16:10–17:10 · Стретчинг</strong></li>
+          </ul>
+          <p>Нічого не пояснюємо, бо хочемо, щоб ти відчув_ла все сам_а.<br>Приходь, якщо маєш жагу рухатись і досліджувати.</p>
+        </article>
+      </div>
+    </section>
+
+      <p class="place"><span>місце</span><strong>Позняки, Мішуги 10</strong></p>
+
+      <section class="sheet" id="prices">
+        <div class="sign">
+          <h2 class="block-title">Ціни</h2>
+          <ul class="price-info">
+            <li><span>Full pass, обидва дні</span><b>1800 грн</b></li>
+            <li><span>Ґрунт, 03.10</span><b>600 грн</b></li>
+            <li><span>Паростки, 04.10</span><b>1400 грн</b></li>
+            <li><span>Одна практика, будь-який день</span><b>400 грн</b></li>
+          </ul>
+          <p class="fine">Подія передбачає 12 місць. Місце бронюється лише після оплати, а оплата проходить у чаті події в Telegram.</p>
+          <a class="go" href="form.html">реєстрація</a>
+        </div>
+      </section>
+    </div>
+
+    <script src="landing.js?r=7"></script>
   </body>
 </html>

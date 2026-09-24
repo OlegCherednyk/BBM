@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Адмін — івенти</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+    <link rel="stylesheet" href="../assets/css/admin.css" />
+  </head>
+  <body data-admin-page="events">
+    <nav class="nav nav--admin scrolled" aria-label="Адмін">
+      <div class="admin-nav__inner">
+        <div class="admin-nav__brand">
+          <a class="admin-nav__logo nav__logo" href="../index.html">
+            <img class="admin-nav__logo-mark" src="../logo_bbm_circle.png" alt="" width="28" height="28" />
+            <span class="admin-nav__logo-text">mozok.tilo.ruh</span>
+          </a>
+          <span class="admin-nav__badge">Адмін</span>
+        </div>
+        <div id="adminNavDrawer" class="admin-nav__drawer" aria-hidden="false">
+          <ol class="admin-nav__jumps" aria-label="Розділи панелі">
+            <li><a href="#">Ціни</a></li>
+            <li><a href="#">Місця</a></li>
+            <li><a href="#">Викладачі</a></li>
+            <li><a href="#">Учні</a></li>
+            <li><a href="#">Абонементи</a></li>
+            <li><a href="#">Голосування</a></li>
+            <li><a href="#">Заняття</a></li>
+            <li><a href="#">Статистика</a></li>
+            <li><a href="#" aria-current="page">Івенти</a></li>
+          </ol>
+        </div>
+      </div>
+    </nav>
+    <main class="admin-page">
+      <div id="dashSection">
+        <div class="admin-top admin-top--title-only"><h1>Івенти</h1></div>
+        <article class="event-hero">
+          <div>
+            <p class="event-hero__kicker">3–4 жовтня · Позняки</p>
+            <h2 class="event-hero__title">Open Day</h2>
+          </div>
+          <p class="event-hero__count"><span>3</span><small>записи</small></p>
+        </article>
+        <div class="event-filters">
+          <button type="button" class="event-filter is-on">Усі · 3</button>
+          <button type="button" class="event-filter">Full pass · 1</button>
+          <button type="button" class="event-filter">Ґрунт · 1</button>
+          <button type="button" class="event-filter">Паростки · 0</button>
+          <button type="button" class="event-filter">Одна практика · 1</button>
+        </div>
+        <div class="event-list">
+          <button type="button" class="event-row" data-open="1">
+            <span class="event-row__main">
+              <span class="event-row__name">Коваленко Оля</span>
+              <span class="event-row__meta">@olya_move · 24 вересня, 11:02</span>
+            </span>
+            <span class="event-pill event-pill--full">Full pass</span>
+          </button>
+          <button type="button" class="event-row">
+            <span class="event-row__main">
+              <span class="event-row__name">Мельник Саша</span>
+              <span class="event-row__meta">@sasha_m · 24 вересня, 09:18</span>
+            </span>
+            <span class="event-pill event-pill--grunt">Ґрунт</span>
+          </button>
+          <button type="button" class="event-row">
+            <span class="event-row__main">
+              <span class="event-row__name">Іваненко Марія</span>
+              <span class="event-row__meta">@masha_iv · 23 вересня, 21:40</span>
+            </span>
+            <span class="event-pill">Одна практика</span>
+          </button>
+        </div>
+      </div>
+    </main>
+    <div id="eventModal" class="admin-modal admin-hide" aria-hidden="true">
+      <div class="admin-modal__backdrop" data-event-close></div>
+      <div class="admin-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="eventModalTitle">
+        <div class="admin-modal__head">
+          <h3 id="eventModalTitle" class="admin-modal__title">Коваленко Оля</h3>
+          <button type="button" class="admin-modal__close" data-event-close aria-label="Закрити">✕</button>
+        </div>
+        <div class="admin-modal__body">
+          <p class="event-pill event-pill--full">Full pass · 1800 грн</p>
+          <div class="event-detail"><div class="event-detail__label">Коли записався</div><div class="event-detail__value">24 вересня, 11:02</div></div>
+          <div class="event-detail"><div class="event-detail__label">Telegram</div><div class="event-detail__value"><a href="#">@olya_move</a></div></div>
+          <div class="event-detail"><div class="event-detail__label">Телефон</div><div class="event-detail__value"><a href="#">+380 50 111 22 33</a></div></div>
+          <div class="event-detail"><div class="event-detail__label">Формат</div><div class="event-detail__value">Full pass · 03.10 + 04.10 · 1800 грн</div></div>
+          <div class="event-detail"><div class="event-detail__label">Звідки дізнався_лась</div><div class="event-detail__value">Instagram МТР</div></div>
+          <div class="event-detail"><div class="event-detail__label">Чого чекає</div><div class="event-detail__value">Хочу спокійніше тіло і спробувати новий напрям без тиску.</div></div>
+        </div>
+      </div>
+    </div>
+    <script>
+      const modal = document.getElementById("eventModal");
+      document.querySelector("[data-open]").addEventListener("click", () => {
+        modal.classList.remove("admin-hide");
+        modal.setAttribute("aria-hidden", "false");
+        document.body.classList.add("admin-modal-open");
+      });
+      modal.querySelectorAll("[data-event-close]").forEach((node) => {
+        node.addEventListener("click", () => {
+          modal.classList.add("admin-hide");
+          document.body.classList.remove("admin-modal-open");
+        });
+      });
+    </script>
+  </body>
+</html>
