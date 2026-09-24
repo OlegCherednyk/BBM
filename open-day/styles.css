@@ -3,7 +3,7 @@
   src: url("assets/fonts/Truetypewriter_PolyglOTT.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
-  font-display: swap;
+  font-display: block;
 }
 
 :root {
@@ -105,6 +105,8 @@ img { max-width: 100%; display: block; }
   font-size: clamp(68px, 18vw, 86px);
   line-height: 0.9;
   display: flex;
+  flex-wrap: nowrap;
+  white-space: nowrap;
   justify-content: center;
   align-items: flex-end;
 }
