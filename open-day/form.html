@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Реєстрація — Open Day</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Unbounded:wght@700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="icon" href="assets/logo.png" />
+  </head>
+  <body>
+    <main class="form-page">
+      <a class="back" id="back" href="landing.html">← до афіші</a>
+      <form id="reg" novalidate>
+        <h1 class="moss">РЕЄСТРАЦІЯ</h1>
+        <p class="step-name" id="step-name">Ти</p>
+
+        <section data-step="1">
+          <div class="field">
+            <label for="name">Прізвище та імʼя</label>
+            <input id="name" name="name" type="text" autocomplete="name" required />
+            <p class="err" data-for="name"></p>
+          </div>
+          <div class="field">
+            <label for="nick">Нік у Telegram</label>
+            <span class="hint-field">наприклад, @nickname</span>
+            <input id="nick" name="nick" type="text" inputmode="text" autocomplete="off" required />
+            <p class="err" data-for="nick"></p>
+          </div>
+          <div class="field">
+            <label for="phone">Номер телефону</label>
+            <span class="hint-field">про всяк випадок, якщо не достукаємось у Telegram</span>
+            <input id="phone" name="phone" type="tel" autocomplete="tel" required />
+            <p class="err" data-for="phone"></p>
+          </div>
+          <fieldset class="choice passes">
+            <legend>Що обираєш?</legend>
+            <label class="ticket ticket-full">
+              <input type="radio" name="pass" value="full" required />
+              <span class="ticket-face">
+                <span class="ticket-pip" aria-hidden="true"></span>
+                <span class="ticket-kicker">обидва дні</span>
+                <span class="ticket-name">Full pass</span>
+                <span class="ticket-when">03.10 + 04.10</span>
+                <span class="ticket-price">1800 <small>грн</small></span>
+              </span>
+            </label>
+            <div class="ticket-pair">
+              <label class="ticket ticket-day">
+                <input type="radio" name="pass" value="grunt" />
+                <span class="ticket-face">
+                  <span class="ticket-pip" aria-hidden="true"></span>
+                  <span class="ticket-kicker">субота</span>
+                  <span class="ticket-name">Ґрунт</span>
+                  <span class="ticket-when">03.10</span>
+                  <span class="ticket-price">600 <small>грн</small></span>
+                </span>
+              </label>
+              <label class="ticket ticket-day">
+                <input type="radio" name="pass" value="sprouts" />
+                <span class="ticket-face">
+                  <span class="ticket-pip" aria-hidden="true"></span>
+                  <span class="ticket-kicker">неділя</span>
+                  <span class="ticket-name">Паростки</span>
+                  <span class="ticket-when">04.10</span>
+                  <span class="ticket-price">1400 <small>грн</small></span>
+                </span>
+              </label>
+            </div>
+            <label class="ticket ticket-one">
+              <input type="radio" name="pass" value="one" />
+              <span class="ticket-face">
+                <span class="ticket-pip" aria-hidden="true"></span>
+                <span class="ticket-kicker">один слот</span>
+                <span class="ticket-name">Одна практика</span>
+                <span class="ticket-when">слот обереш далі</span>
+                <span class="ticket-price">400 <small>грн</small></span>
+              </span>
+            </label>
+            <p class="err" data-for="pass"></p>
+          </fieldset>
+          <button class="next" type="button" data-next>далі</button>
+        </section>
+
+        <section data-step="2" hidden>
+          <fieldset class="choice">
+            <legend>Яку практику?</legend>
+            <label><input type="radio" name="practice" value="trenazh" /> 03.10, 14:00–15:00 · Тренаж</label>
+            <label><input type="radio" name="practice" value="dance" /> 03.10, 15:15–17:45 · Сучасний танець</label>
+            <label><input type="radio" name="practice" value="game" /> 04.10, 12:00–13:00 · Рух як гра</label>
+            <label><input type="radio" name="practice" value="contact" /> 04.10, 13:10–14:10 · Контактна практика</label>
+            <label><input type="radio" name="practice" value="health" /> 04.10, 15:00–16:00 · Dance and health</label>
+            <label><input type="radio" name="practice" value="stretch" /> 04.10, 16:10–17:10 · Стретчинг</label>
+            <p class="err" data-for="practice"></p>
+          </fieldset>
+          <button class="next" type="button" data-next>далі</button>
+        </section>
+
+        <section data-step="3" hidden>
+          <fieldset class="choice">
+            <legend>Звідки дізнався_лась про Open Day?</legend>
+            <label><input type="radio" name="source" value="ig" /> Instagram МТР</label>
+            <label><input type="radio" name="source" value="tg" /> Telegram</label>
+            <label><input type="radio" name="source" value="friend" /> Порадили подруга чи друг</label>
+            <label><input type="radio" name="source" value="other" /> Інше</label>
+          </fieldset>
+          <div class="field" id="other-wrap" hidden>
+            <label for="other">Інше</label>
+            <input id="other" name="other" type="text" />
+          </div>
+          <div class="field">
+            <label for="hope">Чого чекаєш від Open Day?</label>
+            <span class="hint-field">кілька слів — з чим приходиш, що хочеш відчути чи спробувати</span>
+            <textarea id="hope" name="hope"></textarea>
+          </div>
+          <p class="note">Важливо! Після відправлення форми ти побачиш посилання на чат Open Day у Telegram. Обовʼязково приєднайся: там ми приймаємо оплату і ділимось усіма деталями. Подія передбачає 12 місць, і твоє місце заброньоване тільки після оплати.</p>
+          <label class="check">
+            <input id="agree" name="agree" type="checkbox" required />
+            <span>Я приєднаюсь до чату події і розумію, що місце бронюється після оплати</span>
+          </label>
+          <p class="err" data-for="agree"></p>
+          <button class="submit" type="submit">надіслати</button>
+        </section>
+      </form>
+
+      <section class="done" id="done" hidden>
+        <h1 class="moss">МАЙЖЕ ВСЕ</h1>
+        <p>Після відправлення форми ти бачиш посилання на чат Open Day. Обовʼязково приєднайся: там ми приймаємо оплату і ділимось усіма деталями. Місце заброньоване тільки після оплати.</p>
+        <a class="go" href="https://t.me/+Sc1q5Qf6LxNiODVi">Відкрити чат Open Day</a>
+      </section>
+    </main>
+    <script src="form.js"></script>
+  </body>
+</html>
