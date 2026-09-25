@@ -136,7 +136,10 @@ export async function setupEventsAdmin() {
     addField(modalBody, "Telegram", row.telegram, telegramHref(row.telegram));
     addField(modalBody, "Телефон", row.phone, row.phone ? "tel:" + row.phone.replace(/\s/g, "") : "");
     addField(modalBody, "Формат", pass ? pass.title + " · " + pass.when + " · " + pass.price : passLabel(row.pass));
-    if (row.pass === "one") addField(modalBody, "Практика", PRACTICES[row.practice] || row.practice);
+    if (row.pass === "one") {
+      const picked = Array.isArray(row.practices) && row.practices.length ? row.practices : row.practice ? [row.practice] : [];
+      addField(modalBody, "Практики", picked.map((item) => PRACTICES[item] || item).join("\n"));
+    }
     const source = SOURCES[row.source] || "";
     addField(modalBody, "Звідки дізнався_лась", row.source === "other" && row.source_other ? source + ": " + row.source_other : source);
     addField(modalBody, "Чого чекає", row.hope);
@@ -246,7 +249,7 @@ export async function setupEventsAdmin() {
   supabase = createClient(url, anonKey);
   const { data, error } = await supabase
     .from("open_day_signups")
-    .select("id, name, telegram, phone, pass, practice, source, source_other, hope, created_at, paid_at")
+    .select("id, name, telegram, phone, pass, practice, practices, source, source_other, hope, created_at, paid_at")
     .order("created_at", { ascending: false });
   if (error) {
     showError(error.message);
@@ -257,4 +260,41 @@ export async function setupEventsAdmin() {
   renderHero();
   renderFilters();
   renderList();
+
+  const logEl = el("wayforpayLog");
+  const { data: callbacks, error: callbackError } = await supabase
+    .from("wayforpay_callbacks")
+    .select("id, received_at, order_reference, transaction_status, signature_ok, http_status, body")
+    .order("received_at", { ascending: false })
+    .limit(20);
+  if (!logEl) return;
+  logEl.replaceChildren();
+  if (callbackError) {
+    const note = document.createElement("p");
+    note.className = "admin-muted";
+    note.textContent = callbackError.message;
+    logEl.appendChild(note);
+    return;
+  }
+  if (!callbacks?.length) {
+    const note = document.createElement("p");
+    note.className = "admin-muted";
+    note.textContent = "Ще жодної відповіді від WayForPay не було.";
+    logEl.appendChild(note);
+    return;
+  }
+  for (const item of callbacks) {
+    const row = document.createElement("details");
+    row.className = "event-log__item";
+    const summary = document.createElement("summary");
+    const when = formatWhen(item.received_at);
+    const status = item.transaction_status || "без статусу";
+    const sign = item.signature_ok ? "підпис ок" : "підпис не зійшовся";
+    summary.textContent = [when, status, sign, item.order_reference].filter(Boolean).join(" · ");
+    const pre = document.createElement("pre");
+    pre.className = "event-log__json";
+    pre.textContent = JSON.stringify(item.body, null, 2);
+    row.append(summary, pre);
+    logEl.appendChild(row);
+  }
 }

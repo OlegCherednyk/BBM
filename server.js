@@ -4540,7 +4540,13 @@ function readOpenDaySignup(body) {
   const nickRaw = String(body?.nick || "").trim();
   const phone = String(body?.phone || "").trim();
   const pass = String(body?.pass || "").trim();
-  const practiceRaw = String(body?.practice || "").trim();
+  const listed = Array.isArray(body?.practices) ? body.practices : [];
+  const single = String(body?.practice || "").trim();
+  const practices = [...new Set(
+    (listed.length ? listed : single ? [single] : [])
+      .map((item) => String(item || "").trim())
+      .filter((item) => OPEN_DAY_PRACTICES.has(item)),
+  )];
   const sourceRaw = String(body?.source || "").trim();
   const sourceOther = String(body?.other || "").trim().slice(0, 300);
   const hope = String(body?.hope || "").trim().slice(0, 2000);
@@ -4548,7 +4554,7 @@ function readOpenDaySignup(body) {
   if (!/^@?[A-Za-z0-9_]{5,32}$/.test(nickRaw)) return { error: "Перевір нік: лише латиниця, цифри і _" };
   if (!/^\+?[0-9 ()-]{10,17}$/.test(phone)) return { error: "Схоже, в номері помилка" };
   if (!OPEN_DAY_PASSES.has(pass)) return { error: "Обери формат" };
-  if (pass === "one" && !OPEN_DAY_PRACTICES.has(practiceRaw)) return { error: "Обери практику" };
+  if (pass === "one" && !practices.length) return { error: "Обери хоча б одну практику" };
   if (body?.agree !== true) return { error: "Потрібна ця згода, щоб забронювати місце" };
   const source = OPEN_DAY_SOURCES.has(sourceRaw) ? sourceRaw : null;
   return {
@@ -4558,7 +4564,8 @@ function readOpenDaySignup(body) {
       telegram: nickRaw.startsWith("@") ? nickRaw : "@" + nickRaw,
       phone,
       pass,
-      practice: pass === "one" ? practiceRaw : null,
+      practice: pass === "one" ? practices[0] : null,
+      practices: pass === "one" ? practices : null,
       source,
       source_other: source === "other" && sourceOther ? sourceOther : null,
       hope: hope || null,
@@ -4628,18 +4635,37 @@ async function recordWayforpayPayment(body) {
   if (upsertError) throw upsertError;
 }
 
+function wayforpayCallbackRecord(body, result) {
+  const source = body && typeof body === "object" && !Array.isArray(body) ? { ...body } : { raw: body ?? null };
+  if (source.recToken) source.recToken = "[redacted]";
+  return {
+    order_reference: wayforpayField(body?.orderReference) || null,
+    transaction_status: wayforpayField(body?.transactionStatus) || null,
+    signature_ok: result?.statusCode === 200,
+    http_status: result?.statusCode ?? null,
+    body: source,
+  };
+}
+
+async function logWayforpayCallback(body, result) {
+  if (!supabaseAdmin) return;
+  const { error } = await supabaseAdmin.from("wayforpay_callbacks").insert(wayforpayCallbackRecord(body, result));
+  if (error) console.error("wayforpay callback log failed:", error.message);
+}
+
 app.post("/api/wayforpay/service", async (req, res) => {
+  let result = { statusCode: 500, payload: { ok: false } };
   try {
-    const result = await handleWayforpayNotification(req.body, {
+    result = await handleWayforpayNotification(req.body, {
       secret: wayforpaySecretKey,
       merchantAccount: wayforpayMerchantAccount,
       save: recordWayforpayPayment,
     });
-    return res.status(result.statusCode).json(result.payload);
   } catch (error) {
     console.error("wayforpay service failed:", error);
-    return res.status(500).json({ ok: false });
   }
+  await logWayforpayCallback(req.body, result);
+  return res.status(result.statusCode).json(result.payload);
 });
 
 app.post("/api/open-day", async (req, res) => {

@@ -64,6 +64,10 @@ function passValue() {
   return form.querySelector('input[name="pass"]:checked')?.value || "";
 }
 
+function selectedPractices() {
+  return [...form.querySelectorAll('input[name="practice"]:checked')].map((input) => input.value);
+}
+
 function validate(step) {
   let ok = true;
   if (step === 1) {
@@ -82,9 +86,9 @@ function validate(step) {
     setErr("pass", pass ? "" : "Обери формат");
     if (!pass) ok = false;
     if (pass === "one") {
-      const practice = form.querySelector('input[name="practice"]:checked');
-      setErr("practice", practice ? "" : "Обери практику");
-      if (!practice) ok = false;
+      const practices = selectedPractices();
+      setErr("practice", practices.length ? "" : "Обери хоча б одну практику");
+      if (!practices.length) ok = false;
     } else {
       setErr("practice", "");
     }
@@ -133,7 +137,7 @@ form.addEventListener("submit", async (event) => {
         nick: form.nick.value.trim(),
         phone: form.phone.value.trim(),
         pass: passValue(),
-        practice: passValue() === "one" ? form.querySelector('input[name="practice"]:checked')?.value || "" : "",
+        practices: passValue() === "one" ? selectedPractices() : [],
         source: form.querySelector('input[name="source"]:checked')?.value || "",
         other: form.other.value.trim(),
         hope: form.hope.value.trim(),
