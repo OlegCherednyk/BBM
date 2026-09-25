@@ -100,6 +100,33 @@ export function onePracticeAmount(count) {
   return n * 400;
 }
 
+const PRACTICE_LINES = new Map([
+  ["trenazh", "Open Day, 03.10 14:00–15:00, Тренаж"],
+  ["dance", "Open Day, 03.10 15:15–17:45, Сучасний танець"],
+  ["game", "Open Day, 04.10 12:00–13:00, Рух як гра"],
+  ["contact", "Open Day, 04.10 13:10–14:10, Контактна практика"],
+  ["health", "Open Day, 04.10 15:00–16:00, Dance and health"],
+  ["stretch", "Open Day, 04.10 16:10–17:10, Стретчинг"],
+]);
+
+/** ponytail: invoice lines are the only place WayForPay shows what was bought. */
+export function openDayLines(pass, practices) {
+  if (pass === "full") return [{ name: "Open Day, Full pass, 03.10 і 04.10", price: 1800, count: 1 }];
+  if (pass === "grunt") return [{ name: "Open Day, Ґрунт, субота 03.10", price: 600, count: 1 }];
+  if (pass === "sprouts") return [{ name: "Open Day, Паростки, неділя 04.10", price: 1400, count: 1 }];
+  if (pass !== "one") return [];
+  const lines = [];
+  for (const id of practices || []) {
+    const name = PRACTICE_LINES.get(id);
+    if (name && !lines.some((line) => line.name === name)) lines.push({ name, price: 400, count: 1 });
+  }
+  return lines.length <= 6 ? lines : [];
+}
+
+export function openDayAmount(pass, practices) {
+  return openDayLines(pass, practices).reduce((sum, line) => sum + line.price * line.count, 0);
+}
+
 export function signupIdFromOrder(orderReference) {
   const value = wayforpayField(orderReference);
   if (!value.startsWith("od-")) return "";
@@ -121,23 +148,25 @@ export function purchaseSignatureString(fields) {
   ].join(";");
 }
 
-export function onePracticePurchase({
+export function openDayPurchase({
   merchantAccount,
   merchantDomainName,
   secret,
   orderReference,
   orderDate,
-  count,
+  pass,
+  practices,
   returnUrl,
   serviceUrl,
   phone,
   firstName,
 }) {
-  const amount = onePracticeAmount(count);
+  const lines = openDayLines(pass, practices);
+  const amount = lines.reduce((sum, line) => sum + line.price * line.count, 0);
   if (!amount) return null;
-  const productName = ["Open Day, одна практика"];
-  const productCount = [count];
-  const productPrice = [400];
+  const productName = lines.map((line) => line.name);
+  const productCount = lines.map((line) => line.count);
+  const productPrice = lines.map((line) => line.price);
   const params = new URLSearchParams();
   params.set("merchantAccount", merchantAccount);
   params.set("merchantDomainName", merchantDomainName);
@@ -157,9 +186,9 @@ export function onePracticePurchase({
   params.set("amount", String(amount));
   params.set("currency", "UAH");
   params.set("language", "UA");
-  params.append("productName[]", productName[0]);
-  params.append("productCount[]", String(count));
-  params.append("productPrice[]", "400");
+  productName.forEach((name) => params.append("productName[]", name));
+  productCount.forEach((count) => params.append("productCount[]", String(count)));
+  productPrice.forEach((price) => params.append("productPrice[]", String(price)));
   if (returnUrl) params.set("returnUrl", returnUrl);
   if (serviceUrl) params.set("serviceUrl", serviceUrl);
   const digits = String(phone || "").replace(/\D/g, "");

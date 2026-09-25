@@ -603,6 +603,7 @@ p.refund {
   text-align: left;
 }
 .check input { margin-top: 3px; accent-color: #74862f; }
+.check a { color: inherit; text-underline-offset: 3px; }
 .done { text-align: left; }
 .done .go { margin-top: 8px; }
 .offer {

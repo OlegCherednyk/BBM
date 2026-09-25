@@ -2888,7 +2888,7 @@ async function refreshDashboard() {
         await renderStatsDashboard();
         break;
       case "events": {
-        const mod = await import("./admin-events.js?r=2");
+        const mod = await import("./admin-events.js?r=3");
         await mod.setupEventsAdmin();
         break;
       }

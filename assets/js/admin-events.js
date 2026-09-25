@@ -357,42 +357,11 @@ export async function setupEventsAdmin() {
   renderFilters();
   renderList();
 
-  const logEl = el("wayforpayLog");
-  const { data: callbackRows, error: callbackError } = await supabase
+  const { data: callbackRows } = await supabase
     .from("wayforpay_callbacks")
-    .select("id, received_at, order_reference, transaction_status, signature_ok, http_status, body")
+    .select("id, received_at, order_reference, transaction_status, signature_ok, body")
     .order("received_at", { ascending: false })
     .limit(20);
   callbacks = callbackRows || [];
   renderList();
-  if (!logEl) return;
-  logEl.replaceChildren();
-  if (callbackError) {
-    const note = document.createElement("p");
-    note.className = "admin-muted";
-    note.textContent = callbackError.message;
-    logEl.appendChild(note);
-    return;
-  }
-  if (!callbacks?.length) {
-    const note = document.createElement("p");
-    note.className = "admin-muted";
-    note.textContent = "Ще жодної відповіді від WayForPay не було.";
-    logEl.appendChild(note);
-    return;
-  }
-  for (const item of callbackRows || []) {
-    const row = document.createElement("details");
-    row.className = "event-log__item";
-    const summary = document.createElement("summary");
-    const when = formatWhen(item.received_at);
-    const status = item.transaction_status || "без статусу";
-    const sign = item.signature_ok ? "підпис ок" : "підпис не зійшовся";
-    summary.textContent = [when, status, sign, item.order_reference].filter(Boolean).join(" · ");
-    const pre = document.createElement("pre");
-    pre.className = "event-log__json";
-    pre.textContent = JSON.stringify(item.body, null, 2);
-    row.append(summary, pre);
-    logEl.appendChild(row);
-  }
 }

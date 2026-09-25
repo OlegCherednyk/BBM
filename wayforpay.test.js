@@ -5,7 +5,9 @@ import {
   handleWayforpayNotification,
   hmacMd5,
   onePracticeAmount,
-  onePracticePurchase,
+  openDayAmount,
+  openDayLines,
+  openDayPurchase,
   parseWayforpayBody,
   pickSignup,
   purchaseSignatureString,
@@ -92,25 +94,30 @@ describe("several practices", () => {
     assert.equal(onePracticeAmount(2.5), 0);
   });
 
-  it("signs a purchase in the WayForPay field order", () => {
+  it("names every paid practice on the invoice", () => {
+    const lines = openDayLines("one", ["game", "health"]);
+    assert.deepEqual(lines, [
+      { name: "Open Day, 04.10 12:00–13:00, Рух як гра", price: 400, count: 1 },
+      { name: "Open Day, 04.10 15:00–16:00, Dance and health", price: 400, count: 1 },
+    ]);
+    assert.equal(openDayAmount("full", []), 1800);
+    assert.equal(openDayAmount("grunt", []), 600);
+    assert.equal(openDayAmount("sprouts", []), 1400);
     const fields = {
       merchantAccount: merchant,
       merchantDomainName: "mozok-tilo-ruh.kyiv.ua",
       orderReference: "od-1",
       orderDate: 10,
       amount: 800,
-      productName: ["Open Day, одна практика"],
-      productCount: [2],
-      productPrice: [400],
+      productName: lines.map((line) => line.name),
+      productCount: [1, 1],
+      productPrice: [400, 400],
     };
-    assert.equal(
-      purchaseSignatureString(fields),
-      "test_merch_n1;mozok-tilo-ruh.kyiv.ua;od-1;10;800;UAH;Open Day, одна практика;2;400",
-    );
-    const params = onePracticePurchase({ ...fields, secret, count: 2 });
+    const params = openDayPurchase({ ...fields, secret, pass: "one", practices: ["game", "health"] });
     assert.equal(params.get("amount"), "800");
-    assert.equal(params.get("productCount[]"), "2");
+    assert.deepEqual(params.getAll("productName[]"), fields.productName);
     assert.equal(params.get("merchantSignature"), hmacMd5(purchaseSignatureString(fields), secret));
+    assert.equal(params.get("returnUrl"), null);
   });
 
   it("reads a signup id only from its own order reference", () => {

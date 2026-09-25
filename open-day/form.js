@@ -6,19 +6,13 @@ const form = document.getElementById("reg");
 const nickRe = /^@?[A-Za-z0-9_]{5,32}$/;
 const phoneRe = /^\+?[0-9 ()-]{10,17}$/;
 const names = { 1: "Ти", 2: "Звідки", 3: "Формат" };
-const payLink = {
-  full: "https://secure.wayforpay.com/button/b700adca1e6f1",
-  grunt: "https://secure.wayforpay.com/button/bd4930f5e1ad7",
-  sprouts: "https://secure.wayforpay.com/button/bed6aaf4365a7",
-  one: "https://secure.wayforpay.com/button/b73d49a968afd",
-};
 const payPrice = {
   full: "1800 грн",
   grunt: "600 грн",
   sprouts: "1400 грн",
   one: "400 грн",
 };
-if (payLink[chosen]) {
+if (payPrice[chosen]) {
   const input = form.querySelector('input[name="pass"][value="' + chosen + '"]');
   if (input) input.checked = true;
 }
@@ -157,21 +151,16 @@ form.addEventListener("submit", async (event) => {
     if (!response.ok || payload?.ok === false) {
       throw new Error(payload?.error || "Не вдалося надіслати. Спробуй ще раз.");
     }
-    const pass = passValue();
-    let url = payLink[pass];
-    if (pass === "one" && selectedPractices().length > 1) {
-      const payResponse = await fetch("/api/open-day/pay", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: payload?.id }),
-      });
-      const payPayload = await payResponse.json().catch(() => null);
-      if (!payResponse.ok || !payPayload?.url) {
-        throw new Error(payPayload?.error || "Не вдалося відкрити оплату. Спробуй ще раз.");
-      }
-      url = payPayload.url;
+    const payResponse = await fetch("/api/open-day/pay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: payload?.id }),
+    });
+    const payPayload = await payResponse.json().catch(() => null);
+    if (!payResponse.ok || !payPayload?.url) {
+      throw new Error(payPayload?.error || "Не вдалося відкрити оплату. Спробуй ще раз.");
     }
-    location.href = url;
+    location.href = payPayload.url;
   } catch (error) {
     setErr("submit", error?.message || "Не вдалося надіслати. Спробуй ще раз.");
     submitBtn.disabled = false;
