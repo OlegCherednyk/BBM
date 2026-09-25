@@ -46,10 +46,24 @@ export function verifyServiceSignature(body, secret) {
   return signaturesMatch(expected, wayforpayField(body.merchantSignature));
 }
 
-/** ponytail: the return page follows transactionStatus only; the service callback marks the signup paid. */
+const RETURN_PENDING = new Set([
+  "InProcessing",
+  "Pending",
+  "WaitingAuthComplete",
+  "WaitingAmountConfirm",
+]);
+
+export function returnOrderReference(body) {
+  const parsed = parseWayforpayBody(body);
+  return wayforpayField(parsed.orderReference).trim() || wayforpayField(parsed.order).trim();
+}
+
+/** ponytail: Approved is final; a preparation status waits for the service callback. */
 export function openDayReturnState(body) {
   const status = wayforpayField(parseWayforpayBody(body).transactionStatus);
-  return status === "Approved" ? "paid" : "failed";
+  if (status === "Approved") return "paid";
+  if (RETURN_PENDING.has(status)) return "pending";
+  return "failed";
 }
 
 export function acceptPayload(orderReference, secret, time) {

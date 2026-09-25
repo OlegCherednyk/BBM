@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>Підтверджуємо оплату — Open Day</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Unbounded:wght@700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css?r=26" />
+    <link rel="icon" href="assets/logo.png" />
+  </head>
+  <body>
+    <main class="below">
+      <a class="back" href="landing.html">до афіші</a>
+      <section class="done sign">
+        <div class="pending-mark" aria-hidden="true"></div>
+        <h1 class="block-title">Підтверджуємо оплату</h1>
+        <p id="status">Зачекай кілька секунд. Сторінка оновиться сама.</p>
+        <a class="go" id="retry" href="" hidden>оновити</a>
+      </section>
+    </main>
+    <script>
+      const order = new URLSearchParams(location.search).get("order") || "";
+      const status = document.getElementById("status");
+      const retry = document.getElementById("retry");
+      let left = 60;
+
+      async function tick() {
+        try {
+          const response = await fetch("/api/open-day/payment-status?order=" + encodeURIComponent(order));
+          const payload = await response.json();
+          if (payload.paid) {
+            location.replace("paid.html");
+            return;
+          }
+          if (payload.failed) {
+            location.replace("declined.html");
+            return;
+          }
+        } catch (error) {
+          /* the next tick retries */
+        }
+        left -= 1;
+        if (left > 0) {
+          setTimeout(tick, 1000);
+          return;
+        }
+        document.querySelector(".pending-mark")?.remove();
+        status.textContent = "Оплата ще підтверджується. Якщо гроші вже списались, онови цю сторінку за хвилину.";
+        retry.hidden = false;
+      }
+
+      tick();
+    </script>
+  </body>
+</html>

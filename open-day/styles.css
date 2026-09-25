@@ -402,6 +402,7 @@ p.refund {
   text-align: center;
 }
 .go { margin-top: 18px; }
+.go[hidden] { display: none; }
 .next:active { background: #f4f6ea; }
 .next:disabled { opacity: 0.55; cursor: wait; }
 .next:focus-visible, .go:focus-visible, .pay:focus-visible {
@@ -606,6 +607,19 @@ p.refund {
 .check a { color: inherit; text-underline-offset: 3px; }
 .done { text-align: left; }
 .done .go { margin-top: 8px; }
+.pending-mark {
+  width: 28px;
+  height: 28px;
+  margin-bottom: 16px;
+  border: 3px solid #d5dcc4;
+  border-top-color: #74862f;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .pending-mark { animation: none; border-top-color: #74862f; }
+}
 .offer {
   margin: 4px 6px 28px;
   font-size: 13px;

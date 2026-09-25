@@ -10,6 +10,7 @@ import {
   openDayPurchase,
   parseWayforpayBody,
   openDayReturnState,
+  returnOrderReference,
   pickSignup,
   purchaseSignatureString,
   serviceSignatureString,
@@ -129,13 +130,16 @@ describe("several practices", () => {
 });
 
 describe("return page", () => {
-  it("follows transactionStatus and ignores the order number", () => {
+  it("shows success only for Approved and waits on a preparation status", () => {
     assert.equal(openDayReturnState({ transactionStatus: "Approved" }), "paid");
     assert.equal(openDayReturnState("transactionStatus=Approved&orderReference=od-1"), "paid");
-    assert.equal(openDayReturnState(signed()), "paid");
+    for (const status of ["InProcessing", "Pending", "WaitingAuthComplete", "WaitingAmountConfirm"]) {
+      assert.equal(openDayReturnState({ transactionStatus: status, orderReference: "od-1" }), "pending");
+    }
     assert.equal(openDayReturnState({ transactionStatus: "Declined", orderReference: "od-1" }), "failed");
     assert.equal(openDayReturnState({ orderReference: "od-1" }), "failed");
-    assert.equal(openDayReturnState(signed({ transactionStatus: "Expired" })), "failed");
+    assert.equal(returnOrderReference({ order: "od-1", orderReference: "od-2" }), "od-2");
+    assert.equal(returnOrderReference({ order: "od-1" }), "od-1");
   });
 });
 
