@@ -4553,7 +4553,7 @@ app.get("/api/telegram/chats", async (_req, res) => {
 
 const OPEN_DAY_PASSES = new Set(["full", "grunt", "sprouts", "one"]);
 const OPEN_DAY_PRACTICES = new Set(["trenazh", "dance", "game", "contact", "health", "stretch"]);
-const OPEN_DAY_SOURCES = new Set(["ig", "tg", "friend", "other"]);
+const OPEN_DAY_SOURCES = new Set(["ig", "tg", "friend", "ad", "other"]);
 
 function readOpenDaySignup(body) {
   const name = String(body?.name || "").trim().slice(0, 120);

@@ -13,7 +13,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="../assets/css/styles.css" />
-    <link rel="stylesheet" href="../assets/css/admin.css" />
+    <link rel="stylesheet" href="../assets/css/admin.css?r=2" />
   </head>
   <body data-admin-page="events">
     <nav class="nav nav--admin scrolled" aria-label="Адмін">
@@ -98,6 +98,17 @@
       <a href="../index.html">Сайт</a>
     </footer>
 
+    <div id="payModal" class="admin-modal admin-hide" aria-hidden="true">
+      <div class="admin-modal__backdrop" data-pay-close tabindex="-1" aria-hidden="true"></div>
+      <div class="admin-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="payModalTitle">
+        <div class="admin-modal__head">
+          <h3 id="payModalTitle" class="admin-modal__title">Оплата</h3>
+          <button type="button" class="admin-modal__close" data-pay-close aria-label="Закрити">✕</button>
+        </div>
+        <div class="admin-modal__body" id="payModalBody"></div>
+      </div>
+    </div>
+
     <div id="eventModal" class="admin-modal admin-hide" aria-hidden="true">
       <div class="admin-modal__backdrop" data-event-close tabindex="-1" aria-hidden="true"></div>
       <div class="admin-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="eventModalTitle">
@@ -110,6 +121,6 @@
     </div>
 
     <script src="../assets/js/custom-select.js"></script>
-    <script type="module" src="../assets/js/admin.js"></script>
+    <script type="module" src="../assets/js/admin.js?r=2"></script>
   </body>
 </html>

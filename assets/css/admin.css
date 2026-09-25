@@ -5103,6 +5103,34 @@ pre {
   box-shadow: var(--admin-shadow-xs);
 }
 .event-row:hover { border-color: rgba(116, 134, 47, 0.45); }
+.event-row__open {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.event-pay {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--admin-panel-border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--brown-light);
+  cursor: pointer;
+}
+.event-pay.is-paid {
+  color: var(--olive);
+  border-color: rgba(116, 134, 47, 0.45);
+  background: rgba(116, 134, 47, 0.12);
+}
 .event-row__main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .event-row__name {
   font-weight: 600;
