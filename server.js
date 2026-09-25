@@ -293,15 +293,15 @@ async function openDayReturn(req, res) {
   if (req.params.order) body.returnPathOrder = req.params.order;
   await logWayforpayReturn(body, req.method);
   if (signupIdFromOrder(req.params.order || "")) body.orderReference = req.params.order;
-  if (openDayReturnState(body) === "paid") return sendOpenDayReturnPage("paid.html")(req, res);
+  if (openDayReturnState(body) === "paid") return res.redirect(303, "/open-day/paid.html");
   const order = returnOrderReference(body);
   if (signupIdFromOrder(order)) {
     const saved = await openDayOrderState(order);
-    if (saved === "paid") return sendOpenDayReturnPage("paid.html")(req, res);
-    if (saved === "failed") return sendOpenDayReturnPage("declined.html")(req, res);
+    if (saved === "paid") return res.redirect(303, "/open-day/paid.html");
+    if (saved === "failed") return res.redirect(303, "/open-day/declined.html");
     return res.redirect(303, "/open-day/loading.html?order=" + encodeURIComponent(order));
   }
-  return sendOpenDayReturnPage("declined.html")(req, res);
+  return res.redirect(303, "/open-day/declined.html");
 }
 app.all("/open-day/return", openDayReturn);
 app.all("/open-day/return/:order", openDayReturn);
