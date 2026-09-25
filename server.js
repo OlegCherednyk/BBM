@@ -263,24 +263,26 @@ app.get("/api/open-day/payment-status", async (req, res) => {
 });
 
 async function logWayforpayReturn(body, method) {
-  const status = wayforpayField(body.transactionStatus) || "(empty)";
-  const order = returnOrderReference(body);
-  console.error("wayforpay browser return", status, signupIdFromOrder(order) ? order : "no-order", method);
+  const status = wayforpayField(body.transactionStatus);
+  const order = wayforpayField(body.orderReference).trim();
+  console.error("wayforpay browser return", status || "(empty)", order || "no-order", method);
   if (!supabaseAdmin) return;
-  const keys = Object.keys(body).filter((key) => ![
-    "merchantSignature",
-    "cardPan",
-    "recToken",
-    "phone",
-    "email",
-    "clientName",
-  ].includes(key));
   const { error } = await supabaseAdmin.from("wayforpay_callbacks").insert({
-    order_reference: order || null,
-    transaction_status: status === "(empty)" ? null : status,
+    order_reference: order || wayforpayField(body.returnPathOrder).trim() || null,
+    transaction_status: status || null,
     signature_ok: false,
     http_status: null,
-    body: { source: "browser-return", method, transactionStatus: status, keys },
+    body: {
+      source: "browser-return",
+      method,
+      transactionStatus: status || null,
+      reason: wayforpayField(body.reason) || null,
+      reasonCode: wayforpayField(body.reasonCode) || null,
+      orderReference: order || null,
+      paymentSystem: wayforpayField(body.paymentSystem) || null,
+      returnPathOrder: wayforpayField(body.returnPathOrder) || null,
+      keys: Object.keys(body),
+    },
   });
   if (error) console.error("wayforpay return log failed:", error.message);
 }
@@ -288,8 +290,9 @@ async function logWayforpayReturn(body, method) {
 async function openDayReturn(req, res) {
   const posted = parseWayforpayBody(req.body);
   const body = { ...posted, ...req.query };
-  if (signupIdFromOrder(req.params.order || "")) body.orderReference = req.params.order;
+  if (req.params.order) body.returnPathOrder = req.params.order;
   await logWayforpayReturn(body, req.method);
+  if (signupIdFromOrder(req.params.order || "")) body.orderReference = req.params.order;
   if (openDayReturnState(body) === "paid") return sendOpenDayReturnPage("paid.html")(req, res);
   const order = returnOrderReference(body);
   if (signupIdFromOrder(order)) {
