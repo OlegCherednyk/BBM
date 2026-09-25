@@ -404,10 +404,36 @@ p.refund {
 .go { margin-top: 18px; }
 .next:active { background: #f4f6ea; }
 .next:disabled { opacity: 0.55; cursor: wait; }
-.next:focus-visible, .go:focus-visible {
+.next:focus-visible, .go:focus-visible, .pay:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 3px;
 }
+.pay {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 16px 22px;
+  border: 0;
+  border-radius: 999px;
+  background: #74862f;
+  color: #fff8f3;
+  text-decoration: none;
+  letter-spacing: 0.12em;
+  text-transform: lowercase;
+  font-size: 14px;
+  cursor: pointer;
+}
+.pay:disabled { opacity: 0.55; cursor: wait; }
+.pay b {
+  font-family: "Unbounded", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0;
+  font-size: 16px;
+}
+.pay:active { background: #5f6b30; }
 
 .step-name {
   margin: 0 0 14px;

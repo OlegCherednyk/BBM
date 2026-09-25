@@ -6,20 +6,29 @@ const form = document.getElementById("reg");
 const nickRe = /^@?[A-Za-z0-9_]{5,32}$/;
 const phoneRe = /^\+?[0-9 ()-]{10,17}$/;
 const names = { 1: "Ти", 2: "Звідки", 3: "Формат" };
-const passLabel = {
-  full: "Full pass · 1800 грн",
-  grunt: "Ґрунт · 600 грн",
-  sprouts: "Паростки · 1400 грн",
-  one: "Одна практика · 400 грн",
+const payLink = {
+  full: "https://secure.wayforpay.com/button/b700adca1e6f1",
+  grunt: "https://secure.wayforpay.com/button/bd4930f5e1ad7",
+  sprouts: "https://secure.wayforpay.com/button/bed6aaf4365a7",
+  one: "https://secure.wayforpay.com/button/b73d49a968afd",
 };
-if (passLabel[chosen]) {
+const payPrice = {
+  full: "1800 грн",
+  grunt: "600 грн",
+  sprouts: "1400 грн",
+  one: "400 грн",
+};
+if (payLink[chosen]) {
   const input = form.querySelector('input[name="pass"][value="' + chosen + '"]');
   if (input) input.checked = true;
 }
 
 const practiceWrap = document.getElementById("practice-wrap");
 function syncPractice() {
-  if (practiceWrap) practiceWrap.hidden = passValue() !== "one";
+  const pass = passValue();
+  if (practiceWrap) practiceWrap.hidden = pass !== "one";
+  const price = document.getElementById("pay-price");
+  if (price) price.textContent = payPrice[pass] || "";
 }
 syncPractice();
 form.querySelectorAll('input[name="pass"]').forEach((input) => {
@@ -110,9 +119,10 @@ form.addEventListener("submit", async (event) => {
     revealProblem(3);
     return;
   }
-  const submitBtn = form.querySelector(".submit, [type='submit']");
+  const submitBtn = document.getElementById("pay");
+  const label = submitBtn.querySelector("span");
   submitBtn.disabled = true;
-  submitBtn.textContent = "надсилаємо…";
+  label.textContent = "надсилаємо…";
   setErr("submit", "");
   try {
     const response = await fetch("/api/open-day", {
@@ -134,13 +144,11 @@ form.addEventListener("submit", async (event) => {
     if (!response.ok || payload?.ok === false) {
       throw new Error(payload?.error || "Не вдалося надіслати. Спробуй ще раз.");
     }
-    document.getElementById("register-body").hidden = true;
-    document.getElementById("done").hidden = false;
-    scrollToId("done");
+    location.href = payLink[passValue()];
   } catch (error) {
     setErr("submit", error?.message || "Не вдалося надіслати. Спробуй ще раз.");
     submitBtn.disabled = false;
-    submitBtn.textContent = "надіслати";
+    label.textContent = "оплатити";
     revealProblem(3);
   }
 });

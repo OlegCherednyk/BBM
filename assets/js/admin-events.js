@@ -18,7 +18,7 @@ const PRACTICES = {
 };
 
 const SOURCES = {
-  ig: "Instagram МТР",
+  ig: "Instagram",
   tg: "Telegram",
   friend: "Порадили подруга чи друг",
   other: "Інше",
