@@ -262,24 +262,46 @@ app.get("/api/open-day/payment-status", async (req, res) => {
   return res.json({ paid: state === "paid", failed: state === "failed" });
 });
 
+async function logWayforpayReturn(body, method) {
+  const status = wayforpayField(body.transactionStatus) || "(empty)";
+  const order = returnOrderReference(body);
+  console.error("wayforpay browser return", status, signupIdFromOrder(order) ? order : "no-order", method);
+  if (!supabaseAdmin) return;
+  const keys = Object.keys(body).filter((key) => ![
+    "merchantSignature",
+    "cardPan",
+    "recToken",
+    "phone",
+    "email",
+    "clientName",
+  ].includes(key));
+  const { error } = await supabaseAdmin.from("wayforpay_callbacks").insert({
+    order_reference: order || null,
+    transaction_status: status === "(empty)" ? null : status,
+    signature_ok: false,
+    http_status: null,
+    body: { source: "browser-return", method, transactionStatus: status, keys },
+  });
+  if (error) console.error("wayforpay return log failed:", error.message);
+}
+
 async function openDayReturn(req, res) {
   const posted = parseWayforpayBody(req.body);
   const body = { ...posted, ...req.query };
-  const state = openDayReturnState(body);
-  if (state === "paid") return sendOpenDayReturnPage("paid.html")(req, res);
-  if (state === "pending") {
-    const order = returnOrderReference(body);
-    if (signupIdFromOrder(order)) {
-      const saved = await openDayOrderState(order);
-      if (saved === "paid") return sendOpenDayReturnPage("paid.html")(req, res);
-      if (saved === "failed") return sendOpenDayReturnPage("declined.html")(req, res);
-      return res.redirect(303, "/open-day/loading.html?order=" + encodeURIComponent(order));
-    }
-    console.error("wayforpay return pending without order", wayforpayField(body.transactionStatus));
+  if (signupIdFromOrder(req.params.order || "")) body.orderReference = req.params.order;
+  await logWayforpayReturn(body, req.method);
+  if (openDayReturnState(body) === "paid") return sendOpenDayReturnPage("paid.html")(req, res);
+  const order = returnOrderReference(body);
+  if (signupIdFromOrder(order)) {
+    const saved = await openDayOrderState(order);
+    if (saved === "paid") return sendOpenDayReturnPage("paid.html")(req, res);
+    if (saved === "failed") return sendOpenDayReturnPage("declined.html")(req, res);
+    return res.redirect(303, "/open-day/loading.html?order=" + encodeURIComponent(order));
   }
   return sendOpenDayReturnPage("declined.html")(req, res);
 }
 app.all("/open-day/return", openDayReturn);
+app.all("/open-day/return/:order", openDayReturn);
 
 app.get("/api/public-config", (_req, res) => {
   const body = {};
@@ -4807,7 +4829,7 @@ app.post("/api/open-day/pay", async (req, res) => {
       orderDate: Math.floor(Date.now() / 1000),
       pass: data.pass,
       practices: data.practices,
-      returnUrl: site + "/open-day/return?order=" + encodeURIComponent("od-" + data.id),
+      returnUrl: site + "/open-day/return/" + encodeURIComponent("od-" + data.id),
       serviceUrl: site + "/api/wayforpay/service",
       phone: data.phone,
       firstName: data.name,
