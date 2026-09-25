@@ -28,10 +28,19 @@ function syncPractice() {
   const pass = passValue();
   if (practiceWrap) practiceWrap.hidden = pass !== "one";
   const price = document.getElementById("pay-price");
-  if (price) price.textContent = payPrice[pass] || "";
+  if (!price) return;
+  if (pass === "one") {
+    const count = selectedPractices().length;
+    price.textContent = count ? count * 400 + " грн" : "";
+    return;
+  }
+  price.textContent = payPrice[pass] || "";
 }
 syncPractice();
 form.querySelectorAll('input[name="pass"]').forEach((input) => {
+  input.addEventListener("change", syncPractice);
+});
+form.querySelectorAll('input[name="practice"]').forEach((input) => {
   input.addEventListener("change", syncPractice);
 });
 
@@ -148,7 +157,21 @@ form.addEventListener("submit", async (event) => {
     if (!response.ok || payload?.ok === false) {
       throw new Error(payload?.error || "Не вдалося надіслати. Спробуй ще раз.");
     }
-    location.href = payLink[passValue()];
+    const pass = passValue();
+    let url = payLink[pass];
+    if (pass === "one" && selectedPractices().length > 1) {
+      const payResponse = await fetch("/api/open-day/pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: payload?.id }),
+      });
+      const payPayload = await payResponse.json().catch(() => null);
+      if (!payResponse.ok || !payPayload?.url) {
+        throw new Error(payPayload?.error || "Не вдалося відкрити оплату. Спробуй ще раз.");
+      }
+      url = payPayload.url;
+    }
+    location.href = url;
   } catch (error) {
     setErr("submit", error?.message || "Не вдалося надіслати. Спробуй ще раз.");
     submitBtn.disabled = false;

@@ -61,6 +61,114 @@ export function phoneKey(value) {
   return digits.length >= 9 ? digits.slice(-9) : "";
 }
 
+const SIGNUP_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** ponytail: serviceUrl may arrive as JSON or as a form body; both become one object. */
+export function parseWayforpayBody(body) {
+  if (Buffer.isBuffer(body)) body = body.toString("utf8");
+  if (typeof body === "string") {
+    const text = body.replace(/^\uFEFF/, "").trim();
+    if (!text) return {};
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+    } catch {
+      /* a form body is not JSON */
+    }
+    const params = new URLSearchParams(text);
+    const obj = {};
+    for (const [key, value] of params) obj[key] = value;
+    const only = Object.keys(obj);
+    if (only.length === 1 && only[0].trim().startsWith("{")) {
+      try {
+        const parsed = JSON.parse(only[0]);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+      } catch {
+        /* keep the form fields */
+      }
+    }
+    if (only.length) return obj;
+    return { raw: text.slice(0, 8000) };
+  }
+  if (body && typeof body === "object" && !Array.isArray(body)) return body;
+  return {};
+}
+
+export function onePracticeAmount(count) {
+  const n = Number(count);
+  if (!Number.isInteger(n) || n < 1 || n > 6) return 0;
+  return n * 400;
+}
+
+export function signupIdFromOrder(orderReference) {
+  const value = wayforpayField(orderReference);
+  if (!value.startsWith("od-")) return "";
+  const id = value.slice(3);
+  return SIGNUP_ID.test(id) ? id : "";
+}
+
+export function purchaseSignatureString(fields) {
+  return [
+    fields.merchantAccount,
+    fields.merchantDomainName,
+    fields.orderReference,
+    String(fields.orderDate),
+    String(fields.amount),
+    "UAH",
+    ...fields.productName,
+    ...fields.productCount.map(String),
+    ...fields.productPrice.map(String),
+  ].join(";");
+}
+
+export function onePracticePurchase({
+  merchantAccount,
+  merchantDomainName,
+  secret,
+  orderReference,
+  orderDate,
+  count,
+  returnUrl,
+  serviceUrl,
+  phone,
+  firstName,
+}) {
+  const amount = onePracticeAmount(count);
+  if (!amount) return null;
+  const productName = ["Open Day, одна практика"];
+  const productCount = [count];
+  const productPrice = [400];
+  const params = new URLSearchParams();
+  params.set("merchantAccount", merchantAccount);
+  params.set("merchantDomainName", merchantDomainName);
+  params.set("merchantTransactionType", "AUTO");
+  params.set("merchantSignature", hmacMd5(purchaseSignatureString({
+    merchantAccount,
+    merchantDomainName,
+    orderReference,
+    orderDate,
+    amount,
+    productName,
+    productCount,
+    productPrice,
+  }), secret));
+  params.set("orderReference", orderReference);
+  params.set("orderDate", String(orderDate));
+  params.set("amount", String(amount));
+  params.set("currency", "UAH");
+  params.set("language", "UA");
+  params.append("productName[]", productName[0]);
+  params.append("productCount[]", String(count));
+  params.append("productPrice[]", "400");
+  if (returnUrl) params.set("returnUrl", returnUrl);
+  if (serviceUrl) params.set("serviceUrl", serviceUrl);
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (digits.length >= 9 && digits.length <= 13) params.set("clientPhone", digits);
+  const name = String(firstName || "").trim().split(/\s+/)[0]?.slice(0, 50) || "";
+  if (name) params.set("clientFirstName", name);
+  return params;
+}
+
 export function passForAmount(amount) {
   const number = Number(amount);
   if (!Number.isFinite(number)) return "";

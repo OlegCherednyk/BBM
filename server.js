@@ -17,7 +17,15 @@ import {
 } from "./students-api.js";
 import { parsePlaceRiverBank, runDailyTeacherDigests, runWeeklyTeacherStatsDigests, runMonthlyTeacherStatsDigests, teacherMatchesBank, getCompletedWeekRangeKyiv } from "./admin-notifications.js";
 import { applyVisitDiscount, discountForStudent, normalizeDiscount } from "./lesson-discount.js";
-import { handleWayforpayNotification, pickSignup, wayforpayField } from "./wayforpay.js";
+import {
+  handleWayforpayNotification,
+  onePracticeAmount,
+  onePracticePurchase,
+  parseWayforpayBody,
+  pickSignup,
+  signupIdFromOrder,
+  wayforpayField,
+} from "./wayforpay.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
@@ -45,6 +53,13 @@ if (!publicSupabaseUrl || !publicSupabaseAnonKey) {
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const wayforpayMerchantAccount = process.env.WAYFORPAY_MERCHANT_ACCOUNT || "";
 const wayforpaySecretKey = process.env.WAYFORPAY_SECRET_KEY || "";
+const ONE_PRACTICE_BUTTON = "https://secure.wayforpay.com/button/b73d49a968afd";
+
+function wayforpaySiteUrl() {
+  const raw = String(process.env.SITE_URL || "").trim().replace(/\/$/, "");
+  if (/^https:\/\//i.test(raw) && !/localhost|127\.0\.0\.1/i.test(raw)) return raw;
+  return "https://mozok-tilo-ruh.kyiv.ua";
+}
 if (!wayforpayMerchantAccount || !wayforpaySecretKey) {
   console.warn(
     "[env] WAYFORPAY_MERCHANT_ACCOUNT або WAYFORPAY_SECRET_KEY не задані — /api/wayforpay/service не підтверджуватиме оплати.",
@@ -192,6 +207,7 @@ function resolveGroupVoteChatIdForLessonPlace(riverBankRaw) {
   return { chatId: fallback, dualMode: false, bank: parsePlaceRiverBank(riverBankRaw) };
 }
 
+app.use("/api/wayforpay/service", express.raw({ type: () => true, limit: "1mb" }));
 app.use(express.json());
 app.use(express.static("."));
 
@@ -202,6 +218,10 @@ function sendOpenDayReturnPage(file) {
 }
 app.all("/open-day/paid.html", sendOpenDayReturnPage("paid.html"));
 app.all("/open-day/declined.html", sendOpenDayReturnPage("declined.html"));
+app.all("/open-day/return", express.urlencoded({ extended: false }), (req, res) => {
+  const status = wayforpayField(req.body?.transactionStatus || req.query?.transactionStatus);
+  sendOpenDayReturnPage(status === "Approved" ? "paid.html" : "declined.html")(req, res);
+});
 
 app.get("/api/public-config", (_req, res) => {
   const body = {};
@@ -4585,12 +4605,25 @@ async function recordWayforpayPayment(body) {
   let signupId = null;
 
   if (WAYFORPAY_PAID.has(status)) {
-    const { data, error } = await supabaseAdmin
-      .from("open_day_signups")
-      .select("id, phone, pass, paid_at, created_at, payment_order_reference")
-      .eq("event_slug", "open-day");
-    if (error) throw error;
-    const match = pickSignup(data || [], phone, amount);
+    const linkedId = signupIdFromOrder(orderReference);
+    let match = null;
+    if (linkedId) {
+      const { data, error } = await supabaseAdmin
+        .from("open_day_signups")
+        .select("id, pass, practices, paid_at, payment_order_reference")
+        .eq("id", linkedId)
+        .maybeSingle();
+      if (error) throw error;
+      const expected = onePracticeAmount(Array.isArray(data?.practices) ? data.practices.length : 0);
+      if (data?.pass === "one" && expected && Math.round(amount) === expected) match = data;
+    } else {
+      const { data, error } = await supabaseAdmin
+        .from("open_day_signups")
+        .select("id, phone, pass, paid_at, created_at, payment_order_reference")
+        .eq("event_slug", "open-day");
+      if (error) throw error;
+      match = pickSignup(data || [], phone, amount);
+    }
     if (match && (!match.paid_at || match.payment_order_reference === orderReference)) {
       signupId = match.id;
       const { error: updateError } = await supabaseAdmin
@@ -4654,9 +4687,10 @@ async function logWayforpayCallback(body, result) {
 }
 
 app.post("/api/wayforpay/service", async (req, res) => {
+  const body = parseWayforpayBody(req.body);
   let result = { statusCode: 500, payload: { ok: false } };
   try {
-    result = await handleWayforpayNotification(req.body, {
+    result = await handleWayforpayNotification(body, {
       secret: wayforpaySecretKey,
       merchantAccount: wayforpayMerchantAccount,
       save: recordWayforpayPayment,
@@ -4664,7 +4698,7 @@ app.post("/api/wayforpay/service", async (req, res) => {
   } catch (error) {
     console.error("wayforpay service failed:", error);
   }
-  await logWayforpayCallback(req.body, result);
+  await logWayforpayCallback(body, result);
   return res.status(result.statusCode).json(result.payload);
 });
 
@@ -4675,15 +4709,68 @@ app.post("/api/open-day", async (req, res) => {
     }
     const parsed = readOpenDaySignup(req.body);
     if (parsed.error) return res.status(400).json({ ok: false, error: parsed.error });
-    const { error } = await supabaseAdmin.from("open_day_signups").insert(parsed.row);
+    const { data, error } = await supabaseAdmin.from("open_day_signups").insert(parsed.row).select("id").single();
     if (error) {
       console.error("open_day_signups insert failed:", error.message);
       return res.status(500).json({ ok: false, error: "Не вдалося зберегти запис. Спробуй ще раз." });
     }
-    return res.json({ ok: true });
+    return res.json({ ok: true, id: data.id });
   } catch (error) {
     console.error("open-day signup failed:", error);
     return res.status(500).json({ ok: false, error: "Не вдалося зберегти запис. Спробуй ще раз." });
+  }
+});
+
+app.post("/api/open-day/pay", async (req, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ ok: false, error: "Не вдалося відкрити оплату. Спробуй ще раз." });
+    }
+    const id = signupIdFromOrder("od-" + String(req.body?.id || ""));
+    if (!id) return res.status(400).json({ ok: false, error: "Не вдалося відкрити оплату. Спробуй ще раз." });
+    const { data, error } = await supabaseAdmin
+      .from("open_day_signups")
+      .select("id, name, phone, pass, practices, paid_at")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw error;
+    const count = Array.isArray(data?.practices) ? data.practices.length : 0;
+    if (!data || data.pass !== "one" || data.paid_at || !onePracticeAmount(count)) {
+      return res.status(400).json({ ok: false, error: "Не вдалося відкрити оплату. Спробуй ще раз." });
+    }
+    if (count === 1) return res.json({ ok: true, url: ONE_PRACTICE_BUTTON });
+    if (!wayforpayMerchantAccount || !wayforpaySecretKey) {
+      return res.status(503).json({ ok: false, error: "Не вдалося відкрити оплату. Спробуй ще раз." });
+    }
+    const site = wayforpaySiteUrl();
+    const params = onePracticePurchase({
+      merchantAccount: wayforpayMerchantAccount,
+      merchantDomainName: new URL(site).hostname,
+      secret: wayforpaySecretKey,
+      orderReference: "od-" + data.id,
+      orderDate: Math.floor(Date.now() / 1000),
+      count,
+      returnUrl: site + "/open-day/return",
+      serviceUrl: site + "/api/wayforpay/service",
+      phone: data.phone,
+      firstName: data.name,
+    });
+    const response = await fetch("https://secure.wayforpay.com/pay?behavior=offline", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params,
+      signal: AbortSignal.timeout(15000),
+    });
+    const payload = await response.json().catch(() => null);
+    const url = String(payload?.url || "");
+    if (!response.ok || !url.startsWith("https://secure.wayforpay.com/")) {
+      console.error("wayforpay purchase failed:", payload?.reasonCode || response.status);
+      return res.status(502).json({ ok: false, error: "Не вдалося відкрити оплату. Спробуй ще раз." });
+    }
+    return res.json({ ok: true, url });
+  } catch (error) {
+    console.error("open-day pay failed:", error);
+    return res.status(500).json({ ok: false, error: "Не вдалося відкрити оплату. Спробуй ще раз." });
   }
 });
 

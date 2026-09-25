@@ -4,8 +4,13 @@ import {
   acceptPayload,
   handleWayforpayNotification,
   hmacMd5,
+  onePracticeAmount,
+  onePracticePurchase,
+  parseWayforpayBody,
   pickSignup,
+  purchaseSignatureString,
   serviceSignatureString,
+  signupIdFromOrder,
   verifyServiceSignature,
 } from "./wayforpay.js";
 
@@ -76,5 +81,51 @@ describe("pickSignup", () => {
   it("matches the unpaid signup with the same phone and pass amount", () => {
     assert.equal(pickSignup(rows, "380501234567", 400).id, "new");
     assert.equal(pickSignup(rows, "380501234567", 1800).id, "old");
+  });
+});
+
+describe("several practices", () => {
+  it("charges 400 for each selected practice", () => {
+    assert.equal(onePracticeAmount(1), 400);
+    assert.equal(onePracticeAmount(2), 800);
+    assert.equal(onePracticeAmount(0), 0);
+    assert.equal(onePracticeAmount(2.5), 0);
+  });
+
+  it("signs a purchase in the WayForPay field order", () => {
+    const fields = {
+      merchantAccount: merchant,
+      merchantDomainName: "mozok-tilo-ruh.kyiv.ua",
+      orderReference: "od-1",
+      orderDate: 10,
+      amount: 800,
+      productName: ["Open Day, одна практика"],
+      productCount: [2],
+      productPrice: [400],
+    };
+    assert.equal(
+      purchaseSignatureString(fields),
+      "test_merch_n1;mozok-tilo-ruh.kyiv.ua;od-1;10;800;UAH;Open Day, одна практика;2;400",
+    );
+    const params = onePracticePurchase({ ...fields, secret, count: 2 });
+    assert.equal(params.get("amount"), "800");
+    assert.equal(params.get("productCount[]"), "2");
+    assert.equal(params.get("merchantSignature"), hmacMd5(purchaseSignatureString(fields), secret));
+  });
+
+  it("reads a signup id only from its own order reference", () => {
+    const id = "11111111-2222-4333-8444-555555555555";
+    assert.equal(signupIdFromOrder("od-" + id), id);
+    assert.equal(signupIdFromOrder("wfp-order"), "");
+  });
+});
+
+describe("parseWayforpayBody", () => {
+  it("reads JSON and form bodies", () => {
+    const json = Buffer.from(JSON.stringify(signed()), "utf8");
+    assert.equal(parseWayforpayBody(json).orderReference, "OD-1");
+    const form = "merchantAccount=test_merch_n1&orderReference=OD-2&amount=400";
+    assert.equal(parseWayforpayBody(form).orderReference, "OD-2");
+    assert.deepEqual(parseWayforpayBody(""), {});
   });
 });
