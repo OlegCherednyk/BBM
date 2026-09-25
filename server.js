@@ -21,6 +21,7 @@ import {
   handleWayforpayNotification,
   openDayAmount,
   openDayPurchase,
+  openDayReturnPaid,
   parseWayforpayBody,
   pickSignup,
   signupIdFromOrder,
@@ -206,6 +207,7 @@ function resolveGroupVoteChatIdForLessonPlace(riverBankRaw) {
 }
 
 app.use("/api/wayforpay/service", express.raw({ type: () => true, limit: "1mb" }));
+app.use("/open-day/return", express.raw({ type: () => true, limit: "1mb" }));
 app.use(express.json());
 app.use(express.static("."));
 
@@ -216,9 +218,32 @@ function sendOpenDayReturnPage(file) {
 }
 app.all("/open-day/paid.html", sendOpenDayReturnPage("paid.html"));
 app.all("/open-day/declined.html", sendOpenDayReturnPage("declined.html"));
-app.all("/open-day/return", express.urlencoded({ extended: false }), (req, res) => {
-  const status = wayforpayField(req.body?.transactionStatus || req.query?.transactionStatus);
-  sendOpenDayReturnPage(status === "Approved" ? "paid.html" : "declined.html")(req, res);
+async function openDayOrderPaid(orderReference) {
+  if (!supabaseAdmin) return false;
+  const { data } = await supabaseAdmin
+    .from("wayforpay_payments")
+    .select("transaction_status")
+    .eq("order_reference", orderReference)
+    .maybeSingle();
+  if (data?.transaction_status === "Approved") return true;
+  const { data: signup } = await supabaseAdmin
+    .from("open_day_signups")
+    .select("paid_at")
+    .eq("payment_order_reference", orderReference)
+    .maybeSingle();
+  return Boolean(signup?.paid_at);
+}
+
+app.all("/open-day/return", async (req, res) => {
+  const posted = parseWayforpayBody(req.body);
+  const body = { ...req.query, ...posted };
+  const paid = await openDayReturnPaid(body, {
+    secret: wayforpaySecretKey,
+    merchantAccount: wayforpayMerchantAccount,
+    lookup: openDayOrderPaid,
+    wait: () => new Promise((resolve) => setTimeout(resolve, 400)),
+  });
+  sendOpenDayReturnPage(paid ? "paid.html" : "declined.html")(req, res);
 });
 
 app.get("/api/public-config", (_req, res) => {

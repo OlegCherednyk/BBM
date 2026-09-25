@@ -9,6 +9,7 @@ import {
   openDayLines,
   openDayPurchase,
   parseWayforpayBody,
+  openDayReturnPaid,
   pickSignup,
   purchaseSignatureString,
   serviceSignatureString,
@@ -124,6 +125,48 @@ describe("several practices", () => {
     const id = "11111111-2222-4333-8444-555555555555";
     assert.equal(signupIdFromOrder("od-" + id), id);
     assert.equal(signupIdFromOrder("wfp-order"), "");
+  });
+});
+
+describe("return page", () => {
+  it("trusts a signed Approved status", async () => {
+    let lookups = 0;
+    const paid = await openDayReturnPaid(signed(), {
+      secret,
+      merchantAccount: merchant,
+      lookup: async () => {
+        lookups += 1;
+        return false;
+      },
+    });
+    assert.equal(paid, true);
+    assert.equal(lookups, 0);
+  });
+
+  it("shows success from the saved payment when the browser return has no status", async () => {
+    const checks = [];
+    const paid = await openDayReturnPaid(
+      { orderReference: "od-1" },
+      {
+        secret,
+        merchantAccount: merchant,
+        lookup: async (orderReference) => {
+          checks.push(orderReference);
+          return checks.length > 1;
+        },
+        wait: async () => {},
+      },
+    );
+    assert.equal(paid, true);
+    assert.deepEqual(checks, ["od-1", "od-1"]);
+  });
+
+  it("does not treat an unsigned Approved flag as payment", async () => {
+    const paid = await openDayReturnPaid(
+      { transactionStatus: "Approved", orderReference: "od-1" },
+      { secret, merchantAccount: merchant, lookup: async () => false, wait: async () => {} },
+    );
+    assert.equal(paid, false);
   });
 });
 
