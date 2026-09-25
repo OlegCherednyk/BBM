@@ -46,23 +46,10 @@ export function verifyServiceSignature(body, secret) {
   return signaturesMatch(expected, wayforpayField(body.merchantSignature));
 }
 
-const RETURN_FAILURES = new Set(["Declined", "Expired", "Refunded", "Voided"]);
-
-/** ponytail: the browser return often has no status; the signed service callback is what marks the order paid. */
-export async function openDayReturnPaid(body, { secret, merchantAccount, lookup, attempts = 5, wait }) {
-  const parsed = parseWayforpayBody(body);
-  const status = wayforpayField(parsed.transactionStatus);
-  const account = wayforpayField(parsed.merchantAccount);
-  const signed = verifyServiceSignature(parsed, secret) && (!account || account === merchantAccount);
-  if (signed && status === "Approved") return true;
-  const orderReference = wayforpayField(parsed.orderReference).trim();
-  if (!orderReference || !lookup) return false;
-  const tries = signed && RETURN_FAILURES.has(status) ? 1 : attempts;
-  for (let attempt = 0; attempt < tries; attempt += 1) {
-    if (await lookup(orderReference)) return true;
-    if (attempt + 1 < tries && wait) await wait();
-  }
-  return false;
+/** ponytail: the return page follows transactionStatus only; the service callback marks the signup paid. */
+export function openDayReturnState(body) {
+  const status = wayforpayField(parseWayforpayBody(body).transactionStatus);
+  return status === "Approved" ? "paid" : "failed";
 }
 
 export function acceptPayload(orderReference, secret, time) {

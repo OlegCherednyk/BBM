@@ -9,7 +9,7 @@ import {
   openDayLines,
   openDayPurchase,
   parseWayforpayBody,
-  openDayReturnPaid,
+  openDayReturnState,
   pickSignup,
   purchaseSignatureString,
   serviceSignatureString,
@@ -129,44 +129,13 @@ describe("several practices", () => {
 });
 
 describe("return page", () => {
-  it("trusts a signed Approved status", async () => {
-    let lookups = 0;
-    const paid = await openDayReturnPaid(signed(), {
-      secret,
-      merchantAccount: merchant,
-      lookup: async () => {
-        lookups += 1;
-        return false;
-      },
-    });
-    assert.equal(paid, true);
-    assert.equal(lookups, 0);
-  });
-
-  it("shows success from the saved payment when the browser return has no status", async () => {
-    const checks = [];
-    const paid = await openDayReturnPaid(
-      { orderReference: "od-1" },
-      {
-        secret,
-        merchantAccount: merchant,
-        lookup: async (orderReference) => {
-          checks.push(orderReference);
-          return checks.length > 1;
-        },
-        wait: async () => {},
-      },
-    );
-    assert.equal(paid, true);
-    assert.deepEqual(checks, ["od-1", "od-1"]);
-  });
-
-  it("does not treat an unsigned Approved flag as payment", async () => {
-    const paid = await openDayReturnPaid(
-      { transactionStatus: "Approved", orderReference: "od-1" },
-      { secret, merchantAccount: merchant, lookup: async () => false, wait: async () => {} },
-    );
-    assert.equal(paid, false);
+  it("follows transactionStatus and ignores the order number", () => {
+    assert.equal(openDayReturnState({ transactionStatus: "Approved" }), "paid");
+    assert.equal(openDayReturnState("transactionStatus=Approved&orderReference=od-1"), "paid");
+    assert.equal(openDayReturnState(signed()), "paid");
+    assert.equal(openDayReturnState({ transactionStatus: "Declined", orderReference: "od-1" }), "failed");
+    assert.equal(openDayReturnState({ orderReference: "od-1" }), "failed");
+    assert.equal(openDayReturnState(signed({ transactionStatus: "Expired" })), "failed");
   });
 });
 
