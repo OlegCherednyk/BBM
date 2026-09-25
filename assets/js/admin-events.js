@@ -131,6 +131,7 @@ export async function setupEventsAdmin() {
     pill.className = "event-pill event-pill--" + (row.pass || "one");
     pill.textContent = pass ? pass.title + " · " + pass.price : passLabel(row.pass);
     modalBody.appendChild(pill);
+    addField(modalBody, "Оплата", row.paid_at ? "оплачено · " + formatWhen(row.paid_at) : "ще ні");
     addField(modalBody, "Коли записався", formatWhen(row.created_at));
     addField(modalBody, "Telegram", row.telegram, telegramHref(row.telegram));
     addField(modalBody, "Телефон", row.phone, row.phone ? "tel:" + row.phone.replace(/\s/g, "") : "");
@@ -218,7 +219,7 @@ export async function setupEventsAdmin() {
       name.textContent = row.name;
       const meta = document.createElement("span");
       meta.className = "event-row__meta";
-      meta.textContent = [row.telegram, formatWhen(row.created_at)].filter(Boolean).join(" · ");
+      meta.textContent = [row.telegram, row.paid_at ? "оплачено" : "", formatWhen(row.created_at)].filter(Boolean).join(" · ");
       main.append(name, meta);
       const pill = document.createElement("span");
       pill.className = "event-pill event-pill--" + (row.pass || "one");
@@ -245,7 +246,7 @@ export async function setupEventsAdmin() {
   supabase = createClient(url, anonKey);
   const { data, error } = await supabase
     .from("open_day_signups")
-    .select("id, name, telegram, phone, pass, practice, source, source_other, hope, created_at")
+    .select("id, name, telegram, phone, pass, practice, source, source_other, hope, created_at, paid_at")
     .order("created_at", { ascending: false });
   if (error) {
     showError(error.message);

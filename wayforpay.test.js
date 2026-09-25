@@ -1,0 +1,80 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import {
+  acceptPayload,
+  handleWayforpayNotification,
+  hmacMd5,
+  pickSignup,
+  serviceSignatureString,
+  verifyServiceSignature,
+} from "./wayforpay.js";
+
+const secret = "test-secret";
+const merchant = "test_merch_n1";
+
+function signed(extra) {
+  const body = {
+    merchantAccount: merchant,
+    orderReference: "OD-1",
+    amount: 1800,
+    currency: "UAH",
+    authCode: "541963",
+    cardPan: "41****8217",
+    transactionStatus: "Approved",
+    reasonCode: "1100",
+    phone: "+380501234567",
+    ...extra,
+  };
+  body.merchantSignature = hmacMd5(serviceSignatureString(body), secret);
+  return body;
+}
+
+describe("WayForPay service signature", () => {
+  it("accepts a callback signed the way WayForPay describes", async () => {
+    const body = signed();
+    assert.equal(verifyServiceSignature(body, secret), true);
+    const saved = [];
+    const result = await handleWayforpayNotification(body, {
+      secret,
+      merchantAccount: merchant,
+      now: () => 1415379863,
+      save: async (payload) => saved.push(payload.orderReference),
+    });
+    assert.equal(result.statusCode, 200);
+    assert.deepEqual(result.payload, acceptPayload("OD-1", secret, 1415379863));
+    assert.deepEqual(saved, ["OD-1"]);
+    assert.equal(verifyServiceSignature(result.payload, secret), false);
+    assert.equal(result.payload.signature, hmacMd5("OD-1;accept;1415379863", secret));
+  });
+
+  it("keeps empty auth and reason fields inside the signed string", () => {
+    const body = signed({ authCode: "", cardPan: "", reasonCode: "" });
+    assert.equal(
+      serviceSignatureString(body),
+      "test_merch_n1;OD-1;1800;UAH;;;Approved;",
+    );
+    assert.equal(verifyServiceSignature(body, secret), true);
+  });
+
+  it("does not accept a bad signature or the wrong shop", async () => {
+    const body = signed();
+    body.amount = 1;
+    assert.equal((await handleWayforpayNotification(body, { secret, merchantAccount: merchant })).statusCode, 400);
+    const otherShop = signed({ merchantAccount: "other" });
+    otherShop.merchantSignature = hmacMd5(serviceSignatureString(otherShop), secret);
+    assert.equal((await handleWayforpayNotification(otherShop, { secret, merchantAccount: merchant })).statusCode, 400);
+    assert.equal((await handleWayforpayNotification(signed(), { secret: "", merchantAccount: merchant })).statusCode, 503);
+  });
+});
+
+describe("pickSignup", () => {
+  const rows = [
+    { id: "old", phone: "0501234567", pass: "full", paid_at: null, created_at: "2026-09-01" },
+    { id: "new", phone: "+380 50 123 45 67", pass: "one", paid_at: null, created_at: "2026-09-20" },
+  ];
+
+  it("matches the unpaid signup with the same phone and pass amount", () => {
+    assert.equal(pickSignup(rows, "380501234567", 400).id, "new");
+    assert.equal(pickSignup(rows, "380501234567", 1800).id, "old");
+  });
+});

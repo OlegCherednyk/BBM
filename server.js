@@ -17,6 +17,7 @@ import {
 } from "./students-api.js";
 import { parsePlaceRiverBank, runDailyTeacherDigests, runWeeklyTeacherStatsDigests, runMonthlyTeacherStatsDigests, teacherMatchesBank, getCompletedWeekRangeKyiv } from "./admin-notifications.js";
 import { applyVisitDiscount, discountForStudent, normalizeDiscount } from "./lesson-discount.js";
+import { handleWayforpayNotification, pickSignup, wayforpayField } from "./wayforpay.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
@@ -42,6 +43,13 @@ if (!publicSupabaseUrl || !publicSupabaseAnonKey) {
   );
 }
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const wayforpayMerchantAccount = process.env.WAYFORPAY_MERCHANT_ACCOUNT || "";
+const wayforpaySecretKey = process.env.WAYFORPAY_SECRET_KEY || "";
+if (!wayforpayMerchantAccount || !wayforpaySecretKey) {
+  console.warn(
+    "[env] WAYFORPAY_MERCHANT_ACCOUNT або WAYFORPAY_SECRET_KEY не задані — /api/wayforpay/service не підтверджуватиме оплати.",
+  );
+}
 
 const bot = botToken ? new Telegraf(botToken) : null;
 const supabaseAdmin =
@@ -186,6 +194,14 @@ function resolveGroupVoteChatIdForLessonPlace(riverBankRaw) {
 
 app.use(express.json());
 app.use(express.static("."));
+
+function sendOpenDayReturnPage(file) {
+  return (_req, res) => {
+    res.sendFile(path.join(__dirname, "open-day", file));
+  };
+}
+app.all("/open-day/paid.html", sendOpenDayReturnPage("paid.html"));
+app.all("/open-day/declined.html", sendOpenDayReturnPage("declined.html"));
 
 app.get("/api/public-config", (_req, res) => {
   const body = {};
@@ -4549,6 +4565,82 @@ function readOpenDaySignup(body) {
     },
   };
 }
+
+const WAYFORPAY_PAID = new Set(["Approved"]);
+const WAYFORPAY_CLEARED = new Set(["Refunded", "Voided", "Declined"]);
+
+async function recordWayforpayPayment(body) {
+  if (!supabaseAdmin) throw new Error("supabase admin is not configured");
+  const orderReference = wayforpayField(body.orderReference).trim();
+  const status = wayforpayField(body.transactionStatus);
+  const phone = wayforpayField(body.phone);
+  const amount = Number(body.amount);
+  let signupId = null;
+
+  if (WAYFORPAY_PAID.has(status)) {
+    const { data, error } = await supabaseAdmin
+      .from("open_day_signups")
+      .select("id, phone, pass, paid_at, created_at, payment_order_reference")
+      .eq("event_slug", "open-day");
+    if (error) throw error;
+    const match = pickSignup(data || [], phone, amount);
+    if (match && (!match.paid_at || match.payment_order_reference === orderReference)) {
+      signupId = match.id;
+      const { error: updateError } = await supabaseAdmin
+        .from("open_day_signups")
+        .update({
+          paid_at: match.paid_at || new Date().toISOString(),
+          payment_order_reference: orderReference,
+        })
+        .eq("id", match.id);
+      if (updateError) throw updateError;
+    } else if (match) {
+      signupId = match.id;
+    }
+  }
+
+  if (WAYFORPAY_CLEARED.has(status)) {
+    const { error } = await supabaseAdmin
+      .from("open_day_signups")
+      .update({ paid_at: null, payment_order_reference: null })
+      .eq("payment_order_reference", orderReference);
+    if (error) throw error;
+  }
+
+  const { error: upsertError } = await supabaseAdmin.from("wayforpay_payments").upsert(
+    {
+      order_reference: orderReference,
+      merchant_account: wayforpayField(body.merchantAccount) || null,
+      amount: Number.isFinite(amount) ? amount : null,
+      currency: wayforpayField(body.currency) || null,
+      transaction_status: status || "Unknown",
+      reason: wayforpayField(body.reason) || null,
+      reason_code: wayforpayField(body.reasonCode) || null,
+      phone: phone || null,
+      email: wayforpayField(body.email) || null,
+      card_pan: wayforpayField(body.cardPan) || null,
+      payment_system: wayforpayField(body.paymentSystem) || null,
+      signup_id: signupId,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "order_reference" },
+  );
+  if (upsertError) throw upsertError;
+}
+
+app.post("/api/wayforpay/service", async (req, res) => {
+  try {
+    const result = await handleWayforpayNotification(req.body, {
+      secret: wayforpaySecretKey,
+      merchantAccount: wayforpayMerchantAccount,
+      save: recordWayforpayPayment,
+    });
+    return res.status(result.statusCode).json(result.payload);
+  } catch (error) {
+    console.error("wayforpay service failed:", error);
+    return res.status(500).json({ ok: false });
+  }
+});
 
 app.post("/api/open-day", async (req, res) => {
   try {
