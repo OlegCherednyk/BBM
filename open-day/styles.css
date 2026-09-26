@@ -326,13 +326,18 @@ body.settled .stage { animation: none !important; transform: none !important; }
   letter-spacing: 0;
   color: #4d5c22;
 }
-a.place {
-  display: block;
-  text-decoration: none;
+.more {
+  margin: 10px 6px 4px;
+  font-size: 15px;
+  line-height: 1.45;
 }
-a.place:focus-visible {
+.more a {
+  color: #4d5c22;
+  text-underline-offset: 3px;
+}
+.more a:focus-visible {
   outline: 2px solid var(--ink);
-  outline-offset: 10px;
+  outline-offset: 3px;
 }
 .when {
   margin: 0 0 4px;

@@ -3,21 +3,17 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 const landing = readFileSync(new URL("./open-day/landing.html", import.meta.url), "utf8");
-const styles = readFileSync(new URL("./open-day/styles.css", import.meta.url), "utf8");
 
 describe("open day landing instagram", () => {
-  it("places the studio instagram card after the address and before prices", () => {
-    const place = landing.indexOf("Позняки, Мішуги 10");
-    const prices = landing.indexOf('id="prices"');
+  it("links to instagram at the top under the poster, before the program", () => {
+    const poster = landing.indexOf('id="poster"');
+    const below = landing.indexOf('<div class="below">');
+    const details = landing.indexOf('id="details"');
     const link = landing.indexOf(
-      '<a class="place" href="https://www.instagram.com/mozok.tilo.ruh/" target="_blank" rel="noopener noreferrer">',
+      '<a href="https://www.instagram.com/mozok.tilo.ruh/" target="_blank" rel="noopener noreferrer">Дізнайтесь більше про мозок.тіло.рух</a>',
     );
-    assert.ok(place > -1 && prices > place);
-    assert.ok(link > place && link < prices, "instagram card sits between the address and prices");
-    const block = landing.slice(link, prices);
-    assert.match(block, /<span>інстаграм<\/span>/);
-    assert.match(block, /<strong>@mozok\.tilo\.ruh<\/strong>/);
-    assert.match(styles, /a\.place\s*\{[^}]*display:\s*block/);
-    assert.match(styles, /a\.place\s*\{[^}]*text-decoration:\s*none/);
+    assert.ok(poster > -1 && below > poster && details > below);
+    assert.ok(link > below && link < details, "learn-more link sits after the poster and before the program");
+    assert.equal(landing.includes('class="place" href="https://www.instagram.com'), false);
   });
 });
