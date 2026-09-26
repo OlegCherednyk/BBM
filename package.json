@@ -2,7 +2,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test subscription-patch.test.js digest-png-fonts.test.js monthly-digest-png.test.js weekly-digest-png.test.js wayforpay.test.js"
+    "test": "node --test subscription-patch.test.js digest-png-fonts.test.js monthly-digest-png.test.js weekly-digest-png.test.js wayforpay.test.js open-day-landing.test.js"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
