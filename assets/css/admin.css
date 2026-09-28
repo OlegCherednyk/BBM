@@ -5067,22 +5067,16 @@ pre {
   gap: 18px 22px;
 }
 .event-visitors { margin-bottom: 18px; }
-.event-visitors__head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 10px;
+.event-visitors__toggle {
+  width: fit-content;
+  color: var(--olive);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
 }
-.event-visitors__head h3 {
-  margin: 0;
-  font-size: 1rem;
-  color: var(--brown-dark);
-}
-.event-visitors__head p {
-  margin: 0;
-  color: var(--brown-light);
-  font-size: 0.82rem;
+.event-visitors__toggle:focus-visible {
+  outline: 2px solid var(--olive);
+  outline-offset: 3px;
 }
 .event-visitors__list {
   display: flex;

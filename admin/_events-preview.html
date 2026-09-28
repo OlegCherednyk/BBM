@@ -49,11 +49,8 @@
             <p class="event-hero__count"><span>5</span><small>переглядів</small></p>
           </div>
         </article>
-        <div class="event-visitors">
-          <div class="event-visitors__head">
-            <h3>Відвідувачі лендінгу</h3>
-            <p>2 унікальні · 5 переглядів</p>
-          </div>
+        <details class="event-visitors">
+          <summary class="event-visitors__toggle">Показати відвідувачів</summary>
           <div class="event-visitors__list">
             <div class="event-visitor">
               <span class="event-visitor__who">телефон · Safari</span>
@@ -64,7 +61,7 @@
               <span class="event-visitor__meta">2 перегляди · uk · Europe/Kyiv · вперше 28 вересня, 11:16 · ще 28 вересня, 15:40</span>
             </div>
           </div>
-        </div>
+        </details>
         <div class="event-filters">
           <button type="button" class="event-filter is-on">Усі · 3</button>
           <button type="button" class="event-filter">Full pass · 1</button>
@@ -116,6 +113,11 @@
       </div>
     </div>
     <script>
+      const visitors = document.querySelector(".event-visitors");
+      const visitorsToggle = visitors.querySelector("summary");
+      visitors.addEventListener("toggle", () => {
+        visitorsToggle.textContent = visitors.open ? "Сховати відвідувачів" : "Показати відвідувачів";
+      });
       const modal = document.getElementById("eventModal");
       document.querySelector("[data-open]").addEventListener("click", () => {
         modal.classList.remove("admin-hide");

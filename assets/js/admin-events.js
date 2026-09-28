@@ -73,6 +73,7 @@ export async function setupEventsAdmin() {
   const payModalTitle = el("payModalTitle");
   let rows = [];
   let visitors = [];
+  let visitorsOpen = false;
   let payments = [];
   let callbacks = [];
   let filter = "all";
@@ -295,19 +296,24 @@ export async function setupEventsAdmin() {
     const box = el("eventVisitors");
     if (!box) return;
     box.replaceChildren();
-    box.className = "event-visitors";
-    const head = document.createElement("div");
-    head.className = "event-visitors__head";
-    const title = document.createElement("h3");
-    title.textContent = "Відвідувачі лендінгу";
-    const meta = document.createElement("p");
-    const views = visitors.reduce((sum, row) => sum + (Number(row.hits) || 0), 0);
-    meta.textContent = visitors.length
-      ? visitors.length + " " + ukWord(visitors.length, "унікальний", "унікальні", "унікальних") + " · " + views + " " + ukWord(views, "перегляд", "перегляди", "переглядів")
-      : "Поки ніхто не відкривав лендінг.";
-    head.append(title, meta);
-    box.appendChild(head);
-    if (!visitors.length) return;
+    box.className = "";
+    if (!visitors.length) {
+      const empty = document.createElement("p");
+      empty.className = "admin-muted event-visitors";
+      empty.textContent = "Поки ніхто не відкривав лендінг.";
+      box.appendChild(empty);
+      return;
+    }
+    const details = document.createElement("details");
+    details.className = "event-visitors";
+    details.open = visitorsOpen;
+    const summary = document.createElement("summary");
+    summary.className = "event-visitors__toggle";
+    summary.textContent = visitorsOpen ? "Сховати відвідувачів" : "Показати відвідувачів";
+    details.addEventListener("toggle", () => {
+      visitorsOpen = details.open;
+      summary.textContent = details.open ? "Сховати відвідувачів" : "Показати відвідувачів";
+    });
     const list = document.createElement("div");
     list.className = "event-visitors__list";
     for (const row of visitors) {
@@ -329,7 +335,8 @@ export async function setupEventsAdmin() {
       item.append(who, when);
       list.appendChild(item);
     }
-    box.appendChild(list);
+    details.append(summary, list);
+    box.appendChild(details);
   }
 
   function renderList() {

@@ -104,3 +104,10 @@ test("landing reports the visit", () => {
   const landing = readFileSync(new URL("./open-day/landing.html", import.meta.url), "utf8");
   assert.match(landing, /src="visit\.js/);
 });
+
+test("individual visitors stay folded until asked", () => {
+  const admin = readFileSync(new URL("./assets/js/admin-events.js", import.meta.url), "utf8");
+  assert.match(admin, /createElement\("details"\)/);
+  assert.match(admin, /Показати відвідувачів/);
+  assert.match(admin, /Сховати відвідувачів/);
+});
