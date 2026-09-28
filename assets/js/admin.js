@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { getSupabaseConfig } from "./runtime-supabase-config.js";
+import { mountPageViews } from "./stats-views.js";
 
 /** 0 = Sunday … 6 = Saturday (Date.getDay) */
 const DAYS_UK = ["Неділя", "Понеділок", "Вівторок", "Середа", "Четвер", "Пʼятниця", "Субота"];
@@ -3467,6 +3468,7 @@ async function renderStatsDashboard() {
   if (toInput)   params.set("to", toInput);
 
   updateStatsPeriodLabel(fromInput, toInput);
+  const viewsReady = renderPageViewsPanel(fromInput, toInput);
 
   /** @type {{ ok?: boolean, error?: string, summary?: { totalLessons: number, totalScheduledLessons?: number | null, totalPeople: number, totalNetAfterRent: number, totalSmm: number }, teachers?: Array<{ name: string, lessonsCount: number, peopleCount: number, revenue: number, rent: number, smm: number, payout: number }> }} */
   let json;
@@ -3480,6 +3482,7 @@ async function renderStatsDashboard() {
         tableRoot.className = "admin-stats-teacher-cards admin-stats-teacher-cards--empty";
         tableRoot.innerHTML = `<p class="admin-muted">${escapeHtml(msg)}</p>`;
       }
+      await viewsReady;
       return;
     }
   } catch (err) {
@@ -3489,6 +3492,7 @@ async function renderStatsDashboard() {
       tableRoot.className = "admin-stats-teacher-cards admin-stats-teacher-cards--empty";
       tableRoot.innerHTML = `<p class="admin-muted">${escapeHtml(msg)}</p>`;
     }
+    await viewsReady;
     return;
   }
 
@@ -3499,6 +3503,26 @@ async function renderStatsDashboard() {
   renderStatsPayoutChart(rows);
   renderStatsBreakdownChart(rows, summary);
   renderStatsTeachersTable(rows);
+  await viewsReady;
+}
+
+async function renderPageViewsPanel(fromInput, toInput) {
+  const totals = document.getElementById("statsViewsTotals");
+  const canvas = document.getElementById("statsViewsChart");
+  if (!totals || !canvas) return;
+  totals.innerHTML = '<p class="admin-muted">Завантаження…</p>';
+  try {
+    const params = new URLSearchParams();
+    if (fromInput) params.set("from", fromInput);
+    if (toInput) params.set("to", toInput);
+    const res = await fetch(`/api/admin/stats/views?${params.toString()}`);
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.ok) throw new Error(json.error || "Не вдалося порахувати перегляди.");
+    mountPageViews({ totals, canvas, summary: json });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    totals.innerHTML = `<p class="admin-muted">${escapeHtml(msg)}</p>`;
+  }
 }
 
 /**

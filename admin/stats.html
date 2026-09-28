@@ -126,6 +126,17 @@
           </form>
         </div>
 
+        <div class="admin-panel admin-stats-views-panel" id="statsViewsPanel">
+          <div class="admin-stats-table-head">
+            <h2>Перегляди</h2>
+            <p class="admin-muted">За обраний період, по днях</p>
+          </div>
+          <div id="statsViewsTotals" class="admin-stats-views-totals"></div>
+          <div class="admin-stats-chart-wrap admin-stats-chart-wrap--line" id="statsViewsWrap">
+            <canvas id="statsViewsChart" aria-label="Перегляди по днях"></canvas>
+          </div>
+        </div>
+
         <!-- Charts Grid -->
         <div class="admin-stats-charts-grid" id="statsChartsGrid">
           <div class="admin-panel admin-stats-chart-panel">

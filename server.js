@@ -38,6 +38,7 @@ import {
   isUuid,
   nextVisitor,
   rememberVisit,
+  summarizePageViews,
 } from "./open-day-visitors.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -4822,9 +4823,14 @@ app.get("/api/open-day/seats", async (_req, res) => {
 
 const openDayVisitStamps = new Map();
 
-function openDayVisitHit(req) {
+function pageVisitCookieName(page) {
+  return page === "home" ? "home_vid" : "od_vid";
+}
+
+function openDayVisitHit(req, page) {
   const body = req.body && typeof req.body === "object" ? req.body : {};
   return {
+    page,
     ip: clientIp(req.headers, req.socket?.remoteAddress || ""),
     ua: req.headers["user-agent"] || "",
     chUa: req.headers["sec-ch-ua"] || "",
@@ -4841,26 +4847,36 @@ function openDayVisitHit(req) {
     platform: body.platform || "",
     platformVersion: body.platformVersion || "",
     color: body.color || "",
-    cookie: cookieValue(req.headers.cookie, "od_vid"),
+    cookie: cookieValue(req.headers.cookie, pageVisitCookieName(page)),
     localId: body.localId || "",
   };
 }
 
 async function findOpenDayVisitor(hit) {
   if (isUuid(hit.cookie)) {
-    const { data, error } = await supabaseAdmin.from("open_day_visitors").select("*").eq("id", hit.cookie).maybeSingle();
+    const { data, error } = await supabaseAdmin
+      .from("open_day_visitors")
+      .select("*")
+      .eq("id", hit.cookie)
+      .eq("event_slug", hit.page)
+      .maybeSingle();
     if (error) throw error;
     if (data) return data;
   }
   if (isUuid(hit.localId)) {
-    const { data, error } = await supabaseAdmin.from("open_day_visitors").select("*").eq("local_id", hit.localId).maybeSingle();
+    const { data, error } = await supabaseAdmin
+      .from("open_day_visitors")
+      .select("*")
+      .eq("local_id", hit.localId)
+      .eq("event_slug", hit.page)
+      .maybeSingle();
     if (error) throw error;
     if (data) return data;
   }
   const { data, error } = await supabaseAdmin
     .from("open_day_visitors")
     .select("*")
-    .eq("event_slug", "open-day")
+    .eq("event_slug", hit.page)
     .eq("ip_hash", ipHash(hit.ip))
     .eq("device_hash", deviceHash(hit))
     .maybeSingle();
@@ -4906,33 +4922,84 @@ async function writeOpenDayVisitor(row, isNew, hit) {
   return row.id;
 }
 
-function openDayVisitorCookie(id, req) {
+function openDayVisitorCookie(id, req, page) {
   const secure = req.secure || req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
-  return "od_vid=" + id + "; Path=/; Max-Age=15552000; HttpOnly; SameSite=Lax" + secure;
+  return pageVisitCookieName(page) + "=" + id + "; Path=/; Max-Age=15552000; HttpOnly; SameSite=Lax" + secure;
 }
 
-async function recordOpenDayVisit(req) {
-  const hit = openDayVisitHit(req);
+async function recordPageVisit(req, page) {
+  const hit = openDayVisitHit(req, page);
   if (isBot(hit.ua) || !hit.ip) return "";
   const nowMs = Date.now();
-  const rate = rememberVisit(openDayVisitStamps.get(hit.ip) || [], nowMs);
-  openDayVisitStamps.set(hit.ip, rate.stamps);
+  const rateKey = page + "\n" + hit.ip;
+  const rate = rememberVisit(openDayVisitStamps.get(rateKey) || [], nowMs);
+  openDayVisitStamps.set(rateKey, rate.stamps);
   if (!rate.ok) return "";
   const now = new Date(nowMs).toISOString();
   const existing = await findOpenDayVisitor(hit);
-  return writeOpenDayVisitor(nextVisitor(existing, hit, now), !existing, hit);
+  const id = await writeOpenDayVisitor(nextVisitor(existing, hit, now), !existing, hit);
+  const { error } = await supabaseAdmin.from("site_page_views").insert({ visitor_id: id, page, seen_at: now });
+  if (error) throw error;
+  return id;
 }
 
-app.post("/api/open-day/visit", async (req, res) => {
+function pageVisitHandler(page) {
+  return async (req, res) => {
+    try {
+      res.set("Cache-Control", "no-store");
+      if (!supabaseAdmin) return res.status(204).end();
+      const id = await recordPageVisit(req, page);
+      if (id) res.append("Set-Cookie", openDayVisitorCookie(id, req, page));
+      return res.status(204).end();
+    } catch (error) {
+      console.error(page + " visit failed:", error);
+      return res.status(204).end();
+    }
+  };
+}
+
+app.post("/api/home/visit", pageVisitHandler("home"));
+app.post("/api/open-day/visit", pageVisitHandler("open-day"));
+
+async function loadPageViewRows(fromIso, toIso) {
+  const rows = [];
+  const pageSize = 1000;
+  for (let from = 0; from < 20000; from += pageSize) {
+    let query = supabaseAdmin
+      .from("site_page_views")
+      .select("page, visitor_id, seen_at")
+      .order("seen_at", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (fromIso) query = query.gte("seen_at", fromIso);
+    if (toIso) query = query.lte("seen_at", toIso);
+    const { data, error } = await query;
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  return rows;
+}
+
+app.get("/api/admin/stats/views", async (req, res) => {
   try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+    }
+    const fromRaw = typeof req.query.from === "string" ? req.query.from.trim() : "";
+    const toRaw = typeof req.query.to === "string" ? req.query.to.trim() : "";
+    const fromIso = statsDateToStartIso(fromRaw);
+    const toIso = statsDateToEndIso(toRaw);
+    if (fromRaw && !fromIso) return res.status(400).json({ ok: false, error: "Некоректна дата «від»." });
+    if (toRaw && !toIso) return res.status(400).json({ ok: false, error: "Некоректна дата «до»." });
+    if (fromRaw && toRaw && fromRaw > toRaw) {
+      return res.status(400).json({ ok: false, error: "Дата «від» має бути не пізніше за «до»." });
+    }
+    const summary = summarizePageViews(await loadPageViewRows(fromIso, toIso), fromRaw, toRaw);
     res.set("Cache-Control", "no-store");
-    if (!supabaseAdmin) return res.status(204).end();
-    const id = await recordOpenDayVisit(req);
-    if (id) res.append("Set-Cookie", openDayVisitorCookie(id, req));
-    return res.status(204).end();
+    return res.json({ ok: true, ...summary });
   } catch (error) {
-    console.error("open-day visit failed:", error);
-    return res.status(204).end();
+    console.error("page view stats failed:", error);
+    return res.status(500).json({ ok: false, error: "Не вдалося порахувати перегляди." });
   }
 });
 

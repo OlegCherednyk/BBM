@@ -11,6 +11,7 @@ import {
   matchVisitor,
   nextVisitor,
   rememberVisit,
+  summarizePageViews,
 } from "./open-day-visitors.js";
 
 const phone = {
@@ -103,6 +104,37 @@ test("caps a noisy ip", () => {
 test("landing reports the visit", () => {
   const landing = readFileSync(new URL("./open-day/landing.html", import.meta.url), "utf8");
   assert.match(landing, /src="visit\.js/);
+});
+
+test("home visit keeps its own page slug", () => {
+  const row = nextVisitor(null, { ...phone, ip: "203.0.113.8", page: "home" }, "t1");
+  assert.equal(row.event_slug, "home");
+  assert.equal(nextVisitor(null, { ...phone, ip: "203.0.113.8" }, "t1").event_slug, "open-day");
+});
+
+test("summarizes views by Kyiv day without mixing pages", () => {
+  const summary = summarizePageViews(
+    [
+      { page: "home", visitor_id: "a", seen_at: "2026-09-28T10:00:00.000Z" },
+      { page: "home", visitor_id: "a", seen_at: "2026-09-28T21:30:00.000Z" },
+      { page: "open-day", visitor_id: "b", seen_at: "2026-09-28T10:00:00.000Z" },
+      { page: "home", visitor_id: "c", seen_at: "2026-09-27T10:00:00.000Z" },
+    ],
+    "2026-09-28",
+    "2026-09-29",
+  );
+  assert.deepEqual(summary.days, ["2026-09-28", "2026-09-29"]);
+  assert.equal(summary.home.views, 2);
+  assert.equal(summary.home.visitors, 1);
+  assert.equal(summary.openDay.views, 1);
+  assert.equal(summary.openDay.visitors, 1);
+  assert.deepEqual(summary.series.home, [1, 1]);
+  assert.deepEqual(summary.series["open-day"], [1, 0]);
+});
+
+test("homepage reports the visit", () => {
+  const home = readFileSync(new URL("./index.html", import.meta.url), "utf8");
+  assert.match(home, /src="assets\/js\/home-visit\.js/);
 });
 
 test("individual visitors stay folded until asked", () => {

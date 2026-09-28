@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { DateTime } from "luxon";
 
 /** ponytail: same person if the cookie or local id matches, or the same IP has the same device bundle; IP alone is not a person. */
 const BOT_UA = /(bot|crawl|spider|slurp|preview|facebookexternalhit|embedly|quora link|outbrain|pinterest|vkshare|w3c_validator|baiduspider|bingpreview|applebot|yandex|petalbot|semrush|ahrefs|mj12bot|dotbot|bytespider|headless)/i;
@@ -139,7 +140,7 @@ export function nextVisitor(existing, hit, now) {
   const localId = isUuid(hit?.localId) ? hit.localId : null;
   return {
     id: existing?.id || (isUuid(hit?.cookie) ? hit.cookie : randomUUID()),
-    event_slug: "open-day",
+    event_slug: existing?.event_slug || (hit?.page === "home" ? "home" : "open-day"),
     ip_hash: ipHash(hit?.ip),
     device_hash: deviceHash(signals),
     local_id: existing?.local_id || localId,
@@ -158,4 +159,44 @@ export function rememberVisit(stamps, now, limit = 30, windowMs = 600000) {
   if (fresh.length >= limit) return { ok: false, stamps: fresh };
   fresh.push(now);
   return { ok: true, stamps: fresh };
+}
+
+const KYIV = "Europe/Kyiv";
+
+export function eachKyivDay(fromDate, toDate) {
+  let cursor = DateTime.fromISO(String(fromDate || ""), { zone: KYIV }).startOf("day");
+  const end = DateTime.fromISO(String(toDate || ""), { zone: KYIV }).startOf("day");
+  if (!cursor.isValid || !end.isValid || cursor > end) return [];
+  const days = [];
+  while (cursor <= end) {
+    days.push(cursor.toISODate());
+    cursor = cursor.plus({ days: 1 });
+  }
+  return days;
+}
+
+/** ponytail: daily bars count views; a person is unique once per page inside the Kyiv range. */
+export function summarizePageViews(rows, fromDate, toDate) {
+  const days = eachKyivDay(fromDate, toDate);
+  const index = new Map(days.map((day, i) => [day, i]));
+  const series = { home: days.map(() => 0), "open-day": days.map(() => 0) };
+  const views = { home: 0, "open-day": 0 };
+  const people = { home: new Set(), "open-day": new Set() };
+  for (const row of rows || []) {
+    const page = row.page === "home" || row.page === "open-day" ? row.page : "";
+    if (!page) continue;
+    const seen = DateTime.fromISO(String(row.seen_at || ""), { zone: "utc" }).setZone(KYIV);
+    if (!seen.isValid) continue;
+    const at = index.get(seen.toISODate());
+    if (at === undefined) continue;
+    views[page] += 1;
+    series[page][at] += 1;
+    if (row.visitor_id) people[page].add(row.visitor_id);
+  }
+  return {
+    days,
+    home: { views: views.home, visitors: people.home.size },
+    openDay: { views: views["open-day"], visitors: people["open-day"].size },
+    series,
+  };
 }
