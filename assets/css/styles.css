@@ -154,14 +154,22 @@ img, svg { display: block; }
   text-align: center;
 }
 .od-postcard + .spotlight { padding-top: 48px; }
-.od-card { width: min(1060px, 100%); margin: 0 auto; }
+.od-card {
+  width: min(1060px, 100%);
+  margin: 0 auto;
+  padding: 56px 48px 48px;
+  background: #fff8f3;
+  border: 1px solid #5f6b30;
+  outline: 1px solid #5f6b30;
+  outline-offset: 7px;
+}
 .od-card__lockup { display: inline-block; max-width: 100%; }
 .od-card__word {
   display: flex;
   justify-content: center;
   align-items: flex-end;
   margin: 0;
-  font-size: clamp(68px, 18vw, 86px);
+  font-size: clamp(60px, 15vw, 180px);
   line-height: 0.9;
   white-space: nowrap;
 }
@@ -186,7 +194,7 @@ img, svg { display: block; }
   width: 100%;
   margin-top: 10px;
   font-family: "PolyglOTT", "Courier New", monospace;
-  font-size: 14px;
+  font-size: clamp(18px, 2.4vw, 32px);
   line-height: 1.25;
   color: #5c4a32;
 }
@@ -194,11 +202,11 @@ img, svg { display: block; }
 .od-card__dates p:last-child { text-align: right; }
 .od-card__reg {
   display: table;
-  margin: 22px auto 0;
-  padding: 7px 16px 5px;
+  margin: 36px auto 0;
+  padding: 12px 22px 10px;
   border: 1px solid #5f6b30;
-  box-shadow: 0 0 0 3px var(--cream-soft), 0 0 0 4px #5f6b30;
-  font-size: clamp(20px, 5.6vw, 26px);
+  box-shadow: 0 0 0 4px #fff8f3, 0 0 0 5px #5f6b30;
+  font-size: clamp(28px, 3.4vw, 48px);
   line-height: 1;
   text-decoration: none;
 }
@@ -1644,7 +1652,8 @@ details[open] .accordion__icon::after { transform: translate(-50%,-50%) rotate(9
 @media (max-width: 700px) {
   .nav__hamburger { display: flex; }
   .nav { padding: 16px 22px; }
-  .od-postcard { padding: 48px 22px 24px; }
+  .od-postcard { padding: 48px 22px 28px; }
+  .od-card { padding: 32px 18px 28px; }
   .hero { padding: 110px 22px 70px; }
   .section { padding: 60px 22px; }
   .section__inner--split { grid-template-columns: 1fr; gap: 32px; }

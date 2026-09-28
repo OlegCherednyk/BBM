@@ -37,8 +37,11 @@ describe("open day landing instagram", () => {
     assert.match(block, /04\.10/);
     assert.match(block, /«ґрунт»/);
     assert.match(block, /«паростки»/);
-    assert.match(block, /class="od-card__reg" href="\/open-day\/form\.html"/);
+    assert.match(block, /class="od-card__reg" href="\/open-day\/landing\.html"/);
     assert.match(homeStyles, /font-family:\s*"PolyglOTT"/);
     assert.match(homeStyles, /url\("\/open-day\/assets\/moss\.jpg"\)/);
+    assert.match(homeStyles, /\.od-card\s*\{[^}]*border:\s*1px solid #5f6b30/);
+    assert.match(homeStyles, /\.od-card\s*\{[^}]*outline-offset:\s*7px/);
+    assert.match(homeStyles, /\.od-card__word\s*\{[^}]*font-size:\s*clamp\(60px,\s*15vw,\s*180px\)/);
   });
 });
