@@ -1,10 +1,11 @@
-import { openDayTicketLine, openDayTicketShort } from "../open-day-seats.js?r=1";
+import { openDayTicketLine, openDayTicketShort } from "../open-day-seats.js?r=2";
 
 function paint(seats) {
   const grunt = document.querySelector('[data-seat="grunt"]');
   const sprouts = document.querySelector('[data-seat="sprouts"]');
-  if (grunt) grunt.textContent = openDayTicketLine("Ґрунт", seats.grunt, seats.limit);
-  if (sprouts) sprouts.textContent = openDayTicketLine("Паростки", seats.sprouts, seats.limit);
+  const cap = document.getElementById("prices") ? undefined : seats.limit;
+  if (grunt) grunt.textContent = openDayTicketLine("Ґрунт", seats.grunt, cap);
+  if (sprouts) sprouts.textContent = openDayTicketLine("Паростки", seats.sprouts, cap);
 
   document.querySelectorAll("[data-days]").forEach((label) => {
     const days = label.dataset.days.split(/\s+/).filter(Boolean);

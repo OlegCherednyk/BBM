@@ -52,6 +52,7 @@ describe("open day seats", () => {
     assert.equal(openDayTicketWord(11), "квитків");
     assert.equal(openDayTicketWord(12), "квитків");
     assert.equal(openDayTicketLine("Ґрунт", 9, 12), "Ґрунт — лишилося 9 квитків із 12");
+    assert.equal(openDayTicketLine("Ґрунт", 9), "Ґрунт — лишилося 9 квитків");
     assert.equal(openDayTicketLine("Паростки", 1, 12), "Паростки — лишилося 1 квиток із 12");
     assert.equal(openDayTicketLine("Ґрунт", 0, 12), "Ґрунт — не лишилося");
     assert.equal(openDayTicketShort(4, 12), "4 із 12");
@@ -69,8 +70,10 @@ describe("open day ticket reminder", () => {
     const seats = landing.indexOf('id="seats"');
     assert.ok(heroEnd > -1 && prices > heroEnd && seats > prices);
     assert.equal(landing.slice(0, heroEnd).includes('id="seats"'), false);
-    assert.match(landing, /Усього по 12 на напрям\. Full pass бере по одному з кожного\./);
-    assert.equal(landing.includes("Подія передбачає 12 місць"), false);
+    assert.equal(landing.includes("Усього по 12"), false);
+    assert.equal(landing.includes("Full pass бере"), false);
+    assert.equal(landing.includes("із 12"), false);
+    assert.match(landing, /Місце бронюється лише після оплати/);
   });
 
   it("repeats the same reminder on the registration form", () => {

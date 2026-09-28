@@ -63,7 +63,8 @@ export function openDayTicketWord(n) {
 
 export function openDayTicketLine(dayName, left, limit) {
   if (left <= 0) return `${dayName} — не лишилося`;
-  return `${dayName} — лишилося ${left} ${openDayTicketWord(left)} із ${limit}`;
+  const count = `${left} ${openDayTicketWord(left)}`;
+  return `${dayName} — лишилося ${limit ? `${count} із ${limit}` : count}`;
 }
 
 export function openDayTicketShort(left, limit) {
