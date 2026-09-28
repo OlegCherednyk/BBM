@@ -29,6 +29,16 @@ import {
   wayforpayField,
 } from "./wayforpay.js";
 import { openDaySeatError, openDaySeatsLeft } from "./open-day-seats.js";
+import {
+  clientIp,
+  cookieValue,
+  deviceHash,
+  ipHash,
+  isBot,
+  isUuid,
+  nextVisitor,
+  rememberVisit,
+} from "./open-day-visitors.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
@@ -4807,6 +4817,122 @@ app.get("/api/open-day/seats", async (_req, res) => {
   } catch (error) {
     console.error("open-day seats failed:", error);
     return res.status(500).json({ ok: false, error: "Не вдалося порахувати місця." });
+  }
+});
+
+const openDayVisitStamps = new Map();
+
+function openDayVisitHit(req) {
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  return {
+    ip: clientIp(req.headers, req.socket?.remoteAddress || ""),
+    ua: req.headers["user-agent"] || "",
+    chUa: req.headers["sec-ch-ua"] || "",
+    chPlatform: req.headers["sec-ch-ua-platform"] || "",
+    chMobile: req.headers["sec-ch-ua-mobile"] || "",
+    chModel: body.chModel || "",
+    lang: body.lang || String(req.headers["accept-language"] || "").split(",")[0],
+    tz: body.tz || "",
+    screen: body.screen || "",
+    dpr: body.dpr || "",
+    cores: body.cores || "",
+    memory: body.memory || "",
+    touch: body.touch || "",
+    platform: body.platform || "",
+    platformVersion: body.platformVersion || "",
+    color: body.color || "",
+    cookie: cookieValue(req.headers.cookie, "od_vid"),
+    localId: body.localId || "",
+  };
+}
+
+async function findOpenDayVisitor(hit) {
+  if (isUuid(hit.cookie)) {
+    const { data, error } = await supabaseAdmin.from("open_day_visitors").select("*").eq("id", hit.cookie).maybeSingle();
+    if (error) throw error;
+    if (data) return data;
+  }
+  if (isUuid(hit.localId)) {
+    const { data, error } = await supabaseAdmin.from("open_day_visitors").select("*").eq("local_id", hit.localId).maybeSingle();
+    if (error) throw error;
+    if (data) return data;
+  }
+  const { data, error } = await supabaseAdmin
+    .from("open_day_visitors")
+    .select("*")
+    .eq("event_slug", "open-day")
+    .eq("ip_hash", ipHash(hit.ip))
+    .eq("device_hash", deviceHash(hit))
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function writeOpenDayVisitor(row, isNew, hit) {
+  const patch = {
+    ip_hash: row.ip_hash,
+    device_hash: row.device_hash,
+    local_id: row.local_id,
+    hits: row.hits,
+    device_label: row.device_label,
+    browser_label: row.browser_label,
+    lang: row.lang,
+    tz: row.tz,
+    last_seen: row.last_seen,
+  };
+  if (!isNew) {
+    let { error } = await supabaseAdmin.from("open_day_visitors").update(patch).eq("id", row.id);
+    if (error?.code === "23505") {
+      ({ error } = await supabaseAdmin
+        .from("open_day_visitors")
+        .update({ hits: row.hits, device_label: row.device_label, browser_label: row.browser_label, lang: row.lang, tz: row.tz, last_seen: row.last_seen })
+        .eq("id", row.id));
+    }
+    if (error) throw error;
+    return row.id;
+  }
+  const { error } = await supabaseAdmin.from("open_day_visitors").insert({
+    ...patch,
+    id: row.id,
+    event_slug: row.event_slug,
+    first_seen: row.first_seen,
+  });
+  if (error?.code === "23505") {
+    const existing = await findOpenDayVisitor(hit);
+    if (!existing) throw error;
+    return writeOpenDayVisitor(nextVisitor(existing, hit, row.last_seen), false, hit);
+  }
+  if (error) throw error;
+  return row.id;
+}
+
+function openDayVisitorCookie(id, req) {
+  const secure = req.secure || req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
+  return "od_vid=" + id + "; Path=/; Max-Age=15552000; HttpOnly; SameSite=Lax" + secure;
+}
+
+async function recordOpenDayVisit(req) {
+  const hit = openDayVisitHit(req);
+  if (isBot(hit.ua) || !hit.ip) return "";
+  const nowMs = Date.now();
+  const rate = rememberVisit(openDayVisitStamps.get(hit.ip) || [], nowMs);
+  openDayVisitStamps.set(hit.ip, rate.stamps);
+  if (!rate.ok) return "";
+  const now = new Date(nowMs).toISOString();
+  const existing = await findOpenDayVisitor(hit);
+  return writeOpenDayVisitor(nextVisitor(existing, hit, now), !existing, hit);
+}
+
+app.post("/api/open-day/visit", async (req, res) => {
+  try {
+    res.set("Cache-Control", "no-store");
+    if (!supabaseAdmin) return res.status(204).end();
+    const id = await recordOpenDayVisit(req);
+    if (id) res.append("Set-Cookie", openDayVisitorCookie(id, req));
+    return res.status(204).end();
+  } catch (error) {
+    console.error("open-day visit failed:", error);
+    return res.status(204).end();
   }
 });
 
