@@ -58,17 +58,12 @@ img, svg { display: block; }
   background: transparent;
   transition: background .4s, box-shadow .4s;
 }
-.nav__brand {
+.nav__end {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  margin-left: auto;
   min-width: 0;
-}
-@media (min-width: 701px) {
-  /* Desktop: logo left, Instagram right — unwrap brand group */
-  .nav__brand {
-    display: contents;
-  }
 }
 .nav.scrolled {
   background: rgba(255, 242, 236, 0.88);
@@ -162,12 +157,7 @@ img, svg { display: block; }
   text-decoration: none;
   line-height: 1;
 }
-.nav__open-day {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-}
+.nav__open-day { flex-shrink: 0; }
 .nav__open-day-word {
   font-family: "PolyglOTT", "Courier New", monospace;
   font-size: 20px;
@@ -1639,11 +1629,8 @@ details[open] .accordion__icon::after { transform: translate(-50%,-50%) rotate(9
 /* ── RESPONSIVE ── */
 @media (max-width: 700px) {
   .nav__hamburger { display: flex; }
+  .nav__end { gap: 8px; }
   .nav__open-day {
-    position: static;
-    transform: none;
-    margin-left: auto;
-    margin-right: 8px;
     padding: 4px 7px 3px;
     box-shadow: 0 0 0 2px #fff2ea, 0 0 0 3px #5f6b30;
   }

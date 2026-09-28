@@ -26,7 +26,13 @@ describe("open day landing instagram", () => {
 
   it("links the main header to open day in the poster type", () => {
     const header = home.slice(home.indexOf('id="nav"'), home.indexOf('id="mobileNav"'));
+    const ig = header.indexOf('class="nav__ig"');
+    const day = header.indexOf('class="nav__open-day"');
+    const burger = header.indexOf('id="navHamburger"');
+    assert.ok(ig > -1 && ig < day && day < burger, "open day stamp sits at the right edge, after instagram");
     assert.match(header, /class="nav__open-day" href="\/open-day\/landing\.html"/);
+    assert.match(homeStyles, /\.nav__end\s*\{[^}]*margin-left:\s*auto/);
+    assert.equal(/\.nav__open-day\s*\{[^}]*left:\s*50%/.test(homeStyles), false);
     assert.match(header, /OPEN DAY/);
     assert.match(header, /03\.10/);
     assert.match(header, /04\.10/);
