@@ -28,6 +28,7 @@ import {
   signupIdFromOrder,
   wayforpayField,
 } from "./wayforpay.js";
+import { openDaySeatError, openDaySeatsLeft } from "./open-day-seats.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
@@ -4785,6 +4786,30 @@ app.post("/api/wayforpay/service", async (req, res) => {
   return res.status(result.statusCode).json(result.payload);
 });
 
+async function openDaySeatsNow() {
+  const { data, error } = await supabaseAdmin
+    .from("open_day_signups")
+    .select("pass, practices, paid_at")
+    .eq("event_slug", "open-day")
+    .not("paid_at", "is", null);
+  if (error) throw error;
+  return openDaySeatsLeft(data || []);
+}
+
+app.get("/api/open-day/seats", async (_req, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ ok: false, error: "Не вдалося порахувати квитки." });
+    }
+    const left = await openDaySeatsNow();
+    res.set("Cache-Control", "no-store");
+    return res.json({ ok: true, ...left });
+  } catch (error) {
+    console.error("open-day seats failed:", error);
+    return res.status(500).json({ ok: false, error: "Не вдалося порахувати квитки." });
+  }
+});
+
 app.post("/api/open-day", async (req, res) => {
   try {
     if (!supabaseAdmin) {
@@ -4792,6 +4817,8 @@ app.post("/api/open-day", async (req, res) => {
     }
     const parsed = readOpenDaySignup(req.body);
     if (parsed.error) return res.status(400).json({ ok: false, error: parsed.error });
+    const seatError = openDaySeatError(await openDaySeatsNow(), parsed.row.pass, parsed.row.practices);
+    if (seatError) return res.status(409).json({ ok: false, error: seatError });
     const { data, error } = await supabaseAdmin.from("open_day_signups").insert(parsed.row).select("id").single();
     if (error) {
       console.error("open_day_signups insert failed:", error.message);
@@ -4820,6 +4847,8 @@ app.post("/api/open-day/pay", async (req, res) => {
     if (!data || data.paid_at || !openDayAmount(data.pass, data.practices)) {
       return res.status(400).json({ ok: false, error: "Не вдалося відкрити оплату. Спробуй ще раз." });
     }
+    const seatError = openDaySeatError(await openDaySeatsNow(), data.pass, data.practices);
+    if (seatError) return res.status(409).json({ ok: false, error: seatError });
     if (!wayforpayMerchantAccount || !wayforpaySecretKey) {
       return res.status(503).json({ ok: false, error: "Не вдалося відкрити оплату. Спробуй ще раз." });
     }

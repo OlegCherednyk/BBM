@@ -359,6 +359,30 @@ a.place:focus-visible {
   font-weight: 400;
 }
 .fine, .note { color: var(--muted); font-size: 13px; }
+.seats {
+  margin: 0 0 16px;
+  padding: 12px 12px 10px;
+  background: #f3f6ea;
+  box-shadow: inset 3px 0 0 #74862f;
+  text-align: left;
+}
+.seats [data-seat] {
+  display: block;
+  margin: 0 0 4px;
+  font-family: "Unbounded", sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1.35;
+  letter-spacing: 0;
+  color: var(--ink);
+}
+.seats-rule {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
 p.refund {
   margin: 0 0 16px;
   font-size: 12px;
@@ -589,6 +613,17 @@ p.refund {
   font-size: 11px;
   color: var(--muted);
 }
+.ticket-left {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: left;
+}
+.ticket.is-sold { cursor: not-allowed; }
+.ticket.is-sold .ticket-face { opacity: 0.48; }
+.choice:not(.passes) label.is-sold { opacity: 0.48; cursor: not-allowed; }
 .ticket-day .ticket-face { padding: 28px 10px 14px; }
 .ticket-day .ticket-name { font-size: 17px; }
 .ticket-day .ticket-price { font-size: 16px; }

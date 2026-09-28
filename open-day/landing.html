@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Unbounded:wght@700;800&display=swap" rel="stylesheet" />
     <link rel="preload" href="assets/fonts/Truetypewriter_PolyglOTT.ttf" as="font" type="font/ttf" crossorigin />
-    <link rel="stylesheet" href="styles.css?r=25" />
+    <link rel="stylesheet" href="styles.css?r=26" />
     <link rel="icon" href="assets/logo.png" />
   </head>
   <body>
@@ -97,13 +97,17 @@
       <section class="sheet" id="prices">
         <div class="sign">
           <h2 class="block-title">Ціни</h2>
+          <p class="seats" id="seats">
+            <span data-seat="grunt">Ґрунт — …</span>
+            <span data-seat="sprouts">Паростки — …</span>
+            <span class="seats-rule">Усього по 12 на напрям. Full pass бере по одному з кожного. Місце бронюється лише після оплати.</span>
+          </p>
           <ul class="price-info">
             <li><span>Full pass, обидва дні</span><b>1800 грн</b></li>
             <li><span>Ґрунт, 03.10</span><b>600 грн</b></li>
             <li><span>Паростки, 04.10</span><b>1400 грн</b></li>
             <li><span>Одна практика, будь-який день</span><b>400 грн</b></li>
           </ul>
-          <p class="fine">Подія передбачає 12 місць. Місце бронюється лише після оплати.</p>
           <a class="go" href="form.html">реєстрація</a>
         </div>
       </section>
@@ -112,5 +116,6 @@
     </div>
 
     <script src="landing.js?r=8"></script>
+    <script type="module" src="seats.js?r=1"></script>
   </body>
 </html>
