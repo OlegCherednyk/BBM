@@ -5245,9 +5245,114 @@ pre {
 .event-detail__value a { color: var(--olive); }
 .event-actions { margin-top: 18px; }
 @media (max-width: 640px) {
-  .event-hero { align-items: flex-start; padding: 18px; }
-  .event-hero__stats { justify-content: flex-start; }
-  .event-visitor { flex-direction: column; align-items: flex-start; }
-  .event-visitor__meta { text-align: left; }
-  .event-row { align-items: flex-start; }
+  body[data-admin-page="events"] .admin-top {
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .event-hero {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    padding: 16px;
+  }
+  .event-hero__stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px 8px;
+    width: 100%;
+  }
+  .event-hero__count {
+    min-width: 0;
+    text-align: left;
+  }
+  .event-hero__count span {
+    font-size: 1.7rem;
+    line-height: 1;
+  }
+  .event-hero__count small {
+    margin-top: 6px;
+    letter-spacing: 0;
+    font-size: 0.68rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+  .event-visitors__toggle {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 44px;
+  }
+  .event-filters {
+    gap: 8px;
+  }
+  .event-filter {
+    min-height: 40px;
+    padding: 8px 14px;
+  }
+  .event-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 10px 12px;
+    padding: 14px;
+  }
+  .event-row__open,
+  .event-row > .event-row__main {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+  }
+  .event-row__name,
+  .event-row__meta,
+  .event-detail__value {
+    overflow-wrap: anywhere;
+  }
+  .event-pay {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    width: 44px;
+    height: 44px;
+  }
+  .event-pill {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+    max-width: 100%;
+  }
+  .event-row__meta {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    line-height: 1.35;
+  }
+  .event-visitor {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .event-visitor__meta {
+    text-align: left;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+  }
+  body[data-admin-page="events"] .admin-modal {
+    padding: 0;
+    align-items: flex-end;
+    overflow: hidden;
+  }
+  body[data-admin-page="events"] .admin-modal__dialog {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    max-height: 92svh;
+    border-radius: 20px 20px 0 0;
+  }
+  body[data-admin-page="events"] .admin-modal__body {
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  body[data-admin-page="events"] .admin-modal__title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
 }
