@@ -46,14 +46,14 @@ describe("open day seats", () => {
   });
 
   it("names the remainder in Ukrainian", () => {
-    assert.equal(openDayTicketWord(1), "квиток");
-    assert.equal(openDayTicketWord(2), "квитки");
-    assert.equal(openDayTicketWord(5), "квитків");
-    assert.equal(openDayTicketWord(11), "квитків");
-    assert.equal(openDayTicketWord(12), "квитків");
-    assert.equal(openDayTicketLine("Ґрунт", 9, 12), "Ґрунт — лишилося 9 квитків із 12");
-    assert.equal(openDayTicketLine("Ґрунт", 9), "Ґрунт — лишилося 9 квитків");
-    assert.equal(openDayTicketLine("Паростки", 1, 12), "Паростки — лишилося 1 квиток із 12");
+    assert.equal(openDayTicketWord(1), "місце");
+    assert.equal(openDayTicketWord(2), "місця");
+    assert.equal(openDayTicketWord(5), "місць");
+    assert.equal(openDayTicketWord(11), "місць");
+    assert.equal(openDayTicketWord(12), "місць");
+    assert.equal(openDayTicketLine("Ґрунт", 9, 12), "Ґрунт — лишилося 9 місць із 12");
+    assert.equal(openDayTicketLine("Ґрунт", 9), "Ґрунт — лишилося 9 місць");
+    assert.equal(openDayTicketLine("Паростки", 1, 12), "Паростки — лишилося 1 місце із 12");
     assert.equal(openDayTicketLine("Ґрунт", 0, 12), "Ґрунт — не лишилося");
     assert.equal(openDayTicketShort(4, 12), "4 із 12");
     assert.equal(openDayTicketShort(0, 12), "не лишилося");

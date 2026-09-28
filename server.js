@@ -4799,14 +4799,14 @@ async function openDaySeatsNow() {
 app.get("/api/open-day/seats", async (_req, res) => {
   try {
     if (!supabaseAdmin) {
-      return res.status(500).json({ ok: false, error: "Не вдалося порахувати квитки." });
+      return res.status(500).json({ ok: false, error: "Не вдалося порахувати місця." });
     }
     const left = await openDaySeatsNow();
     res.set("Cache-Control", "no-store");
     return res.json({ ok: true, ...left });
   } catch (error) {
     console.error("open-day seats failed:", error);
-    return res.status(500).json({ ok: false, error: "Не вдалося порахувати квитки." });
+    return res.status(500).json({ ok: false, error: "Не вдалося порахувати місця." });
   }
 });
 

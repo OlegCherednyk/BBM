@@ -1,4 +1,4 @@
-import { openDayTicketLine, openDayTicketShort } from "../open-day-seats.js?r=2";
+import { openDayTicketLine, openDayTicketShort } from "../open-day-seats.js?r=3";
 
 function paint(seats) {
   const grunt = document.querySelector('[data-seat="grunt"]');

@@ -43,22 +43,22 @@ export function openDaySeatError(left, pass, practices) {
   if (!use.grunt && !use.sprouts) return "";
   if (use.grunt <= left.grunt && use.sprouts <= left.sprouts) return "";
   if (pass === "full") {
-    return "Full pass бере по одному квитку з кожного напряму, а на одному з них місць уже немає.";
+    return "Full pass бере по одному місцю з кожного напряму, а на одному з них місць уже немає.";
   }
   if (use.grunt && left.grunt < use.grunt && use.sprouts && left.sprouts < use.sprouts) {
-    return "На обидва дні квитків уже не лишилося.";
+    return "На обидва дні місць уже не лишилося.";
   }
-  if (use.grunt && left.grunt < use.grunt) return "На Ґрунт квитків уже не лишилося.";
-  if (use.sprouts && left.sprouts < use.sprouts) return "На Паростки квитків уже не лишилося.";
-  return "На цей формат квитків уже не лишилося.";
+  if (use.grunt && left.grunt < use.grunt) return "На Ґрунт місць уже не лишилося.";
+  if (use.sprouts && left.sprouts < use.sprouts) return "На Паростки місць уже не лишилося.";
+  return "На цей формат місць уже не лишилося.";
 }
 
 export function openDayTicketWord(n) {
   const n10 = n % 10;
   const n100 = n % 100;
-  if (n10 === 1 && n100 !== 11) return "квиток";
-  if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return "квитки";
-  return "квитків";
+  if (n10 === 1 && n100 !== 11) return "місце";
+  if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return "місця";
+  return "місць";
 }
 
 export function openDayTicketLine(dayName, left, limit) {
