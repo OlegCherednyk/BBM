@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Адмін — перегляди</title>
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+    <link rel="stylesheet" href="../assets/css/admin.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  </head>
+  <body data-admin-page="stats">
+    <main class="admin-page admin-page--stats">
+      <div class="admin-top admin-top--stats">
+        <div class="admin-top__title-group">
+          <h1>Аналітика</h1>
+          <p class="admin-stats-period-label">1 вересня 2026 — 7 вересня 2026</p>
+        </div>
+      </div>
+      <div class="admin-panel admin-stats-views-panel">
+        <div class="admin-stats-table-head">
+          <h2>Перегляди головної</h2>
+          <p class="admin-muted">За обраний період</p>
+        </div>
+        <div id="statsViewsTotals" class="admin-stats-views-totals"></div>
+        <div class="admin-stats-chart-wrap admin-stats-chart-wrap--line">
+          <canvas id="statsViewsChart" aria-label="Перегляди і користувачі по днях"></canvas>
+        </div>
+        <div id="statsViewsLegend" class="admin-stats-donut-legend"></div>
+      </div>
+    </main>
+    <script type="module">
+      import { mountPageViews } from "../assets/js/stats-views.js";
+      mountPageViews({
+        totals: document.getElementById("statsViewsTotals"),
+        canvas: document.getElementById("statsViewsChart"),
+        legend: document.getElementById("statsViewsLegend"),
+        summary: {
+          days: ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06", "2026-09-07"],
+          home: { views: 18, visitors: 11 },
+          series: { home: [1, 2, 2, 4, 3, 3, 3], homeVisitors: [1, 2, 2, 3, 2, 3, 2] },
+        },
+      });
+    </script>
+  </body>
+</html>

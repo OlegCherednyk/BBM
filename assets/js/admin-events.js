@@ -34,11 +34,15 @@ function passLabel(pass) {
 }
 
 function recordsWord(n) {
+  return ukWord(n, "запис", "записи", "записів");
+}
+
+function ukWord(n, one, few, many) {
   const n10 = n % 10;
   const n100 = n % 100;
-  if (n10 === 1 && n100 !== 11) return "запис";
-  if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return "записи";
-  return "записів";
+  if (n10 === 1 && n100 !== 11) return one;
+  if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return few;
+  return many;
 }
 
 function formatWhen(iso) {
@@ -68,6 +72,8 @@ export async function setupEventsAdmin() {
   const payModalBody = el("payModalBody");
   const payModalTitle = el("payModalTitle");
   let rows = [];
+  let visitors = [];
+  let visitorsOpen = false;
   let payments = [];
   let callbacks = [];
   let filter = "all";
@@ -95,6 +101,7 @@ export async function setupEventsAdmin() {
     showError("");
     closeModal();
     renderHero();
+    renderVisitors();
     renderFilters();
     renderList();
   }
@@ -252,6 +259,17 @@ export async function setupEventsAdmin() {
     }
   }
 
+  function stat(value, label) {
+    const count = document.createElement("p");
+    count.className = "event-hero__count";
+    const num = document.createElement("span");
+    num.textContent = String(value);
+    const cap = document.createElement("small");
+    cap.textContent = label;
+    count.append(num, cap);
+    return count;
+  }
+
   function renderHero() {
     if (!heroEl) return;
     heroEl.replaceChildren();
@@ -263,14 +281,62 @@ export async function setupEventsAdmin() {
     title.className = "event-hero__title";
     title.textContent = "Open Day";
     copy.append(kicker, title);
-    const count = document.createElement("p");
-    count.className = "event-hero__count";
-    const num = document.createElement("span");
-    num.textContent = String(rows.length);
-    const cap = document.createElement("small");
-    cap.textContent = recordsWord(rows.length);
-    count.append(num, cap);
-    heroEl.append(copy, count);
+    const stats = document.createElement("div");
+    stats.className = "event-hero__stats";
+    const views = visitors.reduce((sum, row) => sum + (Number(row.hits) || 0), 0);
+    stats.append(
+      stat(rows.length, recordsWord(rows.length)),
+      stat(visitors.length, ukWord(visitors.length, "відвідувач", "відвідувачі", "відвідувачів")),
+      stat(views, ukWord(views, "перегляд", "перегляди", "переглядів")),
+    );
+    heroEl.append(copy, stats);
+  }
+
+  function renderVisitors() {
+    const box = el("eventVisitors");
+    if (!box) return;
+    box.replaceChildren();
+    box.className = "";
+    if (!visitors.length) {
+      const empty = document.createElement("p");
+      empty.className = "admin-muted event-visitors";
+      empty.textContent = "Поки ніхто не відкривав лендінг.";
+      box.appendChild(empty);
+      return;
+    }
+    const details = document.createElement("details");
+    details.className = "event-visitors";
+    details.open = visitorsOpen;
+    const summary = document.createElement("summary");
+    summary.className = "event-visitors__toggle";
+    summary.textContent = visitorsOpen ? "Сховати відвідувачів" : "Показати відвідувачів";
+    details.addEventListener("toggle", () => {
+      visitorsOpen = details.open;
+      summary.textContent = details.open ? "Сховати відвідувачів" : "Показати відвідувачів";
+    });
+    const list = document.createElement("div");
+    list.className = "event-visitors__list";
+    for (const row of visitors) {
+      const item = document.createElement("div");
+      item.className = "event-visitor";
+      const who = document.createElement("span");
+      who.className = "event-visitor__who";
+      who.textContent = [row.device_label, row.browser_label].filter(Boolean).join(" · ") || "відвідувач";
+      const when = document.createElement("span");
+      when.className = "event-visitor__meta";
+      const hits = Number(row.hits) || 0;
+      when.textContent = [
+        hits + " " + ukWord(hits, "перегляд", "перегляди", "переглядів"),
+        row.lang,
+        row.tz,
+        "вперше " + formatWhen(row.first_seen),
+        row.last_seen && row.last_seen !== row.first_seen ? "ще " + formatWhen(row.last_seen) : "",
+      ].filter(Boolean).join(" · ");
+      item.append(who, when);
+      list.appendChild(item);
+    }
+    details.append(summary, list);
+    box.appendChild(details);
   }
 
   function renderList() {
@@ -338,16 +404,26 @@ export async function setupEventsAdmin() {
     return;
   }
   supabase = createClient(url, anonKey);
-  const { data, error } = await supabase
-    .from("open_day_signups")
-    .select("id, name, telegram, phone, pass, practice, practices, source, source_other, hope, created_at, paid_at, payment_order_reference")
-    .order("created_at", { ascending: false });
+  const [{ data, error }, visitorResult] = await Promise.all([
+    supabase
+      .from("open_day_signups")
+      .select("id, name, telegram, phone, pass, practice, practices, source, source_other, hope, created_at, paid_at, payment_order_reference")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("open_day_visitors")
+      .select("id, hits, device_label, browser_label, lang, tz, first_seen, last_seen")
+      .eq("event_slug", "open-day")
+      .order("last_seen", { ascending: false }),
+  ]);
   if (error) {
     showError(error.message);
     if (listEl) listEl.replaceChildren();
     return;
   }
   rows = data || [];
+  if (visitorResult.error) showError(visitorResult.error.message);
+  else visitors = visitorResult.data || [];
+  renderVisitors();
   const { data: paymentRows } = await supabase
     .from("wayforpay_payments")
     .select("order_reference, amount, currency, transaction_status, reason, phone, email, card_pan, payment_system, signup_id, updated_at")

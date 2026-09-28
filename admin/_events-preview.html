@@ -43,8 +43,25 @@
             <p class="event-hero__kicker">3–4 жовтня · Позняки</p>
             <h2 class="event-hero__title">Open Day</h2>
           </div>
-          <p class="event-hero__count"><span>3</span><small>записи</small></p>
+          <div class="event-hero__stats">
+            <p class="event-hero__count"><span>3</span><small>записи</small></p>
+            <p class="event-hero__count"><span>2</span><small>відвідувачі</small></p>
+            <p class="event-hero__count"><span>5</span><small>переглядів</small></p>
+          </div>
         </article>
+        <details class="event-visitors">
+          <summary class="event-visitors__toggle">Показати відвідувачів</summary>
+          <div class="event-visitors__list">
+            <div class="event-visitor">
+              <span class="event-visitor__who">телефон · Safari</span>
+              <span class="event-visitor__meta">3 перегляди · uk · Europe/Kyiv · вперше 28 вересня, 14:02</span>
+            </div>
+            <div class="event-visitor">
+              <span class="event-visitor__who">компʼютер · Chrome</span>
+              <span class="event-visitor__meta">2 перегляди · uk · Europe/Kyiv · вперше 28 вересня, 11:16 · ще 28 вересня, 15:40</span>
+            </div>
+          </div>
+        </details>
         <div class="event-filters">
           <button type="button" class="event-filter is-on">Усі · 3</button>
           <button type="button" class="event-filter">Full pass · 1</button>
@@ -96,6 +113,11 @@
       </div>
     </div>
     <script>
+      const visitors = document.querySelector(".event-visitors");
+      const visitorsToggle = visitors.querySelector("summary");
+      visitors.addEventListener("toggle", () => {
+        visitorsToggle.textContent = visitors.open ? "Сховати відвідувачів" : "Показати відвідувачів";
+      });
       const modal = document.getElementById("eventModal");
       document.querySelector("[data-open]").addEventListener("click", () => {
         modal.classList.remove("admin-hide");

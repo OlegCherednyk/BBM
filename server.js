@@ -29,6 +29,17 @@ import {
   wayforpayField,
 } from "./wayforpay.js";
 import { openDaySeatError, openDaySeatsLeft } from "./open-day-seats.js";
+import {
+  clientIp,
+  cookieValue,
+  deviceHash,
+  ipHash,
+  isBot,
+  isUuid,
+  nextVisitor,
+  rememberVisit,
+  summarizePageViews,
+} from "./open-day-visitors.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
@@ -4807,6 +4818,188 @@ app.get("/api/open-day/seats", async (_req, res) => {
   } catch (error) {
     console.error("open-day seats failed:", error);
     return res.status(500).json({ ok: false, error: "Не вдалося порахувати місця." });
+  }
+});
+
+const openDayVisitStamps = new Map();
+
+function pageVisitCookieName(page) {
+  return page === "home" ? "home_vid" : "od_vid";
+}
+
+function openDayVisitHit(req, page) {
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  return {
+    page,
+    ip: clientIp(req.headers, req.socket?.remoteAddress || ""),
+    ua: req.headers["user-agent"] || "",
+    chUa: req.headers["sec-ch-ua"] || "",
+    chPlatform: req.headers["sec-ch-ua-platform"] || "",
+    chMobile: req.headers["sec-ch-ua-mobile"] || "",
+    chModel: body.chModel || "",
+    lang: body.lang || String(req.headers["accept-language"] || "").split(",")[0],
+    tz: body.tz || "",
+    screen: body.screen || "",
+    dpr: body.dpr || "",
+    cores: body.cores || "",
+    memory: body.memory || "",
+    touch: body.touch || "",
+    platform: body.platform || "",
+    platformVersion: body.platformVersion || "",
+    color: body.color || "",
+    cookie: cookieValue(req.headers.cookie, pageVisitCookieName(page)),
+    localId: body.localId || "",
+  };
+}
+
+async function findOpenDayVisitor(hit) {
+  if (isUuid(hit.cookie)) {
+    const { data, error } = await supabaseAdmin
+      .from("open_day_visitors")
+      .select("*")
+      .eq("id", hit.cookie)
+      .eq("event_slug", hit.page)
+      .maybeSingle();
+    if (error) throw error;
+    if (data) return data;
+  }
+  if (isUuid(hit.localId)) {
+    const { data, error } = await supabaseAdmin
+      .from("open_day_visitors")
+      .select("*")
+      .eq("local_id", hit.localId)
+      .eq("event_slug", hit.page)
+      .maybeSingle();
+    if (error) throw error;
+    if (data) return data;
+  }
+  const { data, error } = await supabaseAdmin
+    .from("open_day_visitors")
+    .select("*")
+    .eq("event_slug", hit.page)
+    .eq("ip_hash", ipHash(hit.ip))
+    .eq("device_hash", deviceHash(hit))
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function writeOpenDayVisitor(row, isNew, hit) {
+  const patch = {
+    ip_hash: row.ip_hash,
+    device_hash: row.device_hash,
+    local_id: row.local_id,
+    hits: row.hits,
+    device_label: row.device_label,
+    browser_label: row.browser_label,
+    lang: row.lang,
+    tz: row.tz,
+    last_seen: row.last_seen,
+  };
+  if (!isNew) {
+    let { error } = await supabaseAdmin.from("open_day_visitors").update(patch).eq("id", row.id);
+    if (error?.code === "23505") {
+      ({ error } = await supabaseAdmin
+        .from("open_day_visitors")
+        .update({ hits: row.hits, device_label: row.device_label, browser_label: row.browser_label, lang: row.lang, tz: row.tz, last_seen: row.last_seen })
+        .eq("id", row.id));
+    }
+    if (error) throw error;
+    return row.id;
+  }
+  const { error } = await supabaseAdmin.from("open_day_visitors").insert({
+    ...patch,
+    id: row.id,
+    event_slug: row.event_slug,
+    first_seen: row.first_seen,
+  });
+  if (error?.code === "23505") {
+    const existing = await findOpenDayVisitor(hit);
+    if (!existing) throw error;
+    return writeOpenDayVisitor(nextVisitor(existing, hit, row.last_seen), false, hit);
+  }
+  if (error) throw error;
+  return row.id;
+}
+
+function openDayVisitorCookie(id, req, page) {
+  const secure = req.secure || req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
+  return pageVisitCookieName(page) + "=" + id + "; Path=/; Max-Age=15552000; HttpOnly; SameSite=Lax" + secure;
+}
+
+async function recordPageVisit(req, page) {
+  const hit = openDayVisitHit(req, page);
+  if (isBot(hit.ua) || !hit.ip) return "";
+  const nowMs = Date.now();
+  const rateKey = page + "\n" + hit.ip;
+  const rate = rememberVisit(openDayVisitStamps.get(rateKey) || [], nowMs);
+  openDayVisitStamps.set(rateKey, rate.stamps);
+  if (!rate.ok) return "";
+  const now = new Date(nowMs).toISOString();
+  const existing = await findOpenDayVisitor(hit);
+  const id = await writeOpenDayVisitor(nextVisitor(existing, hit, now), !existing, hit);
+  const { error } = await supabaseAdmin.from("site_page_views").insert({ visitor_id: id, page, seen_at: now });
+  if (error) throw error;
+  return id;
+}
+
+function pageVisitHandler(page) {
+  return async (req, res) => {
+    try {
+      res.set("Cache-Control", "no-store");
+      if (!supabaseAdmin) return res.status(204).end();
+      const id = await recordPageVisit(req, page);
+      if (id) res.append("Set-Cookie", openDayVisitorCookie(id, req, page));
+      return res.status(204).end();
+    } catch (error) {
+      console.error(page + " visit failed:", error);
+      return res.status(204).end();
+    }
+  };
+}
+
+app.post("/api/home/visit", pageVisitHandler("home"));
+app.post("/api/open-day/visit", pageVisitHandler("open-day"));
+
+async function loadPageViewRows(fromIso, toIso) {
+  const rows = [];
+  const pageSize = 1000;
+  for (let from = 0; from < 20000; from += pageSize) {
+    let query = supabaseAdmin
+      .from("site_page_views")
+      .select("page, visitor_id, seen_at")
+      .order("seen_at", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (fromIso) query = query.gte("seen_at", fromIso);
+    if (toIso) query = query.lte("seen_at", toIso);
+    const { data, error } = await query;
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  return rows;
+}
+
+app.get("/api/admin/stats/views", async (req, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ ok: false, error: "Supabase admin client is not configured." });
+    }
+    const fromRaw = typeof req.query.from === "string" ? req.query.from.trim() : "";
+    const toRaw = typeof req.query.to === "string" ? req.query.to.trim() : "";
+    const fromIso = statsDateToStartIso(fromRaw);
+    const toIso = statsDateToEndIso(toRaw);
+    if (fromRaw && !fromIso) return res.status(400).json({ ok: false, error: "Некоректна дата «від»." });
+    if (toRaw && !toIso) return res.status(400).json({ ok: false, error: "Некоректна дата «до»." });
+    if (fromRaw && toRaw && fromRaw > toRaw) {
+      return res.status(400).json({ ok: false, error: "Дата «від» має бути не пізніше за «до»." });
+    }
+    const summary = summarizePageViews(await loadPageViewRows(fromIso, toIso), fromRaw, toRaw);
+    res.set("Cache-Control", "no-store");
+    return res.json({ ok: true, ...summary });
+  } catch (error) {
+    console.error("page view stats failed:", error);
+    return res.status(500).json({ ok: false, error: "Не вдалося порахувати перегляди." });
   }
 });
 
