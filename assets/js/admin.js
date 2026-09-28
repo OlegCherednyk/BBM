@@ -3509,6 +3509,7 @@ async function renderStatsDashboard() {
 async function renderPageViewsPanel(fromInput, toInput) {
   const totals = document.getElementById("statsViewsTotals");
   const canvas = document.getElementById("statsViewsChart");
+  const legend = document.getElementById("statsViewsLegend");
   if (!totals || !canvas) return;
   totals.innerHTML = '<p class="admin-muted">Завантаження…</p>';
   try {
@@ -3518,7 +3519,7 @@ async function renderPageViewsPanel(fromInput, toInput) {
     const res = await fetch(`/api/admin/stats/views?${params.toString()}`);
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json.ok) throw new Error(json.error || "Не вдалося порахувати перегляди.");
-    mountPageViews({ totals, canvas, summary: json });
+    mountPageViews({ totals, canvas, legend, summary: json });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     totals.innerHTML = `<p class="admin-muted">${escapeHtml(msg)}</p>`;

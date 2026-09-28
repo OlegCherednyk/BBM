@@ -1,10 +1,5 @@
-function ukWord(n, one, few, many) {
-  const n10 = n % 10;
-  const n100 = n % 100;
-  if (n10 === 1 && n100 !== 11) return one;
-  if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return few;
-  return many;
-}
+const EYE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const PEOPLE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
 
 function dayLabel(iso) {
   const [year, month, day] = String(iso || "").split("-");
@@ -12,63 +7,71 @@ function dayLabel(iso) {
   return day + "." + month;
 }
 
-function totalCard(title, views, visitors) {
-  const viewCount = Number(views) || 0;
-  const people = Number(visitors) || 0;
-  return `<article class="admin-stats-views-total"><p>${title}</p><strong>${viewCount}</strong><span>${ukWord(viewCount, "перегляд", "перегляди", "переглядів")} · ${people} ${ukWord(people, "відвідувач", "відвідувачі", "відвідувачів")}</span></article>`;
+function totalCard(color, icon, label, value, hint) {
+  return `<article class="admin-stats-kpi-card admin-stats-kpi-card--${color}"><div class="admin-stats-kpi-card__icon">${icon}</div><div class="admin-stats-kpi-card__body"><div class="admin-stats-kpi-card__label">${label}</div><div class="admin-stats-kpi-card__value">${Number(value) || 0}</div><p class="admin-stats-views-hint">${hint}</p></div></article>`;
 }
 
 let viewsChart = null;
 
-export function mountPageViews({ totals, canvas, summary }) {
+export function mountPageViews({ totals, canvas, legend, summary }) {
+  const home = summary?.home || { views: 0, visitors: 0 };
   if (totals) {
-    const home = summary?.home || { views: 0, visitors: 0 };
-    const openDay = summary?.openDay || { views: 0, visitors: 0 };
-    totals.innerHTML = totalCard("Головна", home.views, home.visitors) + totalCard("Open Day", openDay.views, openDay.visitors);
+    totals.innerHTML =
+      totalCard("olive", EYE, "Перегляди", home.views, "скільки разів відкрили головну") +
+      totalCard("blue", PEOPLE, "Користувачі", home.visitors, "скільки різних людей зайшло");
+  }
+  const days = summary?.days || [];
+  const views = summary?.series?.home || [];
+  const users = summary?.series?.homeVisitors || days.map(() => 0);
+  const segments = [
+    { label: "Перегляди", color: "rgba(116,134,47,0.82)", border: "rgba(116,134,47,1)" },
+    { label: "Користувачі", color: "rgba(46,125,140,0.82)", border: "rgba(46,125,140,1)" },
+  ];
+  if (legend) {
+    legend.innerHTML = segments
+      .map(
+        (item) =>
+          `<div class="admin-stats-donut-legend__item"><span class="admin-stats-donut-legend__dot" style="background:${item.color};border:1.5px solid ${item.border}"></span><span>${item.label}</span></div>`,
+      )
+      .join("");
   }
   if (!canvas || !window.Chart) return;
   if (viewsChart) {
     viewsChart.destroy();
     viewsChart = null;
   }
-  const days = summary?.days || [];
-  const series = summary?.series || {};
   viewsChart = new window.Chart(canvas, {
-    type: "line",
+    type: "bar",
     data: {
       labels: days.map(dayLabel),
       datasets: [
         {
-          label: "Головна",
-          data: series.home || [],
-          borderColor: "#74862f",
-          backgroundColor: "rgba(116,134,47,0.16)",
-          pointBackgroundColor: "#74862f",
-          borderWidth: 2,
-          tension: 0.25,
-          fill: true,
+          label: "Перегляди",
+          data: views,
+          backgroundColor: segments[0].color,
+          borderColor: segments[0].border,
+          borderWidth: 1.5,
+          borderRadius: 6,
+          borderSkipped: false,
         },
         {
-          label: "Open Day",
-          data: series["open-day"] || [],
-          borderColor: "#5c4a32",
-          backgroundColor: "rgba(92,74,50,0.08)",
-          pointBackgroundColor: "#5c4a32",
-          borderWidth: 2,
-          tension: 0.25,
-          fill: false,
+          label: "Користувачі",
+          data: users,
+          backgroundColor: segments[1].color,
+          borderColor: segments[1].border,
+          borderWidth: 1.5,
+          borderRadius: 6,
+          borderSkipped: false,
         },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
       plugins: {
-        legend: {
-          labels: { color: "#5c4a32", boxWidth: 12, boxHeight: 12, usePointStyle: true },
-        },
+        legend: { display: false },
         tooltip: {
+          callbacks: { label: (ctx) => `  ${ctx.dataset.label}: ${ctx.raw}` },
           backgroundColor: "rgba(251,246,240,0.97)",
           titleColor: "#2d1f0e",
           bodyColor: "#5a3e22",

@@ -182,6 +182,7 @@ export function summarizePageViews(rows, fromDate, toDate) {
   const series = { home: days.map(() => 0), "open-day": days.map(() => 0) };
   const views = { home: 0, "open-day": 0 };
   const people = { home: new Set(), "open-day": new Set() };
+  const dailyPeople = { home: days.map(() => new Set()), "open-day": days.map(() => new Set()) };
   for (const row of rows || []) {
     const page = row.page === "home" || row.page === "open-day" ? row.page : "";
     if (!page) continue;
@@ -191,12 +192,18 @@ export function summarizePageViews(rows, fromDate, toDate) {
     if (at === undefined) continue;
     views[page] += 1;
     series[page][at] += 1;
-    if (row.visitor_id) people[page].add(row.visitor_id);
+    if (row.visitor_id) {
+      people[page].add(row.visitor_id);
+      dailyPeople[page][at].add(row.visitor_id);
+    }
   }
   return {
     days,
     home: { views: views.home, visitors: people.home.size },
     openDay: { views: views["open-day"], visitors: people["open-day"].size },
-    series,
+    series: {
+      ...series,
+      homeVisitors: dailyPeople.home.map((set) => set.size),
+    },
   };
 }

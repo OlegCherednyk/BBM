@@ -129,7 +129,16 @@ test("summarizes views by Kyiv day without mixing pages", () => {
   assert.equal(summary.openDay.views, 1);
   assert.equal(summary.openDay.visitors, 1);
   assert.deepEqual(summary.series.home, [1, 1]);
+  assert.deepEqual(summary.series.homeVisitors, [1, 1]);
   assert.deepEqual(summary.series["open-day"], [1, 0]);
+});
+
+test("homepage stats name views and users, without open day", () => {
+  const view = readFileSync(new URL("./assets/js/stats-views.js", import.meta.url), "utf8");
+  assert.match(view, /Перегляди/);
+  assert.match(view, /Користувачі/);
+  assert.match(view, /type: "bar"/);
+  assert.equal(view.includes("Open Day"), false);
 });
 
 test("homepage reports the visit", () => {

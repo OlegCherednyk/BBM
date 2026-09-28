@@ -18,13 +18,14 @@
       </div>
       <div class="admin-panel admin-stats-views-panel">
         <div class="admin-stats-table-head">
-          <h2>Перегляди</h2>
-          <p class="admin-muted">За обраний період, по днях</p>
+          <h2>Перегляди головної</h2>
+          <p class="admin-muted">За обраний період</p>
         </div>
         <div id="statsViewsTotals" class="admin-stats-views-totals"></div>
         <div class="admin-stats-chart-wrap admin-stats-chart-wrap--line">
-          <canvas id="statsViewsChart" aria-label="Перегляди по днях"></canvas>
+          <canvas id="statsViewsChart" aria-label="Перегляди і користувачі по днях"></canvas>
         </div>
+        <div id="statsViewsLegend" class="admin-stats-donut-legend"></div>
       </div>
     </main>
     <script type="module">
@@ -32,11 +33,11 @@
       mountPageViews({
         totals: document.getElementById("statsViewsTotals"),
         canvas: document.getElementById("statsViewsChart"),
+        legend: document.getElementById("statsViewsLegend"),
         summary: {
           days: ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06", "2026-09-07"],
           home: { views: 18, visitors: 11 },
-          openDay: { views: 7, visitors: 5 },
-          series: { home: [1, 2, 2, 4, 3, 3, 3], "open-day": [0, 1, 0, 2, 1, 2, 1] },
+          series: { home: [1, 2, 2, 4, 3, 3, 3], homeVisitors: [1, 2, 2, 3, 2, 3, 2] },
         },
       });
     </script>
