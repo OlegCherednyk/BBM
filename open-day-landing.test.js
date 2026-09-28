@@ -4,6 +4,8 @@ import { describe, it } from "node:test";
 
 const landing = readFileSync(new URL("./open-day/landing.html", import.meta.url), "utf8");
 const styles = readFileSync(new URL("./open-day/styles.css", import.meta.url), "utf8");
+const home = readFileSync(new URL("./index.html", import.meta.url), "utf8");
+const homeStyles = readFileSync(new URL("./assets/css/styles.css", import.meta.url), "utf8");
 
 describe("open day landing instagram", () => {
   it("places the same instagram card at the top under the poster", () => {
@@ -20,5 +22,16 @@ describe("open day landing instagram", () => {
     assert.equal(landing.includes("Дізнайтесь більше"), false);
     assert.match(styles, /a\.place\s*\{[^}]*display:\s*block/);
     assert.match(styles, /a\.place\s*\{[^}]*text-decoration:\s*none/);
+  });
+
+  it("links the main header to open day in the poster type", () => {
+    const header = home.slice(home.indexOf('id="nav"'), home.indexOf('id="mobileNav"'));
+    assert.match(header, /class="nav__open-day" href="\/open-day\/landing\.html"/);
+    assert.match(header, /OPEN DAY/);
+    assert.match(header, /03\.10/);
+    assert.match(header, /04\.10/);
+    assert.match(homeStyles, /font-family:\s*"PolyglOTT"/);
+    assert.match(homeStyles, /url\("\/open-day\/assets\/moss\.jpg"\)/);
+    assert.match(home, /class="mobile-nav__open-day" href="\/open-day\/landing\.html"/);
   });
 });

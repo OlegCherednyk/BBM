@@ -35,7 +35,7 @@ if (navHamburger && mobileNav) {
     isOpen ? closeMobileNav() : openMobileNav();
   });
 
-  mobileNav.querySelectorAll(".mobile-nav__link").forEach((link) => {
+  mobileNav.querySelectorAll(".mobile-nav__link, .mobile-nav__open-day").forEach((link) => {
     link.addEventListener("click", closeMobileNav);
   });
 

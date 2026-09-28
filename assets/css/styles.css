@@ -141,6 +141,69 @@ img, svg { display: block; }
 }
 .nav__ig:hover { color: var(--olive); }
 
+@font-face {
+  font-family: "PolyglOTT";
+  src: url("/open-day/assets/fonts/Truetypewriter_PolyglOTT.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+.nav__open-day,
+.mobile-nav__open-day {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  width: max-content;
+  padding: 7px 12px 6px;
+  border: 1px solid #5f6b30;
+  background: #fff2ea;
+  box-shadow: 0 0 0 3px #fff2ea, 0 0 0 4px #5f6b30;
+  text-decoration: none;
+  line-height: 1;
+}
+.nav__open-day {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.nav__open-day-word {
+  font-family: "PolyglOTT", "Courier New", monospace;
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-align: center;
+  background-image: url("/open-day/assets/moss.jpg");
+  background-size: 240px auto;
+  background-position: center;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.nav__open-day-dates {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: "PolyglOTT", "Courier New", monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #5c4a32;
+}
+.nav__open-day:hover,
+.mobile-nav__open-day:hover { background: #f6f8ee; }
+.nav__open-day:focus-visible,
+.mobile-nav__open-day:focus-visible {
+  outline: 2px solid var(--brown-dark);
+  outline-offset: 4px;
+}
+.mobile-nav__open-day {
+  margin: 0 0 10px;
+  padding: 10px 14px 9px;
+}
+.mobile-nav__open-day .nav__open-day-word { font-size: 28px; }
+.mobile-nav__open-day .nav__open-day-dates { font-size: 13px; }
+
 /* ── BUTTONS ── */
 .btn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -1576,6 +1639,16 @@ details[open] .accordion__icon::after { transform: translate(-50%,-50%) rotate(9
 /* ── RESPONSIVE ── */
 @media (max-width: 700px) {
   .nav__hamburger { display: flex; }
+  .nav__open-day {
+    position: static;
+    transform: none;
+    margin-left: auto;
+    margin-right: 8px;
+    padding: 4px 7px 3px;
+    box-shadow: 0 0 0 2px #fff2ea, 0 0 0 3px #5f6b30;
+  }
+  .nav__open-day .nav__open-day-word { font-size: 13px; letter-spacing: 0.04em; }
+  .nav__open-day .nav__open-day-dates { font-size: 9px; gap: 6px; }
   .nav { padding: 16px 22px; }
   .hero { padding: 110px 22px 70px; }
   .section { padding: 60px 22px; }
@@ -1834,3 +1907,7 @@ details[open] .accordion__icon::after { transform: translate(-50%,-50%) rotate(9
 .schedule-calendar-section { position: relative; }
 .pricing          { background: var(--cream); }
 .footer           { background: var(--cream-soft); }
+
+@media (max-width: 380px) {
+  .nav__open-day { display: none; }
+}
