@@ -24,17 +24,20 @@ describe("open day landing instagram", () => {
     assert.match(styles, /a\.place\s*\{[^}]*text-decoration:\s*none/);
   });
 
-  it("places a small open day postcard under the hero", () => {
+  it("places an open day lockup under the hero", () => {
     const hero = home.indexOf('id="hero"');
-    const card = home.indexOf('class="od-card" href="/open-day/landing.html"');
+    const card = home.indexOf('class="od-postcard"');
     const spotlight = home.indexOf('id="classes-spotlight"');
+    const block = home.slice(card, spotlight);
     assert.ok(hero > -1 && card > hero && card < spotlight);
     assert.equal(home.includes("nav__open-day"), false);
-    assert.match(home.slice(card, spotlight), /OPEN DAY/);
-    assert.match(home.slice(card, spotlight), /03\.10/);
-    assert.match(home.slice(card, spotlight), /04\.10/);
-    assert.match(home.slice(card, spotlight), /«ґрунт»/);
-    assert.match(home.slice(card, spotlight), /«паростки»/);
+    assert.equal(block.includes("<img"), false);
+    assert.match(block, /aria-label="OPEN DAY"/);
+    assert.match(block, /03\.10/);
+    assert.match(block, /04\.10/);
+    assert.match(block, /«ґрунт»/);
+    assert.match(block, /«паростки»/);
+    assert.match(block, /class="od-card__reg" href="\/open-day\/form\.html"/);
     assert.match(homeStyles, /font-family:\s*"PolyglOTT"/);
     assert.match(homeStyles, /url\("\/open-day\/assets\/moss\.jpg"\)/);
   });
