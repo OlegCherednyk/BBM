@@ -141,6 +141,81 @@ img, svg { display: block; }
 }
 .nav__ig:hover { color: var(--olive); }
 
+@font-face {
+  font-family: "PolyglOTT";
+  src: url("/open-day/assets/fonts/Truetypewriter_PolyglOTT.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+.od-postcard {
+  padding: 72px 40px 36px;
+  background: var(--cream-soft);
+  text-align: center;
+}
+.od-postcard + .spotlight { padding-top: 48px; }
+.od-card {
+  width: min(1060px, 100%);
+  margin: 0 auto;
+  padding: 56px 48px 48px;
+  background: #fff8f3;
+  border: 1px solid #5f6b30;
+  outline: 1px solid #5f6b30;
+  outline-offset: 7px;
+}
+.od-card__lockup { display: inline-block; max-width: 100%; }
+.od-card__word {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  margin: 0;
+  font-size: clamp(60px, 15vw, 180px);
+  line-height: 0.9;
+  white-space: nowrap;
+}
+.od-card__word span,
+.od-card__reg span {
+  display: inline-block;
+  font-family: "PolyglOTT", "Courier New", monospace;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  background-image: url("/open-day/assets/moss.jpg");
+  background-size: 240px auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.od-card__gap { width: 0.28em; background: none; }
+.od-card__day { margin-left: 0.12em; }
+.od-card__dates {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-top: 10px;
+  font-family: "PolyglOTT", "Courier New", monospace;
+  font-size: clamp(18px, 2.4vw, 32px);
+  line-height: 1.25;
+  color: #5c4a32;
+}
+.od-card__dates p { margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.od-card__dates p:last-child { text-align: right; }
+.od-card__reg {
+  display: table;
+  margin: 36px auto 0;
+  padding: 12px 22px 10px;
+  border: 1px solid #5f6b30;
+  box-shadow: 0 0 0 4px #fff8f3, 0 0 0 5px #5f6b30;
+  font-size: clamp(28px, 3.4vw, 48px);
+  line-height: 1;
+  text-decoration: none;
+}
+.od-card__reg:hover { background: #f6f8ee; }
+.od-card__reg:focus-visible {
+  outline: 2px solid var(--brown-dark);
+  outline-offset: 6px;
+}
+
 /* ── BUTTONS ── */
 .btn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -1577,6 +1652,8 @@ details[open] .accordion__icon::after { transform: translate(-50%,-50%) rotate(9
 @media (max-width: 700px) {
   .nav__hamburger { display: flex; }
   .nav { padding: 16px 22px; }
+  .od-postcard { padding: 48px 22px 28px; }
+  .od-card { padding: 32px 18px 28px; }
   .hero { padding: 110px 22px 70px; }
   .section { padding: 60px 22px; }
   .section__inner--split { grid-template-columns: 1fr; gap: 32px; }
@@ -1834,3 +1911,4 @@ details[open] .accordion__icon::after { transform: translate(-50%,-50%) rotate(9
 .schedule-calendar-section { position: relative; }
 .pricing          { background: var(--cream); }
 .footer           { background: var(--cream-soft); }
+

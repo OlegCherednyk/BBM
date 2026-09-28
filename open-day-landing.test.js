@@ -4,6 +4,8 @@ import { describe, it } from "node:test";
 
 const landing = readFileSync(new URL("./open-day/landing.html", import.meta.url), "utf8");
 const styles = readFileSync(new URL("./open-day/styles.css", import.meta.url), "utf8");
+const home = readFileSync(new URL("./index.html", import.meta.url), "utf8");
+const homeStyles = readFileSync(new URL("./assets/css/styles.css", import.meta.url), "utf8");
 
 describe("open day landing instagram", () => {
   it("places the same instagram card at the top under the poster", () => {
@@ -20,5 +22,26 @@ describe("open day landing instagram", () => {
     assert.equal(landing.includes("Дізнайтесь більше"), false);
     assert.match(styles, /a\.place\s*\{[^}]*display:\s*block/);
     assert.match(styles, /a\.place\s*\{[^}]*text-decoration:\s*none/);
+  });
+
+  it("places an open day lockup under the hero", () => {
+    const hero = home.indexOf('id="hero"');
+    const card = home.indexOf('class="od-postcard"');
+    const spotlight = home.indexOf('id="classes-spotlight"');
+    const block = home.slice(card, spotlight);
+    assert.ok(hero > -1 && card > hero && card < spotlight);
+    assert.equal(home.includes("nav__open-day"), false);
+    assert.equal(block.includes("<img"), false);
+    assert.match(block, /aria-label="OPEN DAY"/);
+    assert.match(block, /03\.10/);
+    assert.match(block, /04\.10/);
+    assert.match(block, /«ґрунт»/);
+    assert.match(block, /«паростки»/);
+    assert.match(block, /class="od-card__reg" href="\/open-day\/landing\.html"/);
+    assert.match(homeStyles, /font-family:\s*"PolyglOTT"/);
+    assert.match(homeStyles, /url\("\/open-day\/assets\/moss\.jpg"\)/);
+    assert.match(homeStyles, /\.od-card\s*\{[^}]*border:\s*1px solid #5f6b30/);
+    assert.match(homeStyles, /\.od-card\s*\{[^}]*outline-offset:\s*7px/);
+    assert.match(homeStyles, /\.od-card__word\s*\{[^}]*font-size:\s*clamp\(60px,\s*15vw,\s*180px\)/);
   });
 });
