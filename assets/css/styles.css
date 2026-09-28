@@ -58,12 +58,17 @@ img, svg { display: block; }
   background: transparent;
   transition: background .4s, box-shadow .4s;
 }
-.nav__end {
+.nav__brand {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-left: auto;
+  gap: 12px;
   min-width: 0;
+}
+@media (min-width: 701px) {
+  /* Desktop: logo left, Instagram right — unwrap brand group */
+  .nav__brand {
+    display: contents;
+  }
 }
 .nav.scrolled {
   background: rgba(255, 242, 236, 0.88);
@@ -143,27 +148,45 @@ img, svg { display: block; }
   font-style: normal;
   font-display: swap;
 }
-.nav__open-day,
-.mobile-nav__open-day {
+.od-postcard {
+  display: flex;
+  justify-content: center;
+  padding: 28px 22px 8px;
+  background: var(--cream-soft);
+}
+.od-postcard + .spotlight { padding-top: 48px; }
+.od-card {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  width: min(440px, 100%);
+  min-height: 132px;
+  background: #fff8f3;
+  border: 1px solid #5f6b30;
+  outline: 1px solid #5f6b30;
+  outline-offset: 6px;
+  text-decoration: none;
+  color: inherit;
+  overflow: hidden;
+}
+.od-card__photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+}
+.od-card__sheet {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 3px;
-  width: max-content;
-  padding: 7px 12px 6px;
-  border: 1px solid #5f6b30;
-  background: #fff2ea;
-  box-shadow: 0 0 0 3px #fff2ea, 0 0 0 4px #5f6b30;
-  text-decoration: none;
-  line-height: 1;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 16px 14px;
 }
-.nav__open-day { flex-shrink: 0; }
-.nav__open-day-word {
+.od-card__word {
   font-family: "PolyglOTT", "Courier New", monospace;
-  font-size: 20px;
+  font-size: 28px;
   font-weight: 400;
   letter-spacing: 0.08em;
-  text-align: center;
+  line-height: 0.9;
   background-image: url("/open-day/assets/moss.jpg");
   background-size: 240px auto;
   background-position: center;
@@ -171,28 +194,22 @@ img, svg { display: block; }
   background-clip: text;
   color: transparent;
 }
-.nav__open-day-dates {
+.od-card__dates {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   font-family: "PolyglOTT", "Courier New", monospace;
-  font-size: 11px;
-  letter-spacing: 0.04em;
+  font-size: 13px;
+  line-height: 1.25;
   color: #5c4a32;
 }
-.nav__open-day:hover,
-.mobile-nav__open-day:hover { background: #f6f8ee; }
-.nav__open-day:focus-visible,
-.mobile-nav__open-day:focus-visible {
+.od-card__dates > span:last-child { text-align: right; }
+.od-card__when { display: block; color: #45301d; }
+.od-card:hover { background: #f6f8ee; }
+.od-card:focus-visible {
   outline: 2px solid var(--brown-dark);
-  outline-offset: 4px;
+  outline-offset: 8px;
 }
-.mobile-nav__open-day {
-  margin: 0 0 10px;
-  padding: 10px 14px 9px;
-}
-.mobile-nav__open-day .nav__open-day-word { font-size: 28px; }
-.mobile-nav__open-day .nav__open-day-dates { font-size: 13px; }
 
 /* ── BUTTONS ── */
 .btn {
@@ -1629,14 +1646,9 @@ details[open] .accordion__icon::after { transform: translate(-50%,-50%) rotate(9
 /* ── RESPONSIVE ── */
 @media (max-width: 700px) {
   .nav__hamburger { display: flex; }
-  .nav__end { gap: 8px; }
-  .nav__open-day {
-    padding: 4px 7px 3px;
-    box-shadow: 0 0 0 2px #fff2ea, 0 0 0 3px #5f6b30;
-  }
-  .nav__open-day .nav__open-day-word { font-size: 13px; letter-spacing: 0.04em; }
-  .nav__open-day .nav__open-day-dates { font-size: 9px; gap: 6px; }
   .nav { padding: 16px 22px; }
+  .od-card { grid-template-columns: 92px 1fr; }
+  .od-card__word { font-size: 24px; }
   .hero { padding: 110px 22px 70px; }
   .section { padding: 60px 22px; }
   .section__inner--split { grid-template-columns: 1fr; gap: 32px; }
@@ -1895,6 +1907,3 @@ details[open] .accordion__icon::after { transform: translate(-50%,-50%) rotate(9
 .pricing          { background: var(--cream); }
 .footer           { background: var(--cream-soft); }
 
-@media (max-width: 380px) {
-  .nav__open-day { display: none; }
-}

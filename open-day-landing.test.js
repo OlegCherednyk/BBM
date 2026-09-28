@@ -24,20 +24,18 @@ describe("open day landing instagram", () => {
     assert.match(styles, /a\.place\s*\{[^}]*text-decoration:\s*none/);
   });
 
-  it("links the main header to open day in the poster type", () => {
-    const header = home.slice(home.indexOf('id="nav"'), home.indexOf('id="mobileNav"'));
-    const ig = header.indexOf('class="nav__ig"');
-    const day = header.indexOf('class="nav__open-day"');
-    const burger = header.indexOf('id="navHamburger"');
-    assert.ok(ig > -1 && ig < day && day < burger, "open day stamp sits at the right edge, after instagram");
-    assert.match(header, /class="nav__open-day" href="\/open-day\/landing\.html"/);
-    assert.match(homeStyles, /\.nav__end\s*\{[^}]*margin-left:\s*auto/);
-    assert.equal(/\.nav__open-day\s*\{[^}]*left:\s*50%/.test(homeStyles), false);
-    assert.match(header, /OPEN DAY/);
-    assert.match(header, /03\.10/);
-    assert.match(header, /04\.10/);
+  it("places a small open day postcard under the hero", () => {
+    const hero = home.indexOf('id="hero"');
+    const card = home.indexOf('class="od-card" href="/open-day/landing.html"');
+    const spotlight = home.indexOf('id="classes-spotlight"');
+    assert.ok(hero > -1 && card > hero && card < spotlight);
+    assert.equal(home.includes("nav__open-day"), false);
+    assert.match(home.slice(card, spotlight), /OPEN DAY/);
+    assert.match(home.slice(card, spotlight), /03\.10/);
+    assert.match(home.slice(card, spotlight), /04\.10/);
+    assert.match(home.slice(card, spotlight), /«ґрунт»/);
+    assert.match(home.slice(card, spotlight), /«паростки»/);
     assert.match(homeStyles, /font-family:\s*"PolyglOTT"/);
     assert.match(homeStyles, /url\("\/open-day\/assets\/moss\.jpg"\)/);
-    assert.match(home, /class="mobile-nav__open-day" href="\/open-day\/landing\.html"/);
   });
 });
