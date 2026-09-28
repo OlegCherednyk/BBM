@@ -20,7 +20,10 @@
           </a>
           <span class="admin-nav__badge">Адмін</span>
         </div>
-        <div id="adminNavDrawer" class="admin-nav__drawer" aria-hidden="false">
+        <button type="button" class="admin-nav__toggle nav__hamburger" aria-label="Меню" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+        <div id="adminNavDrawer" class="admin-nav__drawer" aria-hidden="true">
           <ol class="admin-nav__jumps" aria-label="Розділи панелі">
             <li><a href="#">Ціни</a></li>
             <li><a href="#">Місця</a></li>
@@ -45,7 +48,7 @@
           </div>
           <div class="event-hero__stats">
             <p class="event-hero__count"><span>3</span><small>записи</small></p>
-            <p class="event-hero__count"><span>2</span><small>відвідувачі</small></p>
+            <p class="event-hero__count"><span>5</span><small>відвідувачів</small></p>
             <p class="event-hero__count"><span>5</span><small>переглядів</small></p>
           </div>
         </article>
@@ -70,27 +73,36 @@
           <button type="button" class="event-filter">Одна практика · 1</button>
         </div>
         <div class="event-list">
-          <button type="button" class="event-row" data-open="1">
-            <span class="event-row__main">
-              <span class="event-row__name">Коваленко Оля</span>
-              <span class="event-row__meta">@olya_move · 24 вересня, 11:02</span>
-            </span>
+          <div class="event-row">
+            <button type="button" class="event-row__open" data-open="1">
+              <span class="event-row__main">
+                <span class="event-row__name">Коваленко Оля</span>
+                <span class="event-row__meta">@olya_move · оплачено 1800 грн · 24 вересня, 11:02</span>
+              </span>
+            </button>
+            <button type="button" class="event-pay is-paid" aria-label="Оплата">₴</button>
             <span class="event-pill event-pill--full">Full pass</span>
-          </button>
-          <button type="button" class="event-row">
-            <span class="event-row__main">
-              <span class="event-row__name">Мельник Саша</span>
-              <span class="event-row__meta">@sasha_m · 24 вересня, 09:18</span>
-            </span>
+          </div>
+          <div class="event-row">
+            <button type="button" class="event-row__open">
+              <span class="event-row__main">
+                <span class="event-row__name">Мельник Саша</span>
+                <span class="event-row__meta">@sasha_m · 24 вересня, 09:18</span>
+              </span>
+            </button>
+            <button type="button" class="event-pay" aria-label="Оплата">₴</button>
             <span class="event-pill event-pill--grunt">Ґрунт</span>
-          </button>
-          <button type="button" class="event-row">
-            <span class="event-row__main">
-              <span class="event-row__name">Іваненко Марія</span>
-              <span class="event-row__meta">@masha_iv · 23 вересня, 21:40</span>
-            </span>
+          </div>
+          <div class="event-row">
+            <button type="button" class="event-row__open">
+              <span class="event-row__main">
+                <span class="event-row__name">Іваненко Марія</span>
+                <span class="event-row__meta">@masha_iv · 23 вересня, 21:40</span>
+              </span>
+            </button>
+            <button type="button" class="event-pay" aria-label="Оплата">₴</button>
             <span class="event-pill">Одна практика</span>
-          </button>
+          </div>
         </div>
       </div>
     </main>
