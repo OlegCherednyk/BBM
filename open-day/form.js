@@ -37,6 +37,7 @@ form.querySelectorAll('input[name="pass"]').forEach((input) => {
 form.querySelectorAll('input[name="practice"]').forEach((input) => {
   input.addEventListener("change", syncPractice);
 });
+document.addEventListener("open-day-seats", syncPractice);
 
 function scrollToId(id) {
   document.getElementById(id)?.scrollIntoView({ behavior: motion ? "auto" : "smooth", block: "start" });
@@ -64,11 +65,15 @@ function setErr(name, message) {
 }
 
 function passValue() {
-  return form.querySelector('input[name="pass"]:checked')?.value || "";
+  const input = form.querySelector('input[name="pass"]:checked');
+  if (!input || input.disabled) return "";
+  return input.value;
 }
 
 function selectedPractices() {
-  return [...form.querySelectorAll('input[name="practice"]:checked')].map((input) => input.value);
+  return [...form.querySelectorAll('input[name="practice"]:checked')]
+    .filter((input) => !input.disabled)
+    .map((input) => input.value);
 }
 
 function validate(step) {

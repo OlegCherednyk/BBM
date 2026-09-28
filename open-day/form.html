@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Unbounded:wght@700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?r=28" />
+    <link rel="stylesheet" href="styles.css?r=29" />
     <link rel="icon" href="assets/logo.png" />
   </head>
   <body>
@@ -61,9 +61,14 @@
           </section>
 
           <section data-step="3" hidden>
+            <p class="seats" id="seats">
+              <span data-seat="grunt">Ґрунт — …</span>
+              <span data-seat="sprouts">Паростки — …</span>
+              <span class="seats-rule">Усього по 12 на напрям. Full pass бере по одному з кожного. Місце бронюється лише після оплати.</span>
+            </p>
             <fieldset class="choice passes">
               <legend>Що обираєш?</legend>
-              <label class="ticket ticket-full">
+              <label class="ticket ticket-full" data-needs="all" data-days="grunt sprouts">
                 <input type="radio" name="pass" value="full" />
                 <span class="ticket-face">
                   <span class="ticket-pip" aria-hidden="true"></span>
@@ -71,10 +76,11 @@
                   <span class="ticket-name">Full pass</span>
                   <span class="ticket-when">03.10 + 04.10</span>
                   <span class="ticket-price">1800 <small>грн</small></span>
+                  <span class="ticket-left" data-seat-left="full">по одному з кожного</span>
                 </span>
               </label>
               <div class="ticket-pair">
-                <label class="ticket ticket-day">
+                <label class="ticket ticket-day" data-needs="all" data-days="grunt">
                   <input type="radio" name="pass" value="grunt" />
                   <span class="ticket-face">
                     <span class="ticket-pip" aria-hidden="true"></span>
@@ -82,9 +88,10 @@
                     <span class="ticket-name">Ґрунт</span>
                     <span class="ticket-when">03.10</span>
                     <span class="ticket-price">600 <small>грн</small></span>
+                    <span class="ticket-left" data-seat-left="grunt">…</span>
                   </span>
                 </label>
-                <label class="ticket ticket-day">
+                <label class="ticket ticket-day" data-needs="all" data-days="sprouts">
                   <input type="radio" name="pass" value="sprouts" />
                   <span class="ticket-face">
                     <span class="ticket-pip" aria-hidden="true"></span>
@@ -92,10 +99,11 @@
                     <span class="ticket-name">Паростки</span>
                     <span class="ticket-when">04.10</span>
                     <span class="ticket-price">1400 <small>грн</small></span>
+                    <span class="ticket-left" data-seat-left="sprouts">…</span>
                   </span>
                 </label>
               </div>
-              <label class="ticket ticket-full">
+              <label class="ticket ticket-full" data-needs="any" data-days="grunt sprouts">
                 <input type="radio" name="pass" value="one" />
                 <span class="ticket-face">
                   <span class="ticket-pip" aria-hidden="true"></span>
@@ -103,6 +111,7 @@
                   <span class="ticket-name">Одна практика</span>
                   <span class="ticket-when">будь-який день</span>
                   <span class="ticket-price">400 <small>грн</small></span>
+                  <span class="ticket-left" data-seat-left="one">місце обраного дня</span>
                 </span>
               </label>
               <p class="err" data-for="pass"></p>
@@ -110,15 +119,15 @@
             <fieldset class="choice" id="practice-wrap" hidden>
               <legend>Які практики?</legend>
               <p class="hint-field">можна обрати кілька</p>
-              <label><input type="checkbox" name="practice" value="trenazh" /> 03.10, 14:00–15:00 · Тренаж</label>
-              <label><input type="checkbox" name="practice" value="dance" /> 03.10, 15:15–17:45 · Сучасний танець</label>
-              <label><input type="checkbox" name="practice" value="game" /> 04.10, 12:00–13:00 · Рух як гра</label>
-              <label><input type="checkbox" name="practice" value="contact" /> 04.10, 13:10–14:10 · Контактна практика</label>
-              <label><input type="checkbox" name="practice" value="health" /> 04.10, 15:00–16:00 · Dance and health</label>
-              <label><input type="checkbox" name="practice" value="stretch" /> 04.10, 16:10–17:10 · Стретчинг</label>
+              <label data-day="grunt"><input type="checkbox" name="practice" value="trenazh" /> 03.10, 14:00–15:00 · Тренаж</label>
+              <label data-day="grunt"><input type="checkbox" name="practice" value="dance" /> 03.10, 15:15–17:45 · Сучасний танець</label>
+              <label data-day="sprouts"><input type="checkbox" name="practice" value="game" /> 04.10, 12:00–13:00 · Рух як гра</label>
+              <label data-day="sprouts"><input type="checkbox" name="practice" value="contact" /> 04.10, 13:10–14:10 · Контактна практика</label>
+              <label data-day="sprouts"><input type="checkbox" name="practice" value="health" /> 04.10, 15:00–16:00 · Dance and health</label>
+              <label data-day="sprouts"><input type="checkbox" name="practice" value="stretch" /> 04.10, 16:10–17:10 · Стретчинг</label>
               <p class="err" data-for="practice"></p>
             </fieldset>
-            <p class="note">Важливо! Після форми відкриється оплата обраного формату. Подія передбачає 12 місць, і місце заброньоване тільки після оплати. Гроші не повертаються за добу до події.</p>
+            <p class="note">Важливо! Після форми відкриється оплата обраного формату. Місце заброньоване тільки після оплати. Гроші не повертаються за добу до події.</p>
             <label class="check">
               <input id="agree" name="agree" type="checkbox" required />
               <span>Я погоджуюсь з <a href="https://drive.google.com/file/d/17OxmmnD4SnInnuala4VNtec3XMKjI7Eg/view?usp=sharing" target="_blank" rel="noopener noreferrer">договором публічної оферти</a></span>
@@ -133,6 +142,7 @@
         </div>
       </form>
     </main>
-    <script src="form.js?r=14"></script>
+    <script src="form.js?r=15"></script>
+    <script type="module" src="seats.js?r=3"></script>
   </body>
 </html>
