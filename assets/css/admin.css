@@ -4285,7 +4285,11 @@ pre {
   font-size: 0.86rem;
   line-height: 1.35;
 }
-.admin-stats-chart-wrap--line { height: 280px; }
+.admin-stats-chart-wrap--line {
+  height: 280px;
+  background: #fff;
+  border-radius: 12px;
+}
 @media (max-width: 640px) {
   .admin-stats-views-totals { grid-template-columns: 1fr; }
 }

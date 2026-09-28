@@ -24,8 +24,8 @@ export function mountPageViews({ totals, canvas, legend, summary }) {
   const views = summary?.series?.home || [];
   const users = summary?.series?.homeVisitors || days.map(() => 0);
   const segments = [
-    { label: "Перегляди", color: "rgba(116,134,47,0.82)", border: "rgba(116,134,47,1)" },
-    { label: "Користувачі", color: "rgba(46,125,140,0.82)", border: "rgba(46,125,140,1)" },
+    { label: "Перегляди", color: "#8ea34a", border: "#74862f" },
+    { label: "Користувачі", color: "#5aa8b8", border: "#2e7d8c" },
   ];
   if (legend) {
     legend.innerHTML = segments
