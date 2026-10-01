@@ -15,21 +15,25 @@ jobs:
     steps:
       - name: Deploy to server
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' | sed 's/\\n/\n/g' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          if ! ssh-keygen -y -f ~/.ssh/deploy_key >/dev/null 2>key_err; then
+            echo "::error::DEPLOY_SSH_KEY is not a valid private key. Paste the whole bbm_deploy file, from BEGIN OPENSSH PRIVATE KEY through END."
+            exit 1
+          fi
+          printf '%s\n' '162.0.231.99 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDhfP0vIANSJNTZsxFosxT3N5A0WfojudvDmZQMgguUm' > ~/.ssh/known_hosts
+          set +e
           ssh -i ~/.ssh/deploy_key \
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
             -o ServerAliveInterval=30 \
-            "root@${DEPLOY_HOST}" \
-            bash -s <<'EOF'
+            root@162.0.231.99 \
+            bash -s 2>ssh_err <<'EOF'
           set -euo pipefail
           export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
           if [ -s "$HOME/.nvm/nvm.sh" ]; then
@@ -43,3 +47,11 @@ jobs:
           npm ci
           pm2 restart all
           EOF
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            fp=$(ssh-keygen -lf ~/.ssh/deploy_key | awk '{print $2}')
+            err=$(tr '\n' ' ' < ssh_err | head -c 400)
+            echo "::error::SSH failed (exit ${code}) fingerprint ${fp}: ${err}"
+            exit "$code"
+          fi

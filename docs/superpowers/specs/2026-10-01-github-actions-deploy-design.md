@@ -22,13 +22,7 @@ Workflow file: `.github/workflows/deploy.yml`.
 
 ## Secrets
 
-The root password is not stored in GitHub. The workflow reads three Actions secrets:
-
-| Secret | Value |
-| --- | --- |
-| `DEPLOY_HOST` | `162.0.231.99` |
-| `DEPLOY_SSH_KEY` | Private half of the deploy key, no passphrase |
-| `DEPLOY_KNOWN_HOSTS` | `162.0.231.99 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDhfP0vIANSJNTZsxFosxT3N5A0WfojudvDmZQMgguUm` |
+The root password is not stored in GitHub. The workflow reads one Actions secret, `DEPLOY_SSH_KEY`: the private half of the deploy key, with no passphrase. Host `162.0.231.99` and its ed25519 host key are pinned in the workflow.
 
 The public half of the deploy key is appended once to `/root/.ssh/authorized_keys` on the server. The private key stays out of the repository. Local copy for the secret paste: `C:\Users\oleh.cherednyk\.ssh\bbm_deploy`.
 
