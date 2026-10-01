@@ -2,7 +2,7 @@
 
 ## Goal
 
-Every push to `master` updates `/root/BBM` on `162.0.231.99` and finishes with `pm2 restart all`.
+Every push to `master` updates `/root/BBM` on `162.0.231.99` and finishes with `pm2 restart bbm`.
 
 ## Flow
 
@@ -14,8 +14,8 @@ Workflow file: `.github/workflows/deploy.yml`.
 4. On the server, in order:
    - `git pull origin master`
    - `npm ci`
-   - `pm2 restart all`
-5. If `git`, `npm`, or `pm2` is missing, or if `git pull` or `npm ci` fails, the SSH script exits before `pm2 restart all`. The GitHub job is red.
+   - `pm2 restart bbm`
+5. If `git`, `npm`, or `pm2` is missing, or if `git pull` or `npm ci` fails, the SSH script exits before `pm2 restart bbm`. The GitHub job is red.
 6. `.env` on the server is left untouched. It is gitignored, so pull does not replace it.
 
 `pm2` is resolved from a non-interactive login path: standard system directories, then `~/.nvm/nvm.sh` when that file exists.
@@ -28,4 +28,4 @@ The public half of the deploy key is appended once to `/root/.ssh/authorized_key
 
 ## Done when
 
-A push to `master` shows a green Deploy run, and on the server `pm2` reports the `bbm` process online after `pm2 restart all`.
+A push to `master` shows a green Deploy run, and on the server `pm2` reports the `bbm` process online after `pm2 restart bbm`.

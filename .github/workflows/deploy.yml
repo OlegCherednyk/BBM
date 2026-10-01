@@ -45,7 +45,7 @@ jobs:
           cd /root/BBM
           git pull origin master
           npm ci
-          pm2 restart all
+          pm2 restart bbm
           EOF
           code=$?
           set -e
