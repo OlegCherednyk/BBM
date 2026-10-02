@@ -122,7 +122,7 @@ export function onePracticeAmount(count) {
 
 const PRACTICE_LINES = new Map([
   ["trenazh", "Open Day, 03.10 14:00–15:00, Тренаж"],
-  ["dance", "Open Day, 03.10 15:15–17:45, Сучасний танець"],
+  ["dance", "Open Day, 03.10 15:15–16:45, Сучасний танець"],
   ["game", "Open Day, 04.10 12:00–13:00, Рух як гра"],
   ["contact", "Open Day, 04.10 13:10–14:10, Контактна практика"],
   ["health", "Open Day, 04.10 15:00–16:00, Dance and health"],
