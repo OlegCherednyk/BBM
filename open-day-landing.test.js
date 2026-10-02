@@ -3,9 +3,21 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 const landing = readFileSync(new URL("./open-day/landing.html", import.meta.url), "utf8");
+const form = readFileSync(new URL("./open-day/form.html", import.meta.url), "utf8");
 const styles = readFileSync(new URL("./open-day/styles.css", import.meta.url), "utf8");
 const home = readFileSync(new URL("./index.html", import.meta.url), "utf8");
 const homeStyles = readFileSync(new URL("./assets/css/styles.css", import.meta.url), "utf8");
+const pay = readFileSync(new URL("./wayforpay.js", import.meta.url), "utf8");
+const adminEvents = readFileSync(new URL("./assets/js/admin-events.js", import.meta.url), "utf8");
+
+describe("Ґрунт contemporary dance", () => {
+  it("ends at 16:45", () => {
+    for (const source of [landing, form, pay, adminEvents]) {
+      assert.match(source, /15:15–16:45[ ·,]*Сучасний танець/);
+      assert.equal(source.includes("17:45"), false);
+    }
+  });
+});
 
 describe("open day landing instagram", () => {
   it("places the same instagram card at the top under the poster", () => {

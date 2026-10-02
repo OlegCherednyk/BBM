@@ -96,6 +96,12 @@ describe("several practices", () => {
     assert.equal(onePracticeAmount(2.5), 0);
   });
 
+  it("names contemporary dance on Ґрунт through 16:45", () => {
+    assert.deepEqual(openDayLines("one", ["dance"]), [
+      { name: "Open Day, 03.10 15:15–16:45, Сучасний танець", price: 400, count: 1 },
+    ]);
+  });
+
   it("names every paid practice on the invoice", () => {
     const lines = openDayLines("one", ["game", "health"]);
     assert.deepEqual(lines, [
