@@ -36,24 +36,12 @@ describe("open day landing instagram", () => {
     assert.match(styles, /a\.place\s*\{[^}]*text-decoration:\s*none/);
   });
 
-  it("places an open day lockup under the hero", () => {
-    const hero = home.indexOf('id="hero"');
-    const card = home.indexOf('class="od-postcard"');
-    const spotlight = home.indexOf('id="classes-spotlight"');
-    const block = home.slice(card, spotlight);
-    assert.ok(hero > -1 && card > hero && card < spotlight);
-    assert.equal(home.includes("nav__open-day"), false);
-    assert.equal(block.includes("<img"), false);
-    assert.match(block, /aria-label="OPEN DAY"/);
-    assert.match(block, /03\.10/);
-    assert.match(block, /04\.10/);
-    assert.match(block, /«ґрунт»/);
-    assert.match(block, /«паростки»/);
-    assert.match(block, /class="od-card__reg" href="\/open-day\/landing\.html"/);
-    assert.match(homeStyles, /font-family:\s*"PolyglOTT"/);
-    assert.match(homeStyles, /url\("\/open-day\/assets\/moss\.jpg"\)/);
-    assert.match(homeStyles, /\.od-card\s*\{[^}]*border:\s*1px solid #5f6b30/);
-    assert.match(homeStyles, /\.od-card\s*\{[^}]*outline-offset:\s*7px/);
-    assert.match(homeStyles, /\.od-card__word\s*\{[^}]*font-size:\s*clamp\(60px,\s*15vw,\s*180px\)/);
+  it("does not invite to open day from the homepage", () => {
+    assert.equal(home.includes("od-postcard"), false);
+    assert.equal(home.includes("od-card"), false);
+    assert.equal(home.includes("/open-day/"), false);
+    assert.equal(homeStyles.includes(".od-postcard"), false);
+    assert.equal(homeStyles.includes(".od-card"), false);
+    assert.equal(homeStyles.includes("PolyglOTT"), false);
   });
 });
