@@ -1773,38 +1773,21 @@ details[open] .accordion__icon::after { transform: translate(-50%,-50%) rotate(9
 
 .values__left {
   padding: 26px 26px 28px;
-  align-self: center;
-}
-.values__left .section__title { margin-bottom: 0; }
-.values > .section__inner {
-  max-width: 760px;
-}
-.text-morph-pin {
   align-self: stretch;
   width: auto;
+  position: sticky;
+  top: 76px;
+  z-index: 4;
+  background: rgba(255, 252, 248, 0.97);
 }
-.text-morph-pin .section__title {
+.values__left .section__title {
+  margin-bottom: 0;
   font-size: clamp(1.15rem, 2.1vw, 1.45rem);
   line-height: 1.35;
   letter-spacing: 0.01em;
 }
-@supports (animation-timeline: view()) {
-  .text-morph-pin .text-morph {
-    font-weight: 300;
-    animation: text-weight-morph linear both;
-    animation-timeline: view();
-    animation-range: entry 0% cover 70%;
-  }
-}
-@keyframes text-weight-morph {
-  from { font-weight: 300; }
-  to { font-weight: 800; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .text-morph-pin .text-morph {
-    animation: none;
-    font-weight: 400;
-  }
+.values > .section__inner {
+  max-width: 760px;
 }
 .values__left .section__label {
   color: var(--olive-dim);
@@ -1841,21 +1824,11 @@ details[open] .accordion__icon::after { transform: translate(-50%,-50%) rotate(9
   border-color: var(--olive);
 }
 
-/* Stacking Cards — кожна картка лишається зверху, наступна наїжджає як колода. */
-.values .accordion__item {
-  position: sticky;
-}
 .values .accordion__item[open] {
   background: rgba(255, 248, 242, 0.97);
 }
-.stack-gap { height: 22vh; }
-.values .accordion__item:nth-child(3) { top: 76px; z-index: 1; }
-.values .accordion__item:nth-child(5) { top: 124px; z-index: 2; }
-.values .accordion__item:nth-child(7) { top: 172px; z-index: 3; }
-.values .accordion__item:nth-child(9) { top: 220px; z-index: 4; }
 @media (prefers-reduced-motion: reduce) {
-  .values .accordion__item { position: static; }
-  .stack-gap { display: none; }
+  .values__left { position: static; }
 }
 
 @media (max-width: 700px) {
