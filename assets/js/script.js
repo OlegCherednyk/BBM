@@ -455,6 +455,31 @@ const observer = new IntersectionObserver(
 );
 revealEls.forEach((el) => observer.observe(el));
 
+/* ── VALUES DECK — картки заїжджають на заголовок, між шарами невеликий відступ ── */
+function pinValuesDeck() {
+  const head = document.querySelector(".values__left");
+  const items = [...document.querySelectorAll("#accordion .accordion__item")];
+  if (!head || !items.length) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    items.forEach((item) => {
+      item.style.top = "";
+      item.style.zIndex = "";
+    });
+    return;
+  }
+  const label = head.querySelector(".section__label");
+  const gap = 12;
+  const labelEnd = label ? label.offsetTop + label.offsetHeight : 40;
+  let top = 76 + labelEnd + gap;
+  items.forEach((item, index) => {
+    item.style.top = `${top}px`;
+    item.style.zIndex = String(index + 2);
+    top += gap;
+  });
+}
+pinValuesDeck();
+window.addEventListener("resize", pinValuesDeck);
+
 /* ── ACCORDION MICRO-ANIMATIONS ── */
 document.querySelectorAll(".accordion__item").forEach((details) => {
   const summary = details.querySelector(".accordion__q");
