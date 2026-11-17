@@ -1863,6 +1863,23 @@ details[open] .accordion__icon::after { transform: translate(-50%,-50%) rotate(9
   border-color: var(--olive);
 }
 
+/* Stacking Cards — кожна картка лишається зверху, наступна наїжджає як колода. */
+.values .accordion__item {
+  position: sticky;
+}
+.values .accordion__item[open] {
+  background: rgba(255, 248, 242, 0.97);
+}
+.stack-gap { height: 22vh; }
+.values .accordion__item:nth-child(1) { top: 76px; z-index: 1; }
+.values .accordion__item:nth-child(3) { top: 124px; z-index: 2; }
+.values .accordion__item:nth-child(5) { top: 172px; z-index: 3; }
+.values .accordion__item:nth-child(7) { top: 220px; z-index: 4; }
+@media (prefers-reduced-motion: reduce) {
+  .values .accordion__item { position: static; }
+  .stack-gap { display: none; }
+}
+
 @media (max-width: 700px) {
   .values .section__inner--split {
     align-items: start;
