@@ -51,6 +51,8 @@ const ICON_PATHS = {
 };
 
 const LAST_PAGE_KEY = "bbm:admin-nav:last-page";
+/** Set when leaving for another group, so the next page plays the sub-row entrance. */
+const ENTER_KEY = "bbm:admin-nav:enter-group";
 /** Matches the leave animation; navigation waits this long so the move is visible. */
 const NAV_DELAY_MS = 240;
 const SWIPE_MIN_PX = 48;
@@ -167,6 +169,12 @@ function setActiveSub(subs, pageId) {
   placeThumb(subs, ".admin-gnav__sub.is-active");
 }
 
+function playEntrance(subs) {
+  subs.classList.remove("is-entering");
+  void subs.offsetWidth;
+  subs.classList.add("is-entering");
+}
+
 function placeThumb(track, activeSelector) {
   const thumb = track.querySelector(":scope > .admin-gnav__thumb");
   const active = track.querySelector(activeSelector);
@@ -240,9 +248,14 @@ export function mountAdminNav({ pageId, topHost }) {
         setActiveSub(subs, targetPageId);
       } else {
         fillSubs(subs, targetGroup, targetPageId);
-        subs.classList.remove("is-entering");
-        void subs.offsetWidth;
-        subs.classList.add("is-entering");
+        playEntrance(subs);
+      }
+    }
+    if (targetGroupId !== groupId) {
+      try {
+        sessionStorage.setItem(ENTER_KEY, targetGroupId);
+      } catch {
+        /* private mode */
       }
     }
     if (reducedMotion.matches) location.href = href;
@@ -290,12 +303,29 @@ export function mountAdminNav({ pageId, topHost }) {
   roots.forEach((root) => ro.observe(root));
   document.fonts?.ready.then(() => roots.forEach(refreshThumbs));
 
+  let enterPending = false;
+  try {
+    enterPending = sessionStorage.getItem(ENTER_KEY) === groupId;
+    sessionStorage.removeItem(ENTER_KEY);
+  } catch {
+    /* private mode */
+  }
+
   return {
     setVisible(visible) {
       topHost?.classList.toggle("admin-hide", !visible);
       bottom.classList.toggle("admin-hide", !visible);
       document.body.classList.toggle("admin-gnav-on", visible);
-      if (visible) requestAnimationFrame(() => roots.forEach(refreshThumbs));
+      if (!visible) return;
+      requestAnimationFrame(() => {
+        roots.forEach(refreshThumbs);
+        if (!enterPending) return;
+        enterPending = false;
+        roots.forEach((root) => {
+          const subs = root.querySelector(".admin-gnav__subs");
+          if (subs && !subs.hidden) playEntrance(subs);
+        });
+      });
     },
   };
 }
