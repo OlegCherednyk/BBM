@@ -1,7 +1,6 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1?bundle";
 import { getSupabaseConfig } from "./runtime-supabase-config.js";
 import { mountPageViews } from "./stats-views.js";
-import { mountAdminNav } from "./admin-nav.js";
 
 /** 0 = Sunday … 6 = Saturday (Date.getDay) */
 const DAYS_UK = ["Неділя", "Понеділок", "Вівторок", "Середа", "Четвер", "Пʼятниця", "Субота"];
@@ -23,12 +22,7 @@ const ADMIN_PAGE = /** @type {any} */ (document.body?.dataset.adminPage ?? "less
 
 const isLoginPage = ADMIN_PAGE === "login";
 
-const adminNav = isLoginPage ? null : mountAdminNav({ pageId: ADMIN_PAGE, topHost: maybeEl("adminNavGroups") });
-if (adminNav) {
-  maybeEl("adminNavDrawer")?.classList.remove("admin-hide");
-  maybeEl("adminNavDrawerFooter")?.classList.remove("admin-hide");
-  adminNav.setVisible(true);
-}
+const adminNav = isLoginPage ? null : window.__bbmAdminNav ?? null;
 
 function fmtTime(timeStr) {
   if (!timeStr || typeof timeStr !== "string") return "";

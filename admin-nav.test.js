@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 const nav = readFileSync(new URL("./assets/js/admin-nav.js", import.meta.url), "utf8");
+const boot = readFileSync(new URL("./assets/js/admin-nav-boot.js", import.meta.url), "utf8");
 const adminJs = readFileSync(new URL("./assets/js/admin.js", import.meta.url), "utf8");
 const prices = readFileSync(new URL("./admin/prices.html", import.meta.url), "utf8");
 
@@ -19,10 +20,13 @@ describe("grouped admin nav", () => {
     assert.equal(prices.includes("adminNavJumps"), false);
   });
 
-  it("shows the shell from a cached allowlist check", () => {
-    assert.match(adminJs, /mountAdminNav/);
+  it("paints the bar before the Supabase bundle and reuses a cached allowlist check", () => {
+    assert.match(boot, /mountAdminNav/);
+    assert.match(boot, /setVisible\(true\)/);
+    assert.match(adminJs, /supabase-js@2\.49\.1\?bundle/);
+    assert.equal(adminJs.includes("mountAdminNav"), false);
     assert.match(adminJs, /bbm:admin-ok:v1/);
-    assert.match(adminJs, /setVisible\(true\)/);
+    assert.match(prices, /admin-nav-boot\.js/);
     assert.match(prices, /admin-known/);
   });
 });
