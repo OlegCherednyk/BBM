@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { getSupabaseConfig } from "./runtime-supabase-config.js";
 import { mountPageViews } from "./stats-views.js";
+import { mountAdminNav } from "./admin-nav.js";
 
 /** 0 = Sunday … 6 = Saturday (Date.getDay) */
 const DAYS_UK = ["Неділя", "Понеділок", "Вівторок", "Середа", "Четвер", "Пʼятниця", "Субота"];
@@ -22,33 +23,7 @@ const ADMIN_PAGE = /** @type {any} */ (document.body?.dataset.adminPage ?? "less
 
 const isLoginPage = ADMIN_PAGE === "login";
 
-/** Cross-page admin nav (order matches product menu). */
-const ADMIN_NAV_PAGES = [
-  { id: "prices", href: "prices.html", label: "Ціни" },
-  { id: "places", href: "places.html", label: "Місця" },
-  { id: "teachers", href: "teachers.html", label: "Викладачі" },
-  { id: "students", href: "students.html", label: "Учні" },
-  { id: "subscriptions", href: "subscriptions.html", label: "Абонементи" },
-  { id: "votes", href: "votes.html", label: "Голосування" },
-  { id: "lessons", href: "lessons.html", label: "Заняття" },
-  { id: "stats", href: "stats.html", label: "Статистика" },
-  { id: "events", href: "events.html", label: "Івенти" },
-];
-
-function renderAdminNavLinks() {
-  const jumps = maybeEl("adminNavJumps");
-  if (!jumps) return;
-  jumps.replaceChildren();
-  for (const page of ADMIN_NAV_PAGES) {
-    const li = document.createElement("li");
-    const a = document.createElement("a");
-    a.href = page.href;
-    a.textContent = page.label;
-    if (page.id === ADMIN_PAGE) a.setAttribute("aria-current", "page");
-    li.appendChild(a);
-    jumps.appendChild(li);
-  }
-}
+const adminNav = isLoginPage ? null : mountAdminNav({ pageId: ADMIN_PAGE, topHost: maybeEl("adminNavGroups") });
 
 function fmtTime(timeStr) {
   if (!timeStr || typeof timeStr !== "string") return "";
@@ -3642,114 +3617,14 @@ function initStatsRangeControls() {
   });
 }
 
-const ADMIN_NAV_DESKTOP_MQ = window.matchMedia("(min-width: 721px)");
-
-function isAdminNavDesktop() {
-  return ADMIN_NAV_DESKTOP_MQ.matches;
-}
-
-function syncAdminNavDesktopState() {
-  const toggle = maybeEl("adminNavToggle");
-  const drawer = maybeEl("adminNavDrawer");
-  if (!drawer) return;
-  if (isAdminNavDesktop()) {
-    if (toggle) toggle.setAttribute("aria-expanded", "false");
-    drawer.classList.remove("is-open");
-    if (!drawer.classList.contains("admin-hide")) {
-      drawer.setAttribute("aria-hidden", "false");
-    }
-  } else if (!drawer.classList.contains("is-open")) {
-    drawer.setAttribute("aria-hidden", "true");
-  }
-}
-
-function closeAdminNavDrawer() {
-  if (isAdminNavDesktop()) return;
-  const toggle = maybeEl("adminNavToggle");
-  const drawer = maybeEl("adminNavDrawer");
-  const backdrop = maybeEl("adminNavBackdrop");
-  if (!toggle || !drawer) return;
-  toggle.setAttribute("aria-expanded", "false");
-  drawer.classList.remove("is-open");
-  drawer.setAttribute("aria-hidden", "true");
-  if (backdrop) {
-    backdrop.classList.add("admin-hide");
-    backdrop.setAttribute("aria-hidden", "true");
-  }
-}
-
-function openAdminNavDrawer() {
-  if (isAdminNavDesktop()) return;
-  const toggle = maybeEl("adminNavToggle");
-  const drawer = maybeEl("adminNavDrawer");
-  const backdrop = maybeEl("adminNavBackdrop");
-  if (!toggle || !drawer) return;
-  toggle.setAttribute("aria-expanded", "true");
-  drawer.classList.add("is-open");
-  drawer.setAttribute("aria-hidden", "false");
-  if (backdrop) {
-    backdrop.classList.remove("admin-hide");
-    backdrop.setAttribute("aria-hidden", "false");
-  }
-}
-
-function initAdminNavDrawer() {
-  const toggle = maybeEl("adminNavToggle");
-  const drawer = maybeEl("adminNavDrawer");
-  const backdrop = maybeEl("adminNavBackdrop");
-  if (!toggle || !drawer) return;
-
-  toggle.addEventListener("click", () => {
-    if (isAdminNavDesktop()) return;
-    const open = toggle.getAttribute("aria-expanded") === "true";
-    if (open) closeAdminNavDrawer();
-    else openAdminNavDrawer();
-  });
-
-  backdrop?.addEventListener("click", () => closeAdminNavDrawer());
-
-  drawer.querySelectorAll("a[href]").forEach((link) => {
-    link.addEventListener("click", () => closeAdminNavDrawer());
-  });
-
-  // Close after JS-rendered links are clicked (event delegation)
-  drawer.addEventListener("click", (e) => {
-    const t = /** @type {HTMLElement | null} */ (e.target instanceof Element ? e.target.closest("a[href]") : null);
-    if (t && drawer.contains(t)) closeAdminNavDrawer();
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeAdminNavDrawer();
-  });
-
-  document.addEventListener("click", (e) => {
-    if (isAdminNavDesktop() || !drawer.classList.contains("is-open")) return;
-    const target = /** @type {Node | null} */ (e.target);
-    if (target && !drawer.contains(target) && !toggle.contains(target) && !(backdrop && backdrop.contains(target))) {
-      closeAdminNavDrawer();
-    }
-  });
-
-  ADMIN_NAV_DESKTOP_MQ.addEventListener("change", syncAdminNavDesktopState);
-  syncAdminNavDesktopState();
-}
-
 function showView(view) {
   if (authSection) authSection.classList.toggle("admin-hide", view !== "auth");
   if (blockedSection) blockedSection.classList.toggle("admin-hide", view !== "blocked");
   if (dashSection) dashSection.classList.toggle("admin-hide", view !== "dash");
   const dash = view === "dash";
-  const jumps = maybeEl("adminNavJumps");
-  const toggle = maybeEl("adminNavToggle");
-  const drawer = maybeEl("adminNavDrawer");
-  const drawerFooter = maybeEl("adminNavDrawerFooter");
-  if (dash) renderAdminNavLinks();
-  if (jumps) jumps.classList.toggle("admin-hide", !dash);
-  if (toggle) toggle.classList.toggle("admin-hide", !dash);
-  if (drawer) drawer.classList.toggle("admin-hide", !dash);
-  if (drawerFooter) drawerFooter.classList.toggle("admin-hide", !dash);
-  if (!dash) closeAdminNavDrawer();
-  else syncAdminNavDesktopState();
+  maybeEl("adminNavDrawer")?.classList.toggle("admin-hide", !dash);
+  maybeEl("adminNavDrawerFooter")?.classList.toggle("admin-hide", !dash);
+  adminNav?.setVisible(dash);
 }
 
 async function isAdminUser(userId) {
@@ -4379,7 +4254,6 @@ function wireSignOut(btn) {
   });
 }
 
-initAdminNavDrawer();
 
 wireSignOut(maybeEl("signOutBlocked"));
 wireSignOut(maybeEl("adminNavSignOut"));
