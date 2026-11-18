@@ -25,28 +25,15 @@
           </a>
           <span class="admin-nav__badge">Адмін</span>
         </div>
-        <div id="adminNavBackdrop" class="admin-nav__backdrop admin-hide" aria-hidden="true"></div>
-        <div id="adminNavDrawer" class="admin-nav__drawer admin-hide" aria-hidden="true">
-          <ol id="adminNavJumps" class="admin-nav__jumps admin-hide" aria-label="Розділи панелі"></ol>
+        <div id="adminNavDrawer" class="admin-nav__menu admin-hide">
+          <div id="adminNavGroups" class="admin-nav__groups admin-hide" role="navigation" aria-label="Розділи адмінки"></div>
           <div id="adminNavDrawerFooter" class="admin-nav__drawer-footer admin-hide">
-            <button type="button" class="admin-nav__signout" id="adminNavSignOut">
+            <button type="button" class="admin-nav__signout" id="adminNavSignOut" aria-label="Вийти">
               <svg class="admin-nav__signout-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
               <span class="admin-nav__signout-label">Вийти</span>
             </button>
           </div>
         </div>
-        <button
-          type="button"
-          class="admin-nav__toggle nav__hamburger admin-hide"
-          id="adminNavToggle"
-          aria-label="Меню"
-          aria-expanded="false"
-          aria-controls="adminNavDrawer"
-        >
-          <span></span>
-          <span></span>
-          <span></span>
-        </button>
       </div>
     </nav>
 
