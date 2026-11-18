@@ -380,7 +380,7 @@ body[data-admin-page] {
     bottom: 0;
     z-index: 95;
     padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px));
-    background: rgba(255, 253, 251, 0.97);
+    background: #fffdfb;
     border-top: 1px solid var(--admin-panel-border);
     box-shadow: 0 -8px 22px rgba(69, 48, 29, 0.08);
   }
