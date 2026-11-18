@@ -4279,7 +4279,7 @@ async function routeAfterAuth(user) {
 
   if (isLoginPage) {
     lastSuccessfulDashBootstrapUserId = null;
-    location.href = "./places.html";
+    location.href = "./stats.html";
     return;
   }
 
