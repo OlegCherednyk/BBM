@@ -24,6 +24,11 @@ const ADMIN_PAGE = /** @type {any} */ (document.body?.dataset.adminPage ?? "less
 const isLoginPage = ADMIN_PAGE === "login";
 
 const adminNav = isLoginPage ? null : mountAdminNav({ pageId: ADMIN_PAGE, topHost: maybeEl("adminNavGroups") });
+if (adminNav) {
+  maybeEl("adminNavDrawer")?.classList.remove("admin-hide");
+  maybeEl("adminNavDrawerFooter")?.classList.remove("admin-hide");
+  adminNav.setVisible(true);
+}
 
 function fmtTime(timeStr) {
   if (!timeStr || typeof timeStr !== "string") return "";
@@ -3618,6 +3623,7 @@ function initStatsRangeControls() {
 }
 
 function showView(view) {
+  document.documentElement.classList.remove("admin-known");
   if (authSection) authSection.classList.toggle("admin-hide", view !== "auth");
   if (blockedSection) blockedSection.classList.toggle("admin-hide", view !== "blocked");
   if (dashSection) dashSection.classList.toggle("admin-hide", view !== "dash");
@@ -4132,24 +4138,82 @@ if (signUpForm) {
   });
 }
 
+const ADMIN_OK_KEY = "bbm:admin-ok:v1";
+const ADMIN_OK_TTL_MS = 15 * 60 * 1000;
+
+function readAdminOk(userId) {
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem(ADMIN_OK_KEY) || "null");
+    if (!parsed || parsed.userId !== userId) return false;
+    return Date.now() - Number(parsed.at) < ADMIN_OK_TTL_MS;
+  } catch (_ignored) {
+    return false;
+  }
+}
+
+function writeAdminOk(userId) {
+  try {
+    sessionStorage.setItem(ADMIN_OK_KEY, JSON.stringify({ userId, at: Date.now() }));
+  } catch (_ignored) {
+    /* private mode */
+  }
+}
+
+function clearAdminOk() {
+  try {
+    sessionStorage.removeItem(ADMIN_OK_KEY);
+  } catch (_ignored) {
+    /* private mode */
+  }
+}
+
+function showBlockedAdmin(user) {
+  lastSuccessfulDashBootstrapUserId = null;
+  clearAdminOk();
+  if (allowlistSnippet && user) {
+    allowlistSnippet.textContent =
+      `insert into public.admin_allowlist (user_id) values ('${user.id}');\n` +
+      `-- один раз; далі онови сторінку або вийди й увійди знову.`;
+  }
+  showView("blocked");
+}
+
 async function routeAfterAuth(user) {
   if (!user) {
     lastSuccessfulDashBootstrapUserId = null;
+    clearAdminOk();
     if (isLoginPage) showView("auth");
     else location.href = "./index.html";
     return;
   }
-  const allowed = await isAdminUser(user.id);
-  if (!allowed) {
-    lastSuccessfulDashBootstrapUserId = null;
-    if (allowlistSnippet) {
-      allowlistSnippet.textContent =
-        `insert into public.admin_allowlist (user_id) values ('${user.id}');\n` +
-        `-- один раз; далі онови сторінку або вийди й увійди знову.`;
+
+  const knownAdmin = !isLoginPage && readAdminOk(user.id);
+  if (knownAdmin) {
+    clearDashMessages();
+    showView("dash");
+    const verify = isAdminUser(user.id);
+    if (lastSuccessfulDashBootstrapUserId !== user.id) {
+      lastSuccessfulDashBootstrapUserId = user.id;
+      const refresh = refreshDashboard();
+      if (!(await verify)) {
+        showBlockedAdmin(user);
+        return;
+      }
+      writeAdminOk(user.id);
+      await refresh;
+      return;
     }
-    showView("blocked");
+    if (!(await verify)) showBlockedAdmin(user);
+    else writeAdminOk(user.id);
     return;
   }
+
+  const allowed = await isAdminUser(user.id);
+  if (!allowed) {
+    showBlockedAdmin(user);
+    return;
+  }
+  writeAdminOk(user.id);
   clearDashMessages();
 
   if (isLoginPage) {
@@ -4264,6 +4328,7 @@ let lastSuccessfulDashBootstrapUserId = null;
 async function applySession(session) {
   if (!session?.user) {
     lastSuccessfulDashBootstrapUserId = null;
+    clearAdminOk();
     if (isLoginPage) {
       showView("auth");
       clearAuthMessages();
@@ -4280,6 +4345,7 @@ supabase.auth.onAuthStateChange((event, session) => {
   if (event === "TOKEN_REFRESHED") return;
   if (event === "SIGNED_OUT") {
     lastSuccessfulDashBootstrapUserId = null;
+    clearAdminOk();
     if (isLoginPage) showView("auth");
     else location.href = "./index.html";
     return;

@@ -14,6 +14,29 @@
     />
     <link rel="stylesheet" href="../assets/css/styles.css" />
     <link rel="stylesheet" href="../assets/css/admin.css" />
+    <link rel="modulepreload" href="../assets/js/admin.js" />
+    <link rel="modulepreload" href="../assets/js/admin-nav.js" />
+    <link rel="modulepreload" href="../assets/js/runtime-supabase-config.js" />
+    <link rel="preconnect" href="https://esm.sh" crossorigin />
+    <script>
+      try {
+        if (sessionStorage.getItem("bbm:admin-ok:v1")) document.documentElement.classList.add("admin-known");
+      } catch (e) {}
+      if (!window.__bbmPublicConfig) {
+        window.__bbmPublicConfig = fetch("/api/public-config", {
+          headers: { Accept: "application/json" },
+          credentials: "same-origin",
+        })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .catch(function () { return null; });
+      }
+    </script>
+    <script type="speculationrules">
+      {
+        "prefetch": [{ "where": { "selector_matches": ".admin-gnav a[href]" }, "eagerness": "eager" }],
+        "prerender": [{ "where": { "selector_matches": ".admin-gnav a[href]" }, "eagerness": "moderate" }]
+      }
+    </script>
   </head>
   <body data-admin-page="votes">
     <nav class="nav nav--admin scrolled" aria-label="Адмін">

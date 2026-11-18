@@ -53,11 +53,7 @@ const ICON_PATHS = {
 const LAST_PAGE_KEY = "bbm:admin-nav:last-page";
 /** Set when leaving for another group, so the next page plays the sub-row entrance. */
 const ENTER_KEY = "bbm:admin-nav:enter-group";
-/** Matches the leave animation; navigation waits this long so the move is visible. */
-const NAV_DELAY_MS = 240;
 const SWIPE_MIN_PX = 48;
-
-const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 function groupOfPage(pageId) {
   return ADMIN_NAV_GROUPS.find((g) => g.pages.some((p) => p.id === pageId)) ?? null;
@@ -233,34 +229,39 @@ export function mountAdminNav({ pageId, topHost }) {
   document.body.appendChild(bottom);
 
   const roots = [top, bottom.firstElementChild].filter(Boolean);
-  let navigating = false;
 
-  const goTo = (href, targetGroupId, targetPageId) => {
-    if (navigating) return;
-    navigating = true;
-    const targetGroup = ADMIN_NAV_GROUPS.find((g) => g.id === targetGroupId) ?? null;
-    for (const root of roots) {
-      const tabs = root.querySelector(".admin-gnav__tabs");
-      const subs = root.querySelector(".admin-gnav__subs");
-      if (tabs) setActiveTab(tabs, targetGroupId, targetPageId);
-      if (!subs) continue;
-      if (targetGroupId === groupId) {
-        setActiveSub(subs, targetPageId);
-      } else {
-        fillSubs(subs, targetGroup, targetPageId);
-        playEntrance(subs);
-      }
+  const markGroupEnter = (targetGroupId) => {
+    if (!targetGroupId || targetGroupId === groupId) return;
+    try {
+      sessionStorage.setItem(ENTER_KEY, targetGroupId);
+    } catch {
+      /* private mode */
     }
-    if (targetGroupId !== groupId) {
-      try {
-        sessionStorage.setItem(ENTER_KEY, targetGroupId);
-      } catch {
-        /* private mode */
-      }
-    }
-    if (reducedMotion.matches) location.href = href;
-    else window.setTimeout(() => (location.href = href), NAV_DELAY_MS);
   };
+
+  const goTo = (href, targetGroupId) => {
+    markGroupEnter(targetGroupId);
+    location.href = href;
+  };
+
+  const warmed = new Set();
+  const warm = (href) => {
+    if (!href || warmed.has(href) || href === location.href) return;
+    warmed.add(href);
+    const link = document.createElement("link");
+    link.rel = "prefetch";
+    link.as = "document";
+    link.href = href;
+    document.head.appendChild(link);
+  };
+  const warmFromEvent = (e) => {
+    const link = e.target instanceof Element ? e.target.closest("a[href]") : null;
+    if (link) warm(link.href);
+  };
+  for (const root of [top, bottom]) {
+    root.addEventListener("pointerenter", warmFromEvent, true);
+    root.addEventListener("pointerdown", warmFromEvent, true);
+  }
 
   const onClick = (e) => {
     const link = e.target instanceof Element ? e.target.closest("a.admin-gnav__tab, a.admin-gnav__sub") : null;
@@ -270,8 +271,8 @@ export function mountAdminNav({ pageId, topHost }) {
       e.preventDefault();
       return;
     }
-    e.preventDefault();
-    goTo(link.href, link.dataset.group ?? "", link.dataset.page ?? "");
+    // Leave the browser to follow the link. Updating the bar first replayed the rise and held navigation for 240ms.
+    markGroupEnter(link.dataset.group ?? "");
   };
   top.addEventListener("click", onClick);
   bottom.addEventListener("click", onClick);

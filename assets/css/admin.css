@@ -28,6 +28,11 @@ body[data-admin-page] {
   min-height: 100svh;
 }
 
+/* Session already confirmed in this tab: show the page shell before the allowlist round trip. */
+html.admin-known body[data-admin-page] #dashSection.admin-hide {
+  display: block !important;
+}
+
 /* ── NAV (top bar) ── */
 .nav.nav--admin {
   flex-direction: row;
