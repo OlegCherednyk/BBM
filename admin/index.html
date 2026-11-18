@@ -14,6 +14,18 @@
     />
     <link rel="stylesheet" href="../assets/css/styles.css" />
     <link rel="stylesheet" href="../assets/css/admin.css" />
+    <link rel="modulepreload" href="../assets/js/admin.js" />
+    <link rel="preconnect" href="https://esm.sh" crossorigin />
+    <script>
+      if (!window.__bbmPublicConfig) {
+        window.__bbmPublicConfig = fetch("/api/public-config", {
+          headers: { Accept: "application/json" },
+          credentials: "same-origin",
+        })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .catch(function () { return null; });
+      }
+    </script>
   </head>
   <body data-admin-page="login">
     <nav class="nav nav--admin scrolled" aria-label="Адмін">
