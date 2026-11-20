@@ -4374,13 +4374,23 @@ pre {
 }
 
 .admin-stats-quick {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+@media (min-width: 720px) {
+  .admin-stats-quick {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
 }
 
 .admin-stats-quick__btn {
-  padding: 6px 14px;
+  width: 100%;
+  padding: 8px 6px;
+  text-align: center;
+  white-space: nowrap;
   border-radius: 999px;
   border: 1.5px solid var(--cream-mid);
   background: rgba(255, 255, 255, 0.55);
@@ -4405,6 +4415,248 @@ pre {
   background: rgba(116, 134, 47, 0.14);
   border-color: rgba(116, 134, 47, 0.5);
   color: var(--olive-dim);
+}
+
+/* ponytail: one full-width row, start at the left edge and end at the right, same as a RangePicker input. */
+.admin-stats-range-field {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1.5px solid var(--cream-mid, #e8d9cd);
+  background: #fff;
+  color: var(--brown-dark, #2d1f0e);
+  font: inherit;
+  font-weight: 700;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-stats-range-field span:nth-child(3) {
+  text-align: right;
+}
+
+.admin-stats-range-field__arrow {
+  color: #a38057;
+  font-weight: 600;
+}
+
+.admin-stats-range-field svg {
+  color: var(--olive, #74862f);
+}
+
+.admin-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.admin-sheet.admin-hide {
+  display: none;
+}
+
+.admin-sheet__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(45, 31, 14, 0.28);
+}
+
+.admin-sheet__panel {
+  position: relative;
+  width: min(480px, 100%);
+  max-height: min(88vh, 720px);
+  overflow: auto;
+  background: #fffaf6;
+  border-radius: 22px 22px 0 0;
+  padding: 10px 16px 18px;
+}
+
+.admin-sheet__grab {
+  width: 36px;
+  height: 4px;
+  border-radius: 99px;
+  background: #e4d5c8;
+  margin: 0 auto 12px;
+}
+
+.admin-sheet__hint {
+  margin: 0 0 8px;
+  color: var(--brown-light, #8b7258);
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.admin-stats-preset {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  border-bottom: 1px solid #f0e6dc;
+  background: transparent;
+  padding: 14px 2px;
+  font: inherit;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--brown-dark, #2d1f0e);
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-stats-preset small {
+  color: var(--brown-light, #8b7258);
+  font-weight: 650;
+  font-size: 13px;
+}
+
+.admin-stats-preset.is-active {
+  color: #5c6b24;
+}
+
+.admin-stats-ends {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.admin-stats-end {
+  border: 1.5px solid #e8d9cd;
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+.admin-stats-end b {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8b7258;
+}
+
+.admin-stats-end strong {
+  font-size: 15px;
+  color: #2d1f0e;
+}
+
+.admin-stats-end.is-active {
+  border-color: #74862f;
+  box-shadow: 0 0 0 3px rgba(116, 134, 47, 0.16);
+}
+
+.admin-stats-month {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 800;
+  color: #2d1f0e;
+  margin-bottom: 8px;
+}
+
+.admin-stats-month button {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  color: #5a3e22;
+  cursor: pointer;
+}
+
+.admin-stats-cal {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+
+.admin-stats-cal__wd,
+.admin-stats-cal__empty,
+.admin-stats-cal__day {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 8px;
+}
+
+.admin-stats-cal__wd {
+  height: 24px;
+  color: #8b7258;
+  font-size: 11px;
+}
+
+.admin-stats-cal__day {
+  border: 0;
+  background: transparent;
+  color: #2d1f0e;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admin-stats-cal__day.is-in {
+  background: rgba(116, 134, 47, 0.16);
+  border-radius: 0;
+}
+
+.admin-stats-cal__day.is-start,
+.admin-stats-cal__day.is-end {
+  background: #74862f;
+  color: #fff;
+}
+
+.admin-stats-cal__day.is-start {
+  border-radius: 8px 0 0 8px;
+}
+
+.admin-stats-cal__day.is-end {
+  border-radius: 0 8px 8px 0;
+}
+
+.admin-stats-cal__day.is-start.is-end {
+  border-radius: 8px;
+}
+
+.admin-stats-sheet-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.admin-stats-sheet-actions .btn {
+  width: 100%;
+  justify-content: center;
+  min-height: 44px;
+}
+
+@media (min-width: 720px) {
+  .admin-sheet {
+    align-items: center;
+    padding: 24px;
+  }
+
+  .admin-sheet__panel {
+    border-radius: 22px;
+  }
+
+  .admin-sheet__grab {
+    display: none;
+  }
 }
 
 /* ── CHARTS GRID ── */
@@ -5121,12 +5373,6 @@ pre {
 
   .admin-stats-quick {
     width: 100%;
-  }
-
-  .admin-stats-quick__btn {
-    flex: 1 1 auto;
-    text-align: center;
-    padding: 8px 10px;
   }
 
   .admin-stats-chart-panel {
