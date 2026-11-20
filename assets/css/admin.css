@@ -4300,6 +4300,40 @@ pre {
   letter-spacing: -0.02em;
 }
 
+/* ponytail: fadeInUp keyframes are the ones published on animate.style; the class leaves on animationend so the hover lift still works. */
+@keyframes admin-fade-in-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 100%, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.admin-stats-rise {
+  animation-name: admin-fade-in-up;
+  animation-duration: 0.7s;
+  animation-timing-function: ease;
+  animation-fill-mode: both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-stats-rise {
+    animation: none;
+  }
+}
+
+.admin-stats-donut-legend__dot--dash {
+  width: 16px;
+  height: 0;
+  border: none;
+  border-top: 2px dashed #a38057;
+  border-radius: 0;
+  background: transparent;
+}
+
 .admin-stats-kpi-card--skeleton {
   min-height: 96px;
   background: linear-gradient(90deg, rgba(241,230,221,0.4) 25%, rgba(255,255,255,0.7) 50%, rgba(241,230,221,0.4) 75%);

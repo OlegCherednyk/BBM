@@ -163,6 +163,15 @@ export function rememberVisit(stamps, now, limit = 30, windowMs = 600000) {
 
 const KYIV = "Europe/Kyiv";
 
+/** ponytail: previous window is the same number of Kyiv days, ending the day before this one. */
+export function previousWindow(fromDate, toDate) {
+  const days = eachKyivDay(fromDate, toDate);
+  if (!days.length) return null;
+  const prevEnd = DateTime.fromISO(days[0], { zone: KYIV }).minus({ days: 1 });
+  const prevStart = prevEnd.minus({ days: days.length - 1 });
+  return { from: prevStart.toISODate(), to: prevEnd.toISODate() };
+}
+
 export function eachKyivDay(fromDate, toDate) {
   let cursor = DateTime.fromISO(String(fromDate || ""), { zone: KYIV }).startOf("day");
   const end = DateTime.fromISO(String(toDate || ""), { zone: KYIV }).startOf("day");

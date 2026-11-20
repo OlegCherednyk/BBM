@@ -10,6 +10,7 @@ import {
   isBot,
   matchVisitor,
   nextVisitor,
+  previousWindow,
   rememberVisit,
   summarizePageViews,
 } from "./open-day-visitors.js";
@@ -133,12 +134,36 @@ test("summarizes views by Kyiv day without mixing pages", () => {
   assert.deepEqual(summary.series["open-day"], [1, 0]);
 });
 
+test("previous window matches the length and ends the day before", () => {
+  assert.deepEqual(previousWindow("2026-09-01", "2026-09-14"), { from: "2026-08-18", to: "2026-08-31" });
+  assert.deepEqual(previousWindow("2024-03-01", "2024-03-01"), { from: "2024-02-29", to: "2024-02-29" });
+  assert.equal(previousWindow("", "2026-09-01"), null);
+  assert.equal(previousWindow("2026-09-10", "2026-09-01"), null);
+});
+
 test("homepage stats name views and users, without open day", () => {
   const view = readFileSync(new URL("./assets/js/stats-views.js", import.meta.url), "utf8");
   assert.match(view, /Перегляди/);
   assert.match(view, /Користувачі/);
-  assert.match(view, /type: "bar"/);
+  assert.match(view, /Минулий період/);
+  assert.match(view, /type: "line"/);
+  assert.match(view, /borderDash: \[5, 4\]/);
   assert.equal(view.includes("Open Day"), false);
+});
+
+test("payout bars label the sum and rise with cubic out", () => {
+  const payout = readFileSync(new URL("./assets/js/stats-payout.js", import.meta.url), "utf8");
+  assert.match(payout, /payoutValueLabels/);
+  assert.match(payout, /easeOutCubic/);
+  assert.match(payout, /toLocaleString\("uk-UA"\)/);
+});
+
+test("kpi entrance uses the animate.style fadeInUp keyframes", () => {
+  const css = readFileSync(new URL("./assets/css/admin.css", import.meta.url), "utf8");
+  assert.match(css, /@keyframes admin-fade-in-up/);
+  assert.match(css, /translate3d\(0, 100%, 0\)/);
+  const admin = readFileSync(new URL("./assets/js/admin.js", import.meta.url), "utf8");
+  assert.match(admin, /admin-stats-rise/);
 });
 
 test("homepage reports the visit", () => {
