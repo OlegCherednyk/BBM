@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1?bundle";
 import { getSupabaseConfig } from "./runtime-supabase-config.js";
 import { mountPageViews } from "./stats-views.js";
+import { mountPayoutChart } from "./stats-payout.js";
 
 /** 0 = Sunday … 6 = Saturday (Date.getDay) */
 const DAYS_UK = ["Неділя", "Понеділок", "Вівторок", "Середа", "Четвер", "Пʼятниця", "Субота"];
@@ -2920,8 +2921,6 @@ function clearDashMessages() {
 }
 
 /** @type {import('chart.js').Chart | null} */
-let statsPayoutChartInstance = null;
-/** @type {import('chart.js').Chart | null} */
 let statsBreakdownChartInstance = null;
 
 /**
@@ -2957,8 +2956,8 @@ function renderStatsKpiCards(summary) {
     { color: netColor, icon: ICON_MONEY,   label: "Чистий прибуток", value: fmtMoney(totalNetAfterRent) },
   ];
 
-  root.innerHTML = cards.map((c) => `
-    <div class="admin-stats-kpi-card admin-stats-kpi-card--${c.color}">
+  root.innerHTML = cards.map((c, i) => `
+    <div class="admin-stats-kpi-card admin-stats-kpi-card--${c.color} admin-stats-rise" style="animation-delay:${i * 80}ms">
       <div class="admin-stats-kpi-card__icon">${c.icon}</div>
       <div class="admin-stats-kpi-card__body">
         <div class="admin-stats-kpi-card__label">${escapeHtml(c.label)}</div>
@@ -2966,6 +2965,9 @@ function renderStatsKpiCards(summary) {
       </div>
     </div>
   `).join("");
+  root.querySelectorAll(".admin-stats-rise").forEach((el) => {
+    el.addEventListener("animationend", () => el.classList.remove("admin-stats-rise"), { once: true });
+  });
 }
 
 /**
@@ -2977,71 +2979,12 @@ function renderStatsPayoutChart(rows) {
   const wrap = document.getElementById("statsPayoutWrap");
   if (!canvas || !wrap) return;
 
-  if (statsPayoutChartInstance) {
-    statsPayoutChartInstance.destroy();
-    statsPayoutChartInstance = null;
-  }
-
   if (!rows.length || !window.Chart) {
     wrap.innerHTML = '<p class="admin-muted" style="padding:20px 0;text-align:center">Немає даних для відображення.</p>';
     return;
   }
 
-  const dynamicH = Math.max(160, rows.length * 54);
-  canvas.style.height = `${dynamicH}px`;
-
-  const labels = rows.map((r) => r.name);
-  const values = rows.map((r) => r.payout);
-  const bgColors = values.map((v) => v >= 0 ? "rgba(116,134,47,0.82)" : "rgba(192,79,79,0.82)");
-  const borderColors = values.map((v) => v >= 0 ? "rgba(116,134,47,1)" : "rgba(192,79,79,1)");
-
-  statsPayoutChartInstance = new window.Chart(canvas, {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [{
-        data: values,
-        backgroundColor: bgColors,
-        borderColor: borderColors,
-        borderWidth: 1.5,
-        borderRadius: 6,
-        borderSkipped: false,
-      }],
-    },
-    options: {
-      indexAxis: "y",
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: { label: (ctx) => `  ${fmtMoney(ctx.raw)}` },
-          backgroundColor: "rgba(251,246,240,0.97)",
-          titleColor: "#2d1f0e",
-          bodyColor: "#5a3e22",
-          borderColor: "rgba(232,217,205,0.9)",
-          borderWidth: 1,
-          padding: 10,
-          cornerRadius: 8,
-        },
-      },
-      scales: {
-        x: {
-          grid: { color: "rgba(232,217,205,0.45)" },
-          ticks: {
-            color: "#8b7258",
-            font: { size: 11 },
-            callback: (v) => fmtMoney(v),
-          },
-          border: { dash: [3, 3] },
-        },
-        y: {
-          grid: { display: false },
-          ticks: { color: "#3d2b18", font: { size: 12, weight: "600" } },
-        },
-      },
-    },
-  });
+  mountPayoutChart(canvas, rows);
 }
 
 /**

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Адмін — виплати</title>
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+    <link rel="stylesheet" href="../assets/css/admin.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  </head>
+  <body data-admin-page="stats">
+    <main class="admin-page admin-page--stats">
+      <div class="admin-panel admin-stats-chart-panel">
+        <h2 class="admin-stats-chart-panel__title">Виплати викладачам</h2>
+        <div class="admin-stats-chart-wrap admin-stats-chart-wrap--bar" id="statsPayoutWrap">
+          <canvas id="statsPayoutChart" aria-label="Горизонтальна діаграма виплат по викладачах"></canvas>
+        </div>
+      </div>
+    </main>
+    <script type="module">
+      import { mountPayoutChart } from "../assets/js/stats-payout.js";
+      mountPayoutChart(document.getElementById("statsPayoutChart"), [
+        { name: "Олена", payout: 18400 },
+        { name: "Марко", payout: 12200 },
+        { name: "Ірина", payout: 9800 },
+        { name: "Софія", payout: 6400 },
+        { name: "Андрій", payout: -800 },
+      ]);
+    </script>
+  </body>
+</html>

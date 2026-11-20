@@ -37,6 +37,7 @@ import {
   isBot,
   isUuid,
   nextVisitor,
+  previousWindow,
   rememberVisit,
   summarizePageViews,
 } from "./open-day-visitors.js";
@@ -4995,8 +4996,18 @@ app.get("/api/admin/stats/views", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Дата «від» має бути не пізніше за «до»." });
     }
     const summary = summarizePageViews(await loadPageViewRows(fromIso, toIso), fromRaw, toRaw);
+    const prev = previousWindow(fromRaw, toRaw);
+    let previous = null;
+    if (prev) {
+      const prevSummary = summarizePageViews(
+        await loadPageViewRows(statsDateToStartIso(prev.from), statsDateToEndIso(prev.to)),
+        prev.from,
+        prev.to,
+      );
+      previous = { from: prev.from, to: prev.to, home: prevSummary.series.home };
+    }
     res.set("Cache-Control", "no-store");
-    return res.json({ ok: true, ...summary });
+    return res.json({ ok: true, ...summary, previous });
   } catch (error) {
     console.error("page view stats failed:", error);
     return res.status(500).json({ ok: false, error: "Не вдалося порахувати перегляди." });
