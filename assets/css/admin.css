@@ -4373,16 +4373,30 @@ pre {
   color: var(--olive);
 }
 
+/* ponytail: six tracks so the first three presets stay thirds and the last two each take half the row. */
 .admin-stats-quick {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 12px;
+}
+
+.admin-stats-quick__btn:nth-child(-n + 3) {
+  grid-column: span 2;
+}
+
+.admin-stats-quick__btn:nth-child(n + 4) {
+  grid-column: span 3;
 }
 
 @media (min-width: 720px) {
   .admin-stats-quick {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .admin-stats-quick__btn:nth-child(-n + 3),
+  .admin-stats-quick__btn:nth-child(n + 4) {
+    grid-column: auto;
   }
 }
 
