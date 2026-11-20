@@ -117,7 +117,6 @@
             <button type="button" class="admin-stats-quick__btn" data-quick="3months">3 міс.</button>
             <button type="button" class="admin-stats-quick__btn" data-quick="6months">6 міс.</button>
             <button type="button" class="admin-stats-quick__btn" data-quick="year">Рік</button>
-            <button type="button" class="admin-stats-quick__btn" id="statsQuickCustom">Свій</button>
           </div>
           <button type="button" class="admin-stats-range-field" id="statsRangeField" aria-haspopup="dialog" aria-label="Обрати період">
             <span id="statsRangeFromLabel">оберіть</span>
@@ -129,18 +128,6 @@
             <input id="statsDateFrom" type="date" />
             <input id="statsDateTo" type="date" />
           </form>
-        </div>
-
-        <div id="statsPresetSheet" class="admin-sheet admin-hide" aria-hidden="true">
-          <div class="admin-sheet__backdrop" data-sheet-close tabindex="-1"></div>
-          <div class="admin-sheet__panel" role="dialog" aria-modal="true" aria-labelledby="statsPresetTitle">
-            <div class="admin-sheet__grab" aria-hidden="true"></div>
-            <p id="statsPresetTitle" class="admin-sheet__hint">Оберіть період. Свій період відкриває календар.</p>
-            <div id="statsPresetList"></div>
-            <button type="button" class="admin-stats-preset" id="statsRangeCustom">
-              <span>Свій період</span><small>календар →</small>
-            </button>
-          </div>
         </div>
 
         <div id="statsCalendarSheet" class="admin-sheet admin-hide" aria-hidden="true">
