@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1?bundle
 import { getSupabaseConfig } from "./runtime-supabase-config.js";
 import { mountPageViews } from "./stats-views.js";
 import { mountPayoutChart } from "./stats-payout.js";
+import { mountStatsRange } from "./stats-range.js";
 
 /** 0 = Sunday … 6 = Saturday (Date.getDay) */
 const DAYS_UK = ["Неділя", "Понеділок", "Вівторок", "Середа", "Четвер", "Пʼятниця", "Субота"];
@@ -3463,99 +3464,18 @@ function updateStatsPeriodLabel(fromInput, toInput) {
   el.classList.remove("admin-hide");
 }
 
-/**
- * Return { from, to } date strings for a named quick period.
- * @param {string} quick
- * @returns {{ from: string, to: string } | null}
- */
-function getQuickPeriod(quick) {
-  const now = new Date();
-  switch (quick) {
-    case "month": {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      return { from: toDateInputValue(start), to: toDateInputValue(now) };
-    }
-    case "prev-month": {
-      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const end   = new Date(now.getFullYear(), now.getMonth(), 0);
-      return { from: toDateInputValue(start), to: toDateInputValue(end) };
-    }
-    case "3months": {
-      const start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-      return { from: toDateInputValue(start), to: toDateInputValue(now) };
-    }
-    case "6months": {
-      const start = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-      return { from: toDateInputValue(start), to: toDateInputValue(now) };
-    }
-    case "year": {
-      const start = new Date(now.getFullYear(), 0, 1);
-      return { from: toDateInputValue(start), to: toDateInputValue(now) };
-    }
-    default:
-      return null;
-  }
-}
-
 function initStatsRangeControls() {
   ensureStatsTeacherJournalWired();
-  const form    = maybeEl("statsRangeForm");
-  const fromEl  = maybeEl("statsDateFrom");
-  const toEl    = maybeEl("statsDateTo");
-  const resetBtn = maybeEl("statsRangeReset");
-  if (!form || !fromEl || !toEl) return;
-
-  const setActivePeriod = (from, to) => {
-    fromEl.value = from;
-    toEl.value   = to;
-  };
-
-  if (!fromEl.value && !toEl.value) {
-    const p = getQuickPeriod("month");
-    if (p) setActivePeriod(p.from, p.to);
-  }
-
-  const syncQuickBtnHighlight = () => {
-    const quickBtns = document.querySelectorAll(".admin-stats-quick__btn");
-    quickBtns.forEach((btn) => {
-      const q = /** @type {HTMLElement} */ (btn).dataset.quick || "";
-      const p = getQuickPeriod(q);
-      const matches = p && p.from === fromEl.value && p.to === toEl.value;
-      btn.classList.toggle("is-active", !!matches);
-    });
-  };
-
-  syncQuickBtnHighlight();
-
-  const quickContainer = document.getElementById("statsQuickBtns");
-  quickContainer?.addEventListener("click", async (e) => {
-    const btn = /** @type {HTMLElement} */ (e.target).closest(".admin-stats-quick__btn");
-    if (!btn) return;
-    const quick = btn.dataset.quick || "";
-    const p = getQuickPeriod(quick);
-    if (!p) return;
-    setActivePeriod(p.from, p.to);
-    syncQuickBtnHighlight();
-    clearDashMessages();
-    await renderStatsDashboard();
-  });
-
-  fromEl.addEventListener("change", syncQuickBtnHighlight);
-  toEl.addEventListener("change", syncQuickBtnHighlight);
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    syncQuickBtnHighlight();
-    clearDashMessages();
-    await renderStatsDashboard();
-  });
-
-  resetBtn?.addEventListener("click", async () => {
-    const p = getQuickPeriod("month");
-    if (p) setActivePeriod(p.from, p.to);
-    syncQuickBtnHighlight();
-    clearDashMessages();
-    await renderStatsDashboard();
+  const fromEl = /** @type {HTMLInputElement | null} */ (maybeEl("statsDateFrom"));
+  const toEl = /** @type {HTMLInputElement | null} */ (maybeEl("statsDateTo"));
+  if (!fromEl || !toEl) return;
+  mountStatsRange({
+    fromEl,
+    toEl,
+    onChange: async () => {
+      clearDashMessages();
+      await renderStatsDashboard();
+    },
   });
 }
 
