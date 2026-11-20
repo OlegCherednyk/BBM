@@ -1,13 +1,6 @@
 const MONTHS_SHORT = ["січ.", "лют.", "бер.", "квіт.", "трав.", "черв.", "лип.", "серп.", "вер.", "жовт.", "лист.", "груд."];
 const MONTHS_LONG = ["Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень", "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень"];
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"];
-const PRESETS = [
-  { quick: "month", label: "Цей місяць" },
-  { quick: "prev-month", label: "Минулий" },
-  { quick: "3months", label: "3 міс." },
-  { quick: "6months", label: "6 міс." },
-  { quick: "year", label: "Рік" },
-];
 
 function pad(n) {
   return String(n).padStart(2, "0");
@@ -76,15 +69,13 @@ export function mountStatsRange({ fromEl, toEl, onChange }) {
   const field = document.getElementById("statsRangeField");
   const fromLabel = document.getElementById("statsRangeFromLabel");
   const toLabel = document.getElementById("statsRangeToLabel");
-  const presetSheet = document.getElementById("statsPresetSheet");
   const calendarSheet = document.getElementById("statsCalendarSheet");
-  const presetList = document.getElementById("statsPresetList");
   const grid = document.getElementById("statsCalendarGrid");
   const monthLabel = document.getElementById("statsCalendarMonth");
   const draftFromEl = document.getElementById("statsDraftFrom");
   const draftToEl = document.getElementById("statsDraftTo");
   const okBtn = document.getElementById("statsCalendarOk");
-  if (!field || !fromEl || !toEl || !presetSheet || !calendarSheet || !grid) return;
+  if (!field || !fromEl || !toEl || !calendarSheet || !grid) return;
 
   if (!fromEl.value || !toEl.value) {
     const initial = quickPeriod("month");
@@ -119,9 +110,7 @@ export function mountStatsRange({ fromEl, toEl, onChange }) {
   const closeSheet = (sheet) => {
     sheet.classList.add("admin-hide");
     sheet.setAttribute("aria-hidden", "true");
-    if (presetSheet.classList.contains("admin-hide") && calendarSheet.classList.contains("admin-hide")) {
-      document.body.classList.remove("admin-modal-open");
-    }
+    document.body.classList.remove("admin-modal-open");
   };
 
   const paintDraft = () => {
@@ -151,61 +140,34 @@ export function mountStatsRange({ fromEl, toEl, onChange }) {
     paintDraft();
   };
 
-  const fillPresets = () => {
-    if (!presetList) return;
-    presetList.innerHTML = PRESETS.map((item) => {
-      const period = quickPeriod(item.quick);
-      const hint = period ? formatPresetHint(period.from, period.to) : "";
-      return `<button type="button" class="admin-stats-preset" data-quick="${item.quick}"><span>${item.label}</span><small>${hint}</small></button>`;
-    }).join("");
-    paintField();
+  const openCalendar = () => {
+    draftFrom = fromEl.value;
+    draftTo = toEl.value;
+    const start = parseIsoDate(draftFrom);
+    if (start) view = start;
+    paintMonth();
+    openSheet(calendarSheet);
   };
 
   const apply = async (from, to) => {
     fromEl.value = from;
     toEl.value = to;
     paintField();
-    closeSheet(presetSheet);
     closeSheet(calendarSheet);
     await onChange();
   };
 
-  field.addEventListener("click", () => {
-    fillPresets();
-    openSheet(presetSheet);
-  });
-
-  document.getElementById("statsRangeCustom")?.addEventListener("click", () => {
-    draftFrom = fromEl.value;
-    draftTo = toEl.value;
-    const start = parseIsoDate(draftFrom);
-    if (start) view = start;
-    closeSheet(presetSheet);
-    paintMonth();
-    openSheet(calendarSheet);
-  });
-
-  document.getElementById("statsQuickCustom")?.addEventListener("click", () => {
-    draftFrom = fromEl.value;
-    draftTo = toEl.value;
-    const start = parseIsoDate(draftFrom);
-    if (start) view = start;
-    paintMonth();
-    openSheet(calendarSheet);
-  });
+  // ponytail: the date and the calendar icon are one button, so both open the month grid with no preset sheet in between.
+  field.addEventListener("click", openCalendar);
 
   document.addEventListener("click", (event) => {
     const quick = event.target instanceof Element ? event.target.closest("[data-quick]") : null;
-    if (!quick || quick.id === "statsRangeField") return;
-    if (!quick.closest("#statsQuickBtns, #statsPresetList")) return;
+    if (!quick || !quick.closest("#statsQuickBtns")) return;
     const period = quickPeriod(quick.getAttribute("data-quick") || "");
     if (!period) return;
     apply(period.from, period.to);
   });
 
-  presetSheet.querySelectorAll("[data-sheet-close]").forEach((node) => {
-    node.addEventListener("click", () => closeSheet(presetSheet));
-  });
   calendarSheet.querySelectorAll("[data-sheet-close]").forEach((node) => {
     node.addEventListener("click", () => closeSheet(calendarSheet));
   });
@@ -246,7 +208,6 @@ export function mountStatsRange({ fromEl, toEl, onChange }) {
 
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    closeSheet(presetSheet);
     closeSheet(calendarSheet);
   });
 
